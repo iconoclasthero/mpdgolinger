@@ -235,73 +235,158 @@ func idleSupervisor() {
 	}
 }
 
-// runIdleLoop handles events from the watcher, reconnecting MPD if necessary
+//// runIdleLoop handles events from the watcher, reconnecting MPD if necessary
+//func runIdleLoop(w *mpd.Watcher) error {
+//	var c *mpd.Client
+//	var err error
+//
+//	// persistent connect loop
+//	for {
+//		c, err = mpd.Dial("tcp", mpdHost)
+//		if err != nil {
+//			log.Printf("Failed to dial MPD: %v — retrying in 2s", err)
+//			time.Sleep(2 * time.Second)
+//			continue
+//		}
+//		break
+//	}
+//
+//	defer func() {
+//		if c != nil {
+//			c.Close()
+//			log.Println("MPD connection closed")
+//		}
+//	}()
+//
+//	log.Println("MPD connection established, entering idle loop")
+//
+//	for range w.Event {
+//		status, err := c.Status()
+//		if err != nil {
+//			log.Printf("MPD status fetch failed: %v — will attempt reconnect", err)
+//			return fmt.Errorf("status error: %w", err)
+//		}
+//
+//		songID := status["songid"]
+//		state.mu.Lock()
+//
+//		if songID != state.lastSongID {
+//			prevCount := state.count
+//			prevTransition := state.transition
+//			state.lastSongID = songID
+//
+//			if state.transition {
+//				log.Printf("Transition: random off, count reset to 1")
+//				setRandom(false, "idleLoop-transition")
+//				state.count = 1
+//				state.transition = false
+//			} else if state.count == state.limit-1 {
+//				state.count++
+//				log.Printf("Last song in block reached: random on, transition true")
+//				setRandom(true, "idleLoop-lastSong")
+//				state.transition = true
+//			} else {
+//				state.count++
+//				log.Printf("Normal increment: count=%d/%d", state.count, state.limit)
+//			}
+//
+//			logStateChange("idleLoop-event", songID, state.count, state.limit, state.transition)
+//			_ = prevCount
+//			_ = prevTransition
+//		} else {
+//			// log that we received an event but songID didn't change
+//			log.Printf("Idle event received but songID unchanged: %s", songID)
+//		}
+//
+//		state.mu.Unlock()
+//	}
+//
+//	return fmt.Errorf("watcher closed or event loop exited")
+//}
+
+// runIdleLoop: use short-lived mpdDo per event, log details, and surface
+// status errors so idleSupervisor can reconnect.
 func runIdleLoop(w *mpd.Watcher) error {
-	var c *mpd.Client
-	var err error
+    log.Println("MPD connection established, entering idle loop")
 
-	// persistent connect loop
-	for {
-		c, err = mpd.Dial("tcp", mpdHost)
-		if err != nil {
-			log.Printf("Failed to dial MPD: %v — retrying in 2s", err)
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		break
-	}
+    // Log watcher errors in background
+    go func() {
+        for err := range w.Error {
+            // keep this very explicit so we can trace EOF vs broken pipe
+            log.Printf("Watcher error: %v", err)
+        }
+    }()
 
-	defer func() {
-		if c != nil {
-			c.Close()
-			log.Println("MPD connection closed")
-		}
-	}()
+    // For each idle event, open a short-lived command connection and run
+    // status/commands via mpdDo (your safe wrapper).
+    for subsystem := range w.Event {
+        log.Printf("Idle event subsystem=%s", subsystem)
 
-	log.Println("MPD connection established, entering idle loop")
+        // Use mpdDo to make a fresh short-lived command connection
+        err := mpdDo(func(c *mpd.Client) error {
+            status, err := c.Status()
+            if err != nil {
+                // return so outer code treats this as a status error and reconnects
+                return err
+            }
 
-	for range w.Event {
-		status, err := c.Status()
-		if err != nil {
-			log.Printf("MPD status fetch failed: %v — will attempt reconnect", err)
-			return fmt.Errorf("status error: %w", err)
-		}
+            songID := status["songid"]
 
-		songID := status["songid"]
-		state.mu.Lock()
+            state.mu.Lock()
+            if songID == state.lastSongID {
+                // nothing changed; keep trace so we can see frequent idle hits
+                log.Printf("Idle event received but songID unchanged: %s", songID)
+                state.mu.Unlock()
+                return nil
+            }
 
-		if songID != state.lastSongID {
-			prevCount := state.count
-			prevTransition := state.transition
-			state.lastSongID = songID
+            // new song -> update FSM
+            prevCount := state.count
+            prevTransition := state.transition
+            state.lastSongID = songID
 
-			if state.transition {
-				log.Printf("Transition: random off, count reset to 1")
-				setRandom(false, "idleLoop-transition")
-				state.count = 1
-				state.transition = false
-			} else if state.count == state.limit-1 {
-				state.count++
-				log.Printf("Last song in block reached: random on, transition true")
-				setRandom(true, "idleLoop-lastSong")
-				state.transition = true
-			} else {
-				state.count++
-				log.Printf("Normal increment: count=%d/%d", state.count, state.limit)
-			}
+            if state.transition {
+                // transition: idle loop should turn random off and start block
+                if err := c.Random(false); err != nil {
+                    log.Printf("random(false) failed: %v", err)
+                    // don't abort state change because Random failing shouldn't block logic
+                }
+                state.count = 1
+                state.transition = false
+                log.Printf("Transition: random off, count reset to 1")
+            } else if state.count == state.limit-1 {
+                // last song started: turn random on, set transition flag
+                state.count++
+                if err := c.Random(true); err != nil {
+                    log.Printf("random(true) failed: %v", err)
+                }
+                state.transition = true
+                log.Printf("Last song in block reached: random on, transition true")
+            } else {
+                // normal in-block increment
+                state.count++
+                log.Printf("Normal increment: count=%d/%d", state.count, state.limit)
+            }
 
-			logStateChange("idleLoop-event", songID, state.count, state.limit, state.transition)
-			_ = prevCount
-			_ = prevTransition
-		} else {
-			// log that we received an event but songID didn't change
-			log.Printf("Idle event received but songID unchanged: %s", songID)
-		}
+            logStateChange("idleLoop-event", songID, state.count, state.limit, state.transition)
 
-		state.mu.Unlock()
-	}
+            _ = prevCount
+            _ = prevTransition
+            state.mu.Unlock()
 
-	return fmt.Errorf("watcher closed or event loop exited")
+            return nil
+        }, "idleLoop-event")
+
+        if err != nil {
+            // Make the error explicit and return so idleSupervisor can reconnect
+            // This distinguishes EOF/broken-pipe vs other errors in your logs
+            log.Printf("MPD status fetch failed: %v — will attempt reconnect", err)
+            log.Println("MPD connection closed")
+            return fmt.Errorf("status error: %w", err)
+        }
+    }
+
+    return fmt.Errorf("watcher closed")
 }
 
 
