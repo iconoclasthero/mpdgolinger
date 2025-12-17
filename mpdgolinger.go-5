@@ -1,0 +1,328 @@
+package main
+
+import (
+  "bufio"
+//  "errors"
+  "fmt"
+  "log"
+  "net"
+  "os"
+  "strconv"
+  "strings"
+  "sync"
+  "time"
+
+  "github.com/fhs/gompd/v2/mpd"
+)
+
+// --------------------
+// State
+// --------------------
+
+type State struct {
+  mu         sync.Mutex
+  paused     bool
+  count      int
+  limit      int
+  transition bool
+  lastSongID string
+  pollMode   int
+}
+
+const (
+  PollOff = iota
+  PollLogging
+  PollOn
+)
+
+var (
+  state   = &State{limit: 3, pollMode: PollOff}
+  mpdHost = "localhost:6600"
+)
+
+// --------------------
+// MPD helper
+// --------------------
+
+func safeMPD(fn func(*mpd.Client) error) error {
+  c, err := mpd.Dial("tcp", mpdHost)
+  if err != nil {
+    return err
+  }
+  defer c.Close()
+  return fn(c)
+}
+
+// --------------------
+// main
+// --------------------
+
+func main() {
+  // establish baseline state
+  err := safeMPD(func(c *mpd.Client) error {
+    status, err := c.Status()
+    if err != nil {
+      return err
+    }
+
+    state.mu.Lock()
+    defer state.mu.Unlock()
+
+    state.lastSongID = status["songid"]
+
+    switch status["state"] {
+    case "play", "pause":
+      state.count = 1
+    default:
+      state.count = 0
+    }
+
+    log.Printf(
+      "Starting block count=%d, lastSongID=%s",
+      state.count,
+      state.lastSongID,
+    )
+    return nil
+  })
+  if err != nil {
+    log.Printf("Startup MPD status failed: %v", err)
+  }
+
+  socketPath := "/tmp/mpdgolinger.sock"
+  os.Remove(socketPath)
+  go startIPC(socketPath)
+
+  go idleSupervisor()
+
+  select {}
+}
+
+// --------------------
+// Idle supervisor
+// --------------------
+
+func idleSupervisor() {
+  for {
+    err := runIdleLoop()
+    log.Printf("Idle loop exited: %v", err)
+    time.Sleep(2 * time.Second)
+  }
+}
+
+// --------------------
+// Idle loop (FIXED)
+// --------------------
+
+func runIdleLoop() error {
+	log.Printf("Connecting to MPD for idle loop...")
+
+	w, err := mpd.NewWatcher("tcp", mpdHost, "", "player")
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
+	for {
+		select {
+
+		case <-w.Event:
+			var status map[string]string
+
+			err := safeMPD(func(c *mpd.Client) error {
+				var err error
+				status, err = c.Status()
+				return err
+			})
+			if err != nil {
+				return err
+			}
+
+			songID := status["songid"]
+			if songID == "" {
+				continue
+			}
+
+			state.mu.Lock()
+			prevCount := state.count
+			prevTransition := state.transition
+			prevSongID := state.lastSongID
+
+			if songID != state.lastSongID {
+				state.lastSongID = songID
+
+				if state.transition {
+					_ = safeMPD(func(c *mpd.Client) error {
+						return c.Random(false)
+					})
+					state.count = 1
+					state.transition = false
+
+				} else if state.count == state.limit-1 {
+					state.count++
+					_ = safeMPD(func(c *mpd.Client) error {
+						return c.Random(true)
+					})
+					state.transition = true
+
+				} else {
+					state.count++
+				}
+			}
+
+			logStateChange(prevCount, prevTransition, prevSongID)
+			state.mu.Unlock()
+
+		case err := <-w.Error:
+			// THIS is the critical fix
+			return fmt.Errorf("watcher error: %w", err)
+		}
+	}
+}
+
+
+func logStateChange(prevCount int, prevTransition bool, prevSongID string) {
+	if prevCount != state.count ||
+		prevTransition != state.transition ||
+		prevSongID != state.lastSongID {
+
+		log.Printf(
+			"STATE CHANGE: songid=%s count=%d transition=%v",
+			state.lastSongID,
+			state.count,
+			state.transition,
+		)
+	}
+}
+
+
+
+// --------------------
+// Poller (unchanged, optional)
+// --------------------
+
+func poller(client *mpd.Client) {
+  for {
+    state.mu.Lock()
+    mode := state.pollMode
+    state.mu.Unlock()
+
+    if mode == PollOff {
+      time.Sleep(time.Second)
+      continue
+    }
+
+    status, err := client.Status()
+    if err != nil {
+      log.Printf("Poll status error: %v", err)
+      time.Sleep(time.Second)
+      continue
+    }
+
+    songID := status["songid"]
+
+    state.mu.Lock()
+    if mode == PollLogging {
+      log.Printf("Poll logging: songid=%s", songID)
+    }
+    state.lastSongID = songID
+    state.mu.Unlock()
+
+    time.Sleep(1 * time.Second)
+  }
+}
+
+// --------------------
+// IPC
+// --------------------
+
+func startIPC(path string) {
+  ln, err := net.Listen("unix", path)
+  if err != nil {
+    log.Fatalf("Failed to listen on %s: %v", path, err)
+  }
+  defer ln.Close()
+
+  log.Printf("IPC listening on %s", path)
+
+  for {
+    conn, err := ln.Accept()
+    if err != nil {
+      log.Printf("IPC accept error: %v", err)
+      continue
+    }
+    go handleConn(conn)
+  }
+}
+
+func handleConn(conn net.Conn) {
+  defer conn.Close()
+  scanner := bufio.NewScanner(conn)
+
+  for scanner.Scan() {
+    line := scanner.Text()
+    fields := strings.Fields(line)
+    if len(fields) == 0 {
+      continue
+    }
+
+    cmd := strings.ToLower(fields[0])
+
+    switch cmd {
+    case "pause":
+      state.mu.Lock()
+      state.paused = true
+      state.mu.Unlock()
+      fmt.Fprintln(conn, "Paused")
+
+    case "resume":
+      state.mu.Lock()
+      state.paused = false
+      state.mu.Unlock()
+      fmt.Fprintln(conn, "Resumed")
+
+    case "skip":
+      state.mu.Lock()
+      state.count = 0
+      state.transition = false
+      state.mu.Unlock()
+      fmt.Fprintln(conn, "Skipped to next block")
+
+    case "setblock":
+      if len(fields) < 2 {
+        fmt.Fprintln(conn, "Usage: setblock N")
+        continue
+      }
+      n, err := strconv.Atoi(fields[1])
+      if err != nil || n <= 0 {
+        fmt.Fprintln(conn, "Invalid block size")
+        continue
+      }
+      state.mu.Lock()
+      state.limit = n
+      state.count = 0
+      state.transition = false
+      state.mu.Unlock()
+      fmt.Fprintf(conn, "Block limit set to %d\n", n)
+
+    case "status":
+      state.mu.Lock()
+      fmt.Fprintf(
+        conn,
+        "paused=%v count=%d limit=%d lastSongID=%s pollMode=%d\n",
+        state.paused,
+        state.count,
+        state.limit,
+        state.lastSongID,
+        state.pollMode,
+      )
+      state.mu.Unlock()
+
+    default:
+      fmt.Fprintln(conn, "Unknown command")
+    }
+  }
+
+  if err := scanner.Err(); err != nil {
+    log.Printf("IPC connection error: %v", err)
+  }
+}
