@@ -1,0 +1,22 @@
+[Unit]
+Description=MPD Go Linger Daemon
+After=network.target mpd.service
+Requires=mpd.service
+
+[Service]
+Type=simple
+User=mpd
+Group=mpd
+ExecStart=mpdgolinger --daemon --state /var/lib/mpd/mpdlinger/mpdlinger.state --mpdsocket=/run/mpd/socket
+Restart=on-failure
+RestartSec=2s
+RuntimeDirectory=mpdgolinger
+RuntimeDirectoryMode=700
+WorkingDirectory=/var/lib/mpd/mpdlinger
+PIDFile=/run/mpdgolinger/mpdgolinger.pid
+StandardOutput=journal
+StandardError=journal
+# Optional: Environment=MPD_HOST=localhost MPD_PORT=6600
+
+[Install]
+WantedBy=multi-user.target
