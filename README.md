@@ -27,11 +27,15 @@ $ ./mpdgolinger --daemon --limit 3 --mpdhost localhost --mpdport 6600
 
 Optional flags:
 
-  --mpdsocket <path>: MPD server socket, (e.g., `/run/mpd/socket`)
-- --mpdhost <host>  : MPD server host (default localhost)
-- --mpdport <port>  : MPD server TCP port (default 6600)
-- --state <path>    : Optional path for persistent state file
-~~- --socket <path>   : IPC socket path (required in daemon mode)~~
+  --mpdsocket <path>  : MPD server socket, (e.g., `/run/mpd/socket`)
+- --mpdhost <host>    : MPD server host (default localhost)
+- --mpdport <port>    : MPD server TCP port (default 6600)
+- --state <path>      : Optional path for persistent state file
+- --version           : Prints version and mpd protocol/binary versions
+- --help              : Prints help
+- ~~--socket <path>     : IPC socket path (required in daemon mode)~~
+- ~~--listen <host>     : IPC listen address~~
+- ~~--listenport <port> : IPC listen port~~
 
 ### Client Mode
 
@@ -56,4 +60,21 @@ $ ./mpdgolinger quit      # exits daemon
 ## Notes
 
 - IPC socket must exist and be writable by clients.
+- The IPC socket is presently hard-coded to `/var/lib/mpd/mpdlinger/mpdlinger.sock`
 - Daemon supervises both MPD idle events and the IPC socket, reconnecting if necessary.
+
+## Statefile
+
+  To create an optional state file that can be parsed/sourced for other uses, enable the `--state <path>` when launching the daemon.  The format of the state file is:
+```
+writetime=2025-12-20T10:35:57.330310379-05:00
+lingersongid=139234  # to verify sync with other MPD clients
+lingerpause=0
+lingercount=1
+lingerlimit=4
+lingerbaselmt=4
+lingerblockon=1
+lingerblocklmt=5     # print disabled if lingerblockon=0
+lingerpid=4042418
+```
+
