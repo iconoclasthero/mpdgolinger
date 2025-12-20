@@ -23,27 +23,30 @@ $ CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o mpdgolinger mpdg
 
 ### Daemon Mode
 
-$ ./mpdgolinger --daemon --limit 3 --mpdhost localhost --mpdport 6600 --socket /path/to/socket
+$ ./mpdgolinger --daemon --limit 3 --mpdhost localhost --mpdport 6600
 
 Optional flags:
 
-- --mpdhost <host>: MPD server host (default localhost)
-- --mpdport <port>: MPD server TCP port (default 6600)
-- --socket <path>: IPC socket path (required in daemon mode)
-- --state <path>: Optional path for persistent state file
+  --mpdsocket <path>: MPD server socket, (e.g., `/run/mpd/socket`)
+- --mpdhost <host>  : MPD server host (default localhost)
+- --mpdport <port>  : MPD server TCP port (default 6600)
+- --state <path>    : Optional path for persistent state file
+~~- --socket <path>   : IPC socket path (required in daemon mode)~~
 
 ### Client Mode
 
 Run commands against the running daemon:
 
-$ ./mpdgolinger status
-$ ./mpdgolinger pause
-$ ./mpdgolinger resume
-$ ./mpdgolinger limit 5
-$ ./mpdgolinger block 3
-$ ./mpdgolinger next
-$ ./mpdgolinger skip
-$ ./mpdgolinger quit
+```
+$ ./mpdgolinger status    # prints one-line status message; serve as ping
+$ ./mpdgolinger pause     # pauses linger function; mpd playback unchanged
+$ ./mpdgolinger resume    # resumes linger function; mpd playback unchanged
+$ ./mpdgolinger limit 5   # resets the ongoing limit to e.g., 5
+$ ./mpdgolinger block 3   # sets a limit of e.g., 3 to current block only
+$ ./mpdgolinger next      # skips to the next song and block
+$ ./mpdgolinger skip      # skips to the next song within block
+$ ./mpdgolinger quit      # exits daemon
+```
 
 ## Development
 
