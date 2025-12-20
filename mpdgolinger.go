@@ -30,11 +30,11 @@ type State struct {
   lastSongID   string
   pollMode     int
   baseLimit    int
-  blockActive  bool
+  blockOn  bool
 }
 
 const (
-  defaultLimit = 3
+  defaultLimit = 4
   PollOff = iota
   PollLogging
   PollOn
@@ -386,7 +386,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 
         // Compute the current limit
         limit := state.baseLimit
-        if state.blockActive && state.blockLimit > 0 {
+        if state.blockOn && state.blockLimit > 0 {
           limit = state.blockLimit
         }
 
@@ -440,7 +440,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           }
 
           state.blockLimit = 0
-          state.blockActive = false
+          state.blockOn = false
           state.count = 1
           state.transition = false
           log.Printf("Transition: random off, count reset to 1")
@@ -463,7 +463,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 
           // Clear blockLimit after block completes
           state.blockLimit = 0
-          state.blockActive = false
+          state.blockOn = false
 
         } else {
           // Normal in-block advance.
@@ -614,7 +614,7 @@ func ipcHandler(conn net.Conn) {
       // If block already exhausted while paused,
       // force a clean block boundary on next song.
       limit := state.baseLimit
-      if state.blockActive && state.blockLimit > 0 {
+      if state.blockOn && state.blockLimit > 0 {
         limit = state.blockLimit
       }
       expired := state.count >= limit
@@ -719,7 +719,7 @@ func ipcHandler(conn net.Conn) {
       }
 
       state.mu.Lock()
-      state.blockActive = true   // activate blockLimit immediately
+      state.blockOn = true   // activate blockLimit immediately
       state.blockLimit = n       // update the running block limit
 //    state.count = 0            // reset count so next song starts fresh
       state.transition = false
@@ -740,7 +740,7 @@ func ipcHandler(conn net.Conn) {
     case "status":
       state.mu.Lock()
       limit := state.baseLimit
-      if state.blockActive && state.blockLimit > 0 {
+      if state.blockOn && state.blockLimit > 0 {
         limit = state.blockLimit
       }
       fmt.Fprintf(conn, "paused=%v count=%d limit=%d baseLimit=%d blockLimit=%d lastSongID=%s pollMode=%d\n",
@@ -762,7 +762,7 @@ func ipcHandler(conn net.Conn) {
   state.mu.Lock()
   songID := state.lastSongID
   limit := state.baseLimit
-  if state.blockActive && state.blockLimit > 0 {
+  if state.blockOn && state.blockLimit > 0 {
     limit = state.blockLimit
   }
   writeStateLocked(songID, limit)
@@ -799,7 +799,7 @@ func sendIPCCommand(cmd string) error {
   songID := state.lastSongID
 
   limit := state.baseLimit
-  if state.blockActive && state.blockLimit > 0 {
+  if state.blockOn && state.blockLimit > 0 {
     limit = state.blockLimit
   }
 
@@ -837,10 +837,10 @@ func writeStateLocked(songID string, limit int) {
   fmt.Fprintf(f, "lingerpause=%d\n",    btoi(state.paused))
   fmt.Fprintf(f, "lingercount=%d\n",           state.count)
   fmt.Fprintf(f, "lingerlimit=%d\n",                 limit)   // This is the working limit of runIdleLoop derived from:
-  fmt.Fprintf(f, "lingerbaselimit=%d\n",   state.baseLimit)   // Either the persistent limit unless
-  fmt.Fprintf(f, "lingerblockactive=%d\n", btoi(state.blockActive))
-  if state.blockActive {
-    fmt.Fprintf(f, "lingerblocklimit=%d\n", state.blockLimit) // A temprorary block limit override exists
+  fmt.Fprintf(f, "lingerbaselmt=%d\n",     state.baseLimit)   // Either the persistent limit unless
+  fmt.Fprintf(f, "lingerblockon=%d\n", btoi(state.blockOn))
+  if state.blockOn {
+    fmt.Fprintf(f, "lingerblocklmt=%d\n", state.blockLimit) // A temprorary block limit override exists
   }
   fmt.Fprintf(f, "lingerpid=%d\n",             os.Getpid())
 
