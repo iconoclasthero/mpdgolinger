@@ -2,359 +2,315 @@ package main
 
 import (
   "flag"
-	"bufio"
-	"fmt"
-	"log"
-	"net"
-	"os"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-
-	"github.com/fhs/gompd/v2/mpd"
+  "bufio"
+  "bytes"
+  "fmt"
+  "log"
+  "net"
+  "os"
+  "os/exec"
+  "strconv"
+  "strings"
+  "sync"
+  "time"
+  "sync/atomic"
+  "github.com/fhs/gompd/v2/mpd"
 )
+
+const version = "0.01.0-alpha"
 
 // State holds daemon state
 type State struct {
-	mu         sync.Mutex
-	paused       bool
-	count        int    // current position in block
+  mu         sync.Mutex
+  paused       bool
+  count        int    // current position in block
 //limit        int    // persistent block size  // removed from state as it will be computed
-	blockLimit   int    // temporary override (later)
-	transition   bool   // true between last-song-start and next-song-start
-	lastSongID   string
-	pollMode     int
+  blockLimit   int    // temporary override (later)
+  transition   bool   // true between last-song-start and next-song-start
+  lastSongID   string
+  pollMode     int
   baseLimit    int
   blockActive  bool
 }
 
 const (
   defaultLimit = 3
-	PollOff = iota
-	PollLogging
-	PollOn
+  PollOff = iota
+  PollLogging
+  PollOn
   stateDefault = "/var/lib/mpd/mpdlinger/mpdgolinger.state"
 )
 
 var (
-	state   = &State{baseLimit: defaultLimit,
-                    pollMode: PollOff,
+  // Core daemon state
+  state = &State{
+    baseLimit: defaultLimit,
+    pollMode:  PollOff,
   }
+
   shutdown = make(chan struct{})
+  shutdownOnce sync.Once
+
+  // State file management
   statePath string
   stateEnabled bool
-	mpdHost = "localhost:6600"
+
+  // MPD connection parameteres
+  mpdHost string = "localhost"
+  mpdPort int    = 6600
+  mpdSocket string = "/run/mpd/socket"
+  // IPC socket
   socketPath = "/var/lib/mpd/mpdlinger/mpdgolinger.sock"
-  shutdownOnce sync.Once
+
+  // TCP listener for remote client connections (placeholders)
+  listenIP string
+  listenPort int
+
+  daemonMode bool
 )
 
-// central safe MPD executor
+//// central safe MPD executor
+//func mpdDo(fn func(c *mpd.Client) error, src string) error {
+//  c, err := mpd.Dial("tcp", mpdHost)
+//  if err != nil {
+//    log.Printf("[%s] MPD dial failed: %v", src, err)
+//    return err
+//  }
+//  defer c.Close()
+//
+//  if err := fn(c); err != nil {
+//    log.Printf("[%s] MPD command failed: %v", src, err)
+//    return err
+//  }
+//  return nil
+//}
+
 func mpdDo(fn func(c *mpd.Client) error, src string) error {
-	c, err := mpd.Dial("tcp", mpdHost)
+    c, err := dialMPD()
+    if err != nil {
+        log.Printf("[%s] MPD dial failed: %v", src, err)
+        return err
+    }
+    defer c.Close()
+
+    return fn(c)
+}
+
+func mpdProtocolVersion() string {
+	var (
+		c   *mpd.Client
+		err error
+	)
+
+	if mpdSocket != "" {
+		c, err = mpd.Dial("unix", mpdSocket)
+	} else {
+		addr := fmt.Sprintf("%s:%d", mpdHost, mpdPort)
+		c, err = mpd.Dial("tcp", addr)
+	}
+
 	if err != nil {
-		log.Printf("[%s] MPD dial failed: %v", src, err)
-		return err
+		return "unavailable"
 	}
 	defer c.Close()
 
-	if err := fn(c); err != nil {
-		log.Printf("[%s] MPD command failed: %v", src, err)
-		return err
-	}
-	return nil
+	return c.Version()
 }
+
+//func mpdBinaryVersion(path string) string {
+//	cmd := exec.Command(path, "--version")
+//	out, err := cmd.Output()
+//	if err != nil {
+//		return "unavailable"
+//	}
+//
+//	scanner := bufio.NewScanner(bytes.NewReader(out))
+//	if scanner.Scan() {
+//		return strings.TrimSpace(scanner.Text())
+//	}
+//
+//	return "unavailable"
+//}
+
+func mpdBinaryVersion(path string) string {
+    cmd := exec.Command(path, "--version")
+    out, err := cmd.Output()
+    if err != nil {
+        return "unavailable"
+    }
+
+    scanner := bufio.NewScanner(bytes.NewReader(out))
+    if scanner.Scan() {
+        version := strings.TrimSpace(scanner.Text())
+
+        // Strip prefix up to "(v"
+        if idx := strings.Index(version, "(v"); idx != -1 {
+            version = version[idx+2:] // skip "(v"
+        }
+
+        // Strip trailing ")"
+        version = strings.TrimSuffix(version, ")")
+
+        return version
+    }
+
+    return "unavailable"
+}
+
+
+
 
 // wrapper to set MPD random state
 func setRandom(on bool, src string) {
-	_ = mpdDo(func(c *mpd.Client) error {
-		return c.Random(on)
-	}, src)
-	log.Printf("STATE CHANGE: [%s] mpd random=%v", src, on)
+  _ = mpdDo(func(c *mpd.Client) error {
+    return c.Random(on)
+  }, src)
+  log.Printf("STATE CHANGE: [%s] mpd random=%v", src, on)
 }
 
 // wrapper to skip next track
 func mpdNext(src string) {
-	_ = mpdDo(func(c *mpd.Client) error {
-		return c.Next()
-	}, src)
-	log.Printf("STATE CHANGE: [%s] mpd next track", src)
+  _ = mpdDo(func(c *mpd.Client) error {
+    return c.Next()
+  }, src)
+  log.Printf("STATE CHANGE: [%s] mpd next track", src)
 }
 
 // wrapper to play/pause
 func mpdPlayPause(play bool, src string) {
-	_ = mpdDo(func(c *mpd.Client) error {
-		if play {
-			return c.Play(-1)
-		}
-		return c.Pause(true)
-	}, src)
-	log.Printf("STATE CHANGE: [%s] mpd play=%v", src, play)
+  _ = mpdDo(func(c *mpd.Client) error {
+    if play {
+      return c.Play(-1)
+    }
+    return c.Pause(true)
+  }, src)
+  log.Printf("STATE CHANGE: [%s] mpd play=%v", src, play)
+}
+
+//// dialMPD returns a connected MPD client using either TCP or UNIX socket
+//func dialMPD() (*mpd.Client, error) {
+//  if mpdSocket != "" {
+//    return mpd.Dial("unix", mpdSocket)
+//  }
+//  return mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort))
+//}
+
+// dialMPD returns a connected MPD client using either TCP or UNIX socket
+func dialMPD() (*mpd.Client, error) {
+    if mpdSocket != "" {
+        // Use UNIX socket if provided
+        return mpd.Dial("unix", mpdSocket)
+    }
+    // Otherwise, use TCP host:port
+    return mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort))
+}
+
+// newWatcherMPD returns a new watcher for idle loop
+func newWatcherMPD() (*mpd.Watcher, error) {
+  if mpdSocket != "" {
+    return mpd.NewWatcher("unix", mpdSocket, "", "player")
+  }
+  return mpd.NewWatcher("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort), "", "player")
 }
 
 // logStateChange logs a standardized message for state transitions
 func logStateChange(src, songID string, count, limit int, transition bool) {
-	log.Printf(
-		"STATE CHANGE: [%s]: songID=%s count=%d/limit=%d transition=%v",
-		src, songID, count, limit, transition,
-	)
+  log.Printf(
+    "STATE CHANGE: [%s]: songID=%s count=%d/limit=%d transition=%v",
+    src, songID, count, limit, transition,
+  )
 }
 
 func logCurrentSong(c *mpd.Client, prefix string) {
-    if c == nil {
-        log.Printf("%s: currentsong skipped (nil client)", prefix)
-        return
-    }
+  if c == nil {
+    log.Printf("%s: currentsong skipped (nil client)", prefix)
+    return
+  }
 
-    song, err := c.CurrentSong()
-    if err != nil {
-        log.Printf("%s: currentsong error: %v", prefix, err)
-        return
-    }
+  song, err := c.CurrentSong()
+  if err != nil {
+    log.Printf("%s: currentsong error: %v", prefix, err)
+    return
+  }
 
-    file := song["file"]
-    if file == "" {
-        log.Printf("%s: currentsong: <no file field>", prefix)
-        return
-    }
+  file := song["file"]
+  if file == "" {
+    log.Printf("%s: currentsong: <no file field>", prefix)
+    return
+  }
 
-    log.Printf("%s: currentsong file=%q", prefix, file)
+  log.Printf("%s: currentsong file=%q", prefix, file)
 }
 
-// idleSupervisor maintains a persistent connection to MPD
-func idleSupervisor() {
+// daemonSupervisor maintains all long-lived daemon invariants including MPD connection, idle loop, and socket
+func daemonSupervisor() { // renamed from idleSupervisor
+//  var ipcRunning bool
+var ipcRunning int32
+
   for {
     select {
     case <-shutdown:
-      log.Println("Idle supervisor shutting down")
+      log.Println("Daemon supervisor shutting down")
       return
     default:
     }
 
+    // Ensure IPC socket exists (daemon responsibility)
+//    if _, err := os.Stat(socketPath); err != nil {
+//      if os.IsNotExist(err) && !ipcRunning {
+//        log.Printf("IPC socket missing, recreating: %s", socketPath)
+//        os.Remove(socketPath)
+//        go func() {
+//          ipcRunning = true
+//          startIPC(socketPath)
+//          ipcRunning = false
+//        }()
+//      } else if err != nil {
+//        log.Printf("IPC socket stat error: %v", err)
+//      }
+//    }
+
+// Ensure IPC socket exists (daemon responsibility)
+if _, err := os.Stat(socketPath); err != nil {
+  if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {     // #274
+    log.Printf("IPC socket missing, recreating: %s", socketPath)
+    os.Remove(socketPath)
+    go func() {
+      atomic.StoreInt32(&ipcRunning, 1)
+      startIPC(socketPath)
+      atomic.StoreInt32(&ipcRunning, 0)                             // #280
+    }()
+  } else {
+    log.Printf("IPC socket stat error: %v", err)
+  }
+}
+
+
     log.Println("Connecting to MPD for idle loop...")
-    w, err := mpd.NewWatcher("tcp", mpdHost, "", "player")
+
+    var w *mpd.Watcher
+    var err error
+    if mpdSocket != "" {
+      w, err = mpd.NewWatcher("unix", mpdSocket, "", "player")
+    } else {
+      w, err = mpd.NewWatcher("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort), "", "player")
+    }
+
     if err != nil {
       log.Printf("Watcher init failed: %v — retrying in 2s", err)
       time.Sleep(2 * time.Second)
       continue
     }
 
-    // run idle loop; if it exits, reconnect after 2s
     if err := runIdleLoop(w); err != nil {
       log.Printf("Idle loop exited: %v — reconnecting in 2s", err)
     }
     w.Close()
     time.Sleep(2 * time.Second)
   }
-}
+} // func daemonSupervisor()
 
-///* THIS APPEARS TO BE WORKING!!! */
-//func runIdleLoop(w *mpd.Watcher) error {
-//  log.Println("MPD connection established, entering idle loop")
-//
-//  // mpd.Watcher exposes an Error channel that reports lower-level
-//  // connection issues (EOF, broken pipe, protocol errors).
-//  //
-//  // IMPORTANT:
-//  //   These errors do *not* necessarily stop the Event channel,
-//  //   so we log them asynchronously for correlation only.
-//  //
-//  go func() {
-//    for err := range w.Error {
-//      // keep this very explicit so we can trace EOF vs broken pipe
-//      log.Printf("Watcher error: %v", err)
-//    }
-//  }()
-//
-//  // Main idle loop:
-//  // For each idle event, open a short-lived command connection and run
-//  // status/commands via mpdDo (your safe wrapper).
-//  // Each value received from w.Event represents an MPD "idle"
-//  // notification for a specific subsystem (usually "player").
-//  //
-//  // MPD does NOT tell us *what* changed — only that *something*
-//  // in that subsystem did.
-//  //
-//  for subsystem := range w.Event {
-//    log.Printf("Idle event subsystem=%s", subsystem)
-//
-//    // For *every* idle event we:
-//    //   • Open a fresh short-lived MPD connection
-//    //   • Query current status
-//    //   • Optionally toggle random
-//    //
-//    // This avoids:
-//    //   • idle/command protocol conflicts
-//    //   • stale connections after EOF
-//    //
-//    // Use mpdDo to make a fresh short-lived command connection
-//    err := mpdDo(func(c *mpd.Client) error {
-//      // Log the current song immediately on idle receipt.
-//      //
-//      // This gives us a "pre-status" snapshot so we can see:
-//      //   • what MPD *thought* was playing when idle fired
-//      //   • whether seek/pause events keep the same file
-//      //
-//      logCurrentSong(c, "idle event (pre-status)")
-//
-//      // Fetch current player status.
-//      //
-//      // If this fails, the connection is already bad and the
-//      // supervisor must reconnect.
-//      //
-//      status, err := c.Status()
-//      if err != nil {
-//        // return so outer code treats this as a status error and reconnects
-//        return err
-//      }
-//      songID := status["songid"]
-//
-//      // Protect shared FSM state.
-//      state.mu.Lock()
-//
-//      // Compute the current limit
-//      limit := state.baseLimit
-//      if state.blockActive && state.blockLimit > 0 {
-//        limit = state.blockLimit
-//      }
-//
-//      // If the user pauses the linger functionality (and state.paused is true):
-//      if state.paused {
-//        if songID != state.lastSongID {
-//          state.lastSongID = songID
-//          state.count++ // keep counting while paused (matches bash behavior)
-//          log.Printf("Paused: song advanced, count=%d (limit=%d)", state.count, limit)
-//        } else {
-//          log.Printf("Paused: idle event, song unchanged")
-//        }
-//
-//        state.mu.Unlock()
-//        return nil
-//      }
-//
-//      // If songID did not change, this idle event was caused by:
-//      //   • seek
-//      //   • pause/resume
-//      //   • repeat/random toggles
-//      //   • other non-track-boundary events
-//      //
-//      if songID == state.lastSongID {
-//        // nothing changed; keep trace so we can see frequent idle hits
-//        log.Printf("Idle event received but songID unchanged: %s", songID)
-//        state.mu.Unlock()
-//        // Log currentsong again so we can verify the *file*
-//        // really stayed the same across the idle break.
-//        //
-//        logCurrentSong(c, "idle event (songID unchanged)")
-//        return nil
-//      }
-//
-//      // From here on, MPD has started a *new song*.
-//      // Update the FSM accordingly.
-//      //
-//      prevCount := state.count
-//      prevTransition := state.transition
-//      state.lastSongID = songID
-////stoped cleaning indents here:
-//          if state.transition {
-//              // We were waiting for the first song *after* a random block.
-//              //
-//              // This is the moment to:
-//              //   • turn random OFF
-//              //   • reset the block counter
-//              //
-//              if err := c.Random(false); err != nil {
-//                  log.Printf("random(false) failed: %v", err)
-//                  // Do NOT abort: random failure should not desync FSM
-//              }
-//
-//              state.count = 1
-//              state.transition = false
-//              log.Printf("Transition: random off, count reset to 1")
-//
-//          } else if state.count == limit-1 {   // <- uses computed local limit
-//              // This song completes the block.
-//              //
-//              // We:
-//              //   • increment count
-//              //   • turn random ON
-//              //   • mark that the *next* song is a transition
-//              //
-//              state.count++
-//              if err := c.Random(true); err != nil {
-//                  log.Printf("random(true) failed: %v", err)
-//              }
-//
-//              state.transition = true
-//              log.Printf("Last song in block reached: random on, transition true")
-//
-//					    // Clear blockLimit after block completes
-//					    state.blockLimit = 0
-//					    state.blockActive = false
-//
-//          } else {
-//              // Normal in-block advance.
-//              state.count++
-//              log.Printf("Normal increment: count=%d/%d", state.count, limit)
-//          }
-//
-//          // Emit a structured state-change log so we can replay FSM
-//          // behavior purely from logs.
-//          //
-//          logStateChange(
-//              "idleLoop-event",
-//              songID,
-//              state.count,
-//              limit,
-//              state.transition,
-//          )
-//
-//          // Write out to the statefile
-//          writeStateLocked()
-//
-//          // Log the song again *after* state changes and random toggles.
-//          // This lets us confirm whether MPD advanced tracks as expected.
-//          //
-//          logCurrentSong(c, "idle event (post-state-change)")
-//
-//          _ = prevCount
-//          _ = prevTransition
-//          state.mu.Unlock()
-//
-//          return nil
-//
-//      }, "idleLoop-event")
-//
-//      if err != nil {
-//          // Make the error explicit and return so idleSupervisor can reconnect
-//          // This distinguishes EOF/broken-pipe vs other errors in your logs
-//          // Any error here means:
-//          //   • status fetch failed
-//          //   • connection closed mid-command
-//          //   • protocol error
-//          //
-//          // We *want* to exit so the supervisor can reconnect.
-//          //
-//          log.Printf("MPD status fetch failed: %v — will attempt reconnect", err)
-//
-//          // Best-effort logging of currentsong during failure path.
-//          // If this also fails, that's useful signal too.
-//          //
-//          _ = mpdDo(func(c *mpd.Client) error {
-//              logCurrentSong(c, "idle error path")
-//              return nil
-//          }, "idle-error-log")
-//
-//          log.Println("MPD connection closed")
-//          return fmt.Errorf("status error: %w", err)
-//      }
-//  }
-//
-//  // If we exit the loop, the watcher closed.
-//  return fmt.Errorf("watcher closed")
-//} // func runIdleLoop()
 
-/* THIS APPEARS TO BE WORKING!!! */
 func runIdleLoop(w *mpd.Watcher) error {
   log.Println("MPD connection established, entering idle loop")
 
@@ -374,7 +330,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 
   // Main idle loop:
   // For each idle event, open a short-lived command connection and run
-  // status/commands via mpdDo (your safe wrapper).
+  // status/commands via pdDo (your safe wrapper).
   // Each value received from w.Event represents an MPD "idle"
   // notification for a specific subsystem (usually "player").
   //
@@ -483,6 +439,8 @@ func runIdleLoop(w *mpd.Watcher) error {
             // Do NOT abort: random failure should not desync FSM
           }
 
+          state.blockLimit = 0
+          state.blockActive = false
           state.count = 1
           state.transition = false
           log.Printf("Transition: random off, count reset to 1")
@@ -542,7 +500,7 @@ func runIdleLoop(w *mpd.Watcher) error {
       }, "idleLoop-event")
 
       if err != nil {
-        // Make the error explicit and return so idleSupervisor can reconnect
+        // Make the error explicit and return so daemonSupervisor can reconnect
         log.Printf("MPD status fetch failed: %v — will attempt reconnect", err)
 
         // Best-effort logging of currentsong during failure path.
@@ -623,12 +581,12 @@ func startIPC(path string) {
 			log.Printf("IPC accept error: %v", err)
 			continue
 		}
-		go handleConn(conn)
+		go ipcHandler(conn)
 	}
 }
 
-// handleConn parses commands and updates state
-func handleConn(conn net.Conn) {
+// ipcHandler parses commands and updates state
+func ipcHandler(conn net.Conn) {
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
   for scanner.Scan() {
@@ -763,10 +721,18 @@ func handleConn(conn net.Conn) {
       state.mu.Lock()
       state.blockActive = true   // activate blockLimit immediately
       state.blockLimit = n       // update the running block limit
-      state.count = 0            // reset count so next song starts fresh
+//    state.count = 0            // reset count so next song starts fresh
       state.transition = false
       block := state.blockLimit
       state.mu.Unlock()
+      _ = mpdDo(func(c *mpd.Client) error {
+        // ensure we break out of the current block
+        if err := c.Random(false); err != nil {
+          return err
+        }
+        return nil
+      }, "IPC-blocklimit")
+
 
       log.Printf("STATE CHANGE: [IPC] block limit set=%d, count=%d, transition=%v", block, state.count, state.transition)
       fmt.Fprintf(conn, "Block limit set to %d\nOK\n", n)
@@ -791,34 +757,61 @@ func handleConn(conn net.Conn) {
       fmt.Fprintln(conn, "Unknown command")
     }
   }
+
+  // Derive final state once per IPC session
+  state.mu.Lock()
+  songID := state.lastSongID
+  limit := state.baseLimit
+  if state.blockActive && state.blockLimit > 0 {
+    limit = state.blockLimit
+  }
+  writeStateLocked(songID, limit)
+  state.mu.Unlock()
+
+
   if err := scanner.Err(); err != nil {
     log.Printf("IPC connection error: %v", err)
   }
-} // func handleConn()
+} // func ipcHandler()
 
 func sendIPCCommand(cmd string) error {
+  conn, err := net.Dial("unix", socketPath)
+  if err != nil {
+    return err
+  }
+  defer conn.Close()
 
-	conn, err := net.Dial("unix", socketPath)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+  _, err = fmt.Fprintln(conn, cmd)
+  if err != nil {
+    return err
+  }
 
-	_, err = fmt.Fprintln(conn, cmd)
-	if err != nil {
-		return err
-	}
+  // read single-line response
+  scanner := bufio.NewScanner(conn)
+  if scanner.Scan() {
+    fmt.Println(scanner.Text())
+  }
 
-	// read single-line response
-	scanner := bufio.NewScanner(conn)
-	if scanner.Scan() {
-		fmt.Println(scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
 
-	return nil
+  // Derive final state once per IPC session
+  state.mu.Lock()
+
+  songID := state.lastSongID
+
+  limit := state.baseLimit
+  if state.blockActive && state.blockLimit > 0 {
+    limit = state.blockLimit
+  }
+
+  state.mu.Unlock()
+
+  writeStateLocked(songID, limit)
+
+  if err := scanner.Err(); err != nil {
+    return err
+  }
+
+  return nil
 }
 
 func writeStateLocked(songID string, limit int) {
@@ -835,6 +828,11 @@ func writeStateLocked(songID string, limit int) {
     return
   }
 
+  now := time.Now().Format(time.RFC3339Nano)
+
+//fmt.Fprintf(f, "writepid=%d\n", os.Getpid())
+//fmt.Fprintf(f, "writesrc=ipc\n") // we’ll change this later in idle loop
+  fmt.Fprintf(f, "writetime=%s\n", now)
   fmt.Fprintf(f, "lingersongid=%s\n",               songID)
   fmt.Fprintf(f, "lingerpause=%d\n",    btoi(state.paused))
   fmt.Fprintf(f, "lingercount=%d\n",           state.count)
@@ -844,36 +842,35 @@ func writeStateLocked(songID string, limit int) {
   if state.blockActive {
     fmt.Fprintf(f, "lingerblocklimit=%d\n", state.blockLimit) // A temprorary block limit override exists
   }
-//  fmt.Fprintf(f, "lingerblocklimit=%d\n", state.blockLimit) // A temprorary block limit override exists
   fmt.Fprintf(f, "lingerpid=%d\n",             os.Getpid())
 
   f.Close()
   os.Rename(tmp, statePath)
-}
+} // func writeStateLocked(songID string, limit int)
 
 func btoi(b bool) int {
-    if b {
-        return 1
-    }
-    return 0
-}
+  if b {
+    return 1
+  }
+  return 0
+} // func btoi(b bool)
 
 func requestShutdown() {
   shutdownOnce.Do(func() {
     close(shutdown)
   })
-}
+} // func requestShutdown()
 
 func main() {
   // CLI subcommands (client mode)
   if len(os.Args) > 1 {
     switch os.Args[1] {
 
-		case "status":
-		  if err := sendIPCCommand("status"); err != nil {
-		    log.Fatalf("IPC error: %v", err)
-		  }
-		  return
+    case "status":
+      if err := sendIPCCommand("status"); err != nil {
+        log.Fatalf("IPC error: %v", err)
+      }
+      return
 
     case "pause":
       if err := sendIPCCommand("pause"); err != nil {
@@ -889,16 +886,16 @@ func main() {
       fmt.Println("OK")
       return
 
-		case "limit":
-		  if len(os.Args) < 3 {
-		    log.Fatal("Usage: mpdgolinger limit N")
-		  }
-		  n, err := strconv.Atoi(os.Args[2])
-		  if err != nil || n <= 0 {
-		    log.Fatalf("Invalid limit: %q", os.Args[2])
-		  }
-		  sendIPCCommand(fmt.Sprintf("limit %d", n))
-		  return
+    case "limit":
+      if len(os.Args) < 3 {
+        log.Fatal("Usage: mpdgolinger limit N")
+      }
+      n, err := strconv.Atoi(os.Args[2])
+      if err != nil || n <= 0 {
+        log.Fatalf("Invalid limit: %q", os.Args[2])
+      }
+      sendIPCCommand(fmt.Sprintf("limit %d", n))
+      return
 
     case "block", "blocklimit":
       if len(os.Args) >= 3 {
@@ -938,17 +935,38 @@ func main() {
     }
   }
 
-//  // Normal daemon startup
-//  var startupLimit int
-//  flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent limit at startup")
-//  flag.Parse()
-
+  // ------------------------------------------------------------------
   // Normal daemon startup
+  //
+  // --daemon now gates startup
+  // --mpdhost, --mpdport, --listen, --listenport are placeholders
+  // ------------------------------------------------------------------
+
+  // ------------------------------------------------------------------
   var startupLimit int
+  var daemonMode bool
+  var showVersion bool
+  var showHelp bool
+  // ------------------------------------------------------------------
 
-  flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent limit at startup")
+  flag.BoolVar(&showVersion, "version", false, "Print version and exit")
+  flag.BoolVar(&showHelp, "help", false, "Print help and exit")
+  flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent <limit>")
+  flag.BoolVar(&daemonMode, "daemon", false, "Run as daemon")
+  flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
+  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
+  flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
 
-  flag.Func("state", "Write state file (optional path)", func(v string) error {
+  // Placeholders for future flags
+//  var mpdPort int
+//  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host")
+//  flag.IntVar(&mpdPort, "mpdport", 6600, "MPD port")
+  var listenIP string
+  flag.StringVar(&listenIP, "listen", "", "Daemon listen IP for remote clients")
+  var listenPort int
+  flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port for remote clients")
+
+  flag.Func("state", "Write state file to <path>", func(v string) error {
     stateEnabled = true
     statePath = v
     return nil
@@ -956,12 +974,54 @@ func main() {
 
   flag.Parse()
 
+  // ------------------------------------------------------------------
+  // Version flag: print & exit
+  // ------------------------------------------------------------------
+//  if showVersion {
+//    fmt.Println("mpdgolinger version", version)
+//    return
+//  }
+	if showVersion {
+    fmt.Println()
+		fmt.Println(" mpdgolinger version:", version)
+
+		fmt.Println("mpd protocol version:", mpdProtocolVersion())
+
+		mpdPath := "/usr/bin/mpd"
+		fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+    fmt.Println()
+		return
+	}
+	if showHelp {
+    fmt.Println()
+		fmt.Println(" mpdgolinger version:", version)
+
+		fmt.Println("mpd protocol version:", mpdProtocolVersion())
+
+		mpdPath := "/usr/bin/mpd"
+		fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+//    fmt.Printf("mpdgolinger %s\n", version)
+    fmt.Println()
+    fmt.Println("Usage: mpdgolinger --daemon [flags] or as client subcommands")
+    flag.PrintDefaults()
+
+		return
+	}
+  // ------------------------------------------------------------------
+  // Enforce daemon mode (new behavior)
+  // ------------------------------------------------------------------
+  if !daemonMode {
+    log.Fatalf("Refusing to start daemon without --daemon")
+  }
+  // ------------------------------------------------------------------
+
   if startupLimit > 0 {
     state.baseLimit = startupLimit
   }
 
   // Connect to MPD for initial state
-  client, err := mpd.Dial("tcp", mpdHost)
+//  client, err := mpd.Dial("tcp", mpdHost)
+  client, err := dialMPD() //mpd.Dial("tcp", mpdHost)
   if err != nil {
     log.Printf("Failed to connect to MPD at startup: %v", err)
     state.count = 0
@@ -984,16 +1044,27 @@ func main() {
     client.Close()
   }
 
-  log.Printf("Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
-    state.count, state.lastSongID, state.baseLimit, state.blockLimit)
+  log.Printf(
+    "Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
+    state.count,
+    state.lastSongID,
+    state.baseLimit,
+    state.blockLimit,
+  )
   setRandom(false, "startup")
 
   // Start IPC listener
   os.Remove(socketPath)
   go startIPC(socketPath)
 
+  if stateEnabled {
+    state.mu.Lock()
+    writeStateLocked(state.lastSongID, state.baseLimit)
+    state.mu.Unlock()
+  }
+
   // Start idle supervisor
-  go idleSupervisor()
+  go daemonSupervisor()
 
 //  // Block forever
 //  select {}
@@ -1023,6 +1094,5 @@ func main() {
     log.Println("Cleanup steps completed, exiting")
     os.Exit(exitCode)
   }
-}
+} // func main()
 // End of mpdgolinger
-
