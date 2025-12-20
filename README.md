@@ -71,8 +71,8 @@ writetime=2025-12-20T10:35:57.330310379-05:00
 lingersongid=139234  # to verify sync with other MPD clients
 lingerpause=0
 lingercount=1
+lingerbase=4
 lingerlimit=4
-lingerbaselmt=4
 lingerblockon=1
 lingerblocklmt=5     # print disabled if lingerblockon=0
 lingerpid=4042418
