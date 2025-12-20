@@ -1,4 +1,4 @@
-module mpdlinger
+module mpdgolinger
 
 go 1.25.5
 
