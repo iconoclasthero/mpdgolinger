@@ -50,7 +50,7 @@ Run commands against the running daemon:
 ```
 $ ./mpdgolinger status    # prints one-line status message; serves as ping
 $ ./mpdgolinger pause     # pauses linger function; mpd playback unchanged
-$ ./mpdgolinger resume    # resumes linger function; mpd playback unchanged
+$ ./mpdgolinger resume    # resumes linger function; mpd playback restarted if paused
 $ ./mpdgolinger limit 5   # resets the ongoing limit to e.g., 5
 $ ./mpdgolinger block 3   # sets a limit of e.g., 3 to current block only
 $ ./mpdgolinger next      # skips to the next song and block
