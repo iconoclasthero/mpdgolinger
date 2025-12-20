@@ -838,10 +838,11 @@ func writeStateLocked(songID string, limit int) {
   fmt.Fprintf(f, "lingercount=%d\n",           state.count)
   fmt.Fprintf(f, "lingerbase=%d\n",        state.baseLimit)   // Either the persistent limit unless
   fmt.Fprintf(f, "lingerlimit=%d\n",                 limit)   // This is the working limit of runIdleLoop derived from:
-  fmt.Fprintf(f, "lingerblockon=%d\n", btoi(state.blockOn))
-  if state.blockOn {
-    fmt.Fprintf(f, "lingerblocklmt=%d\n", state.blockLimit) // A temprorary block limit override exists
-  }
+//  fmt.Fprintf(f, "lingerblockon=%d\n", btoi(state.blockOn))
+//  if state.blockOn {
+//    fmt.Fprintf(f, "lingerblocklmt=%d\n", state.blockLimit) // A temprorary block limit override exists
+//  }
+  fmt.Fprintf(f, "lingerblocklmt=%d\n",   state.blockLimit) // A temprorary block limit override exists
   fmt.Fprintf(f, "lingerpid=%d\n",             os.Getpid())
 
   f.Close()

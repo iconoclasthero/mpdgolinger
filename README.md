@@ -73,8 +73,7 @@ lingerpause=0
 lingercount=1
 lingerbase=4
 lingerlimit=4
-lingerblockon=1
-lingerblocklmt=5     # print disabled if lingerblockon=0
+lingerblocklmt=5     # 0 if blocklimit is not set
 lingerpid=4042418
 ```
 
