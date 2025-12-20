@@ -48,7 +48,7 @@ Optional flags:
 Run commands against the running daemon:
 
 ```
-$ ./mpdgolinger status    # prints one-line status message; serve as ping
+$ ./mpdgolinger status    # prints one-line status message; serves as ping
 $ ./mpdgolinger pause     # pauses linger function; mpd playback unchanged
 $ ./mpdgolinger resume    # resumes linger function; mpd playback unchanged
 $ ./mpdgolinger limit 5   # resets the ongoing limit to e.g., 5
