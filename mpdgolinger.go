@@ -17,11 +17,11 @@ import (
   "github.com/fhs/gompd/v2/mpd"
 )
 
-const version = "0.01.0-alpha"
+const version = "0.01.1-alpha"
 
 // State holds daemon state
 type State struct {
-  mu         sync.Mutex
+  mu           sync.Mutex
   paused       bool
   count        int    // current position in block
 //limit        int    // persistent block size  // removed from state as it will be computed
@@ -30,7 +30,7 @@ type State struct {
   lastSongID   string
   pollMode     int
   baseLimit    int
-  blockOn  bool
+  blockOn      bool
 }
 
 const (
@@ -399,6 +399,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           } else {
             log.Printf("Paused: idle event, song unchanged")
           }
+          writeStateLocked(songID, limit) // <--- write after increment to update state count while paused
 
           state.mu.Unlock()
           return nil
@@ -585,6 +586,26 @@ func startIPC(path string) {
 	}
 }
 
+func setPaused(paused bool) (expired bool, limit int) {
+    state.mu.Lock()
+    defer state.mu.Unlock()
+
+    state.paused = paused
+
+    limit = state.baseLimit
+    if state.blockOn && state.blockLimit > 0 {
+        limit = state.blockLimit
+    }
+
+    expired = state.count >= limit
+    if expired && !paused {
+        state.transition = true
+    }
+
+    return
+}
+
+
 // ipcHandler parses commands and updates state
 func ipcHandler(conn net.Conn) {
   defer conn.Close()
@@ -598,47 +619,155 @@ func ipcHandler(conn net.Conn) {
 
     cmd := strings.ToLower(fields[0])
     switch cmd {
-    case "pause":
-      log.Printf("IPC: received pause command")
+//    case "pause":
+//      log.Printf("IPC: received pause command")
+//
+//      state.mu.Lock()
+//      state.paused = true
+//    limit := state.baseLimit
+//    if state.blockOn && state.blockLimit > 0 {
+//      limit = state.blockLimit
+//    }
+//
+//    expired := state.count >= limit
+//    if expired {
+//      state.transition = true
+//    }
+//
+//    // snapshot for logging
+//    paused := state.paused
+//    count := state.count
+//    transition := state.transition
+//
+//      state.mu.Unlock()
+//
+////      fmt.Fprintln(conn, "Paused")
+//      log.Printf(
+//        "STATE CHANGE: [IPC-pause] paused=%v expired=%v count=%d limit=%d transition=%v",
+//        paused, expired, count, limit, transition,
+//      )
+//
+//    case "resume":
+//      state.mu.Lock()
+//      state.paused = false
+//
+//      // If block already exhausted while paused,
+//      // force a clean block boundary on next song.
+//      limit := state.baseLimit
+//      if state.blockOn && state.blockLimit > 0 {
+//        limit = state.blockLimit
+//      }
+//      expired := state.count >= limit
+//      if expired {
+//        state.transition = true
+//      }
+//
+//      state.mu.Unlock()
+//
+//      if expired {
+//        _ = mpdDo(func(c *mpd.Client) error {
+//          return c.Random(true)
+//        }, "IPC-resume")
+//      }
+//
+//      // Resume playback unconditionally
+//      mpdPlayPause(true, "IPC-resume")
+//
+//      log.Printf(
+//        "STATE CHANGE: [IPC-resume] paused=%v expired=%v count=%d limit=%d transition=%v",
+//        state.paused, expired, state.count, limit, state.transition,
+//      )
+//
+//      fmt.Fprintln(conn, "Resumed")
+//
+//    case "toggle":
+//      state.mu.Lock()
+//
+//      if state.paused {
+//        state.paused = false
+//
+//        limit := state.baseLimit
+//        if state.blockOn && state.blockLimit > 0 {
+//          limit = state.blockLimit
+//        }
+//
+//        expired := state.count >= limit
+//        if expired {
+//          state.transition = true
+//        }
+//
+//        // snapshot for logging
+//        paused := state.paused
+//        count := state.count
+//        transition := state.transition
+//
+//        state.mu.Unlock()
+//
+//        if expired {
+//          _ = mpdDo(func(c *mpd.Client) error {
+//            return c.Random(true)
+//          }, "IPC-toggle-resume")
+//        }
+//
+//        mpdPlayPause(true, "IPC-toggle-resume")
+//
+//        log.Printf(
+//          "STATE CHANGE: [IPC-toggle] paused=%v expired=%v count=%d limit=%d transition=%v",
+//          paused, expired, count, limit, transition,
+//        )
+//
+//        fmt.Fprintln(conn, "Resumed")
+//
+//      } else {
+//        state.paused = true
+//
+//        // snapshot for logging
+//        paused := state.paused
+//        count := state.count
+//
+//        state.mu.Unlock()
+//
+//        log.Printf(
+//          "STATE CHANGE: [IPC-toggle-pause] paused=%v count=%d",
+//          paused, count,
+//        )
+//
+//        fmt.Fprintln(conn, "Paused")
+//      }
 
-      state.mu.Lock()
-      state.paused = true
-      state.mu.Unlock()
 
-      fmt.Fprintln(conn, "Paused")
+case "pause":
+    log.Printf("IPC: received pause command")
+    expired, limit := setPaused(true)
+    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+        state.paused, expired, state.count, limit, state.transition)
+    fmt.Fprintln(conn, "Paused")
 
-    case "resume":
-      state.mu.Lock()
-      state.paused = false
+case "resume":
+    log.Printf("IPC: received resume command")
+    expired, limit := setPaused(false)
+    if expired {
+        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-resume")
+    }
+    mpdPlayPause(true, "IPC-resume")
+    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+        state.paused, expired, state.count, limit, state.transition)
+    fmt.Fprintln(conn, "Resumed")
 
-      // If block already exhausted while paused,
-      // force a clean block boundary on next song.
-      limit := state.baseLimit
-      if state.blockOn && state.blockLimit > 0 {
-        limit = state.blockLimit
-      }
-      expired := state.count >= limit
-      if expired {
-        state.transition = true
-      }
+case "toggle":
+    paused := !state.paused
+    log.Printf("IPC: received toggle command")
+    expired, limit := setPaused(paused)
+    if !paused && expired {
+        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-toggle-resume")
+    }
+    if !paused {
+        mpdPlayPause(true, "IPC-toggle-resume")
+    }
+    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+        state.paused, expired, state.count, limit, state.transition)
+    fmt.Fprintln(conn, map[bool]string{true:"Paused", false:"Resumed"}[paused])
 
-      state.mu.Unlock()
-
-      if expired {
-        _ = mpdDo(func(c *mpd.Client) error {
-          return c.Random(true)
-        }, "IPC-resume")
-      }
-
-      // Resume playback unconditionally
-      mpdPlayPause(true, "IPC-resume")
-
-      log.Printf(
-        "STATE CHANGE: [IPC-resume] paused=false expired=%v count=%d limit=%d transition=%v",
-        expired, state.count, limit, state.transition,
-      )
-
-      fmt.Fprintln(conn, "Resumed")
 
     // next: force start of a new block; always resumes playback;
     // idle loop owns count reset and random-off transition
@@ -774,45 +903,82 @@ func ipcHandler(conn net.Conn) {
   }
 } // func ipcHandler()
 
+//func sendIPCCommand(cmd string) error {
+//  conn, err := net.Dial("unix", socketPath)
+//  if err != nil {
+//    return err
+//  }
+//  defer conn.Close()
+//
+//  _, err = fmt.Fprintln(conn, cmd)
+//  if err != nil {
+//    return err
+//  }
+//
+//  // read single-line response
+//  scanner := bufio.NewScanner(conn)
+//  if scanner.Scan() {
+//    fmt.Println(scanner.Text())
+//  }
+//
+//
+//  // Derive final state once per IPC session
+//  state.mu.Lock()
+//
+//  songID := state.lastSongID
+//
+//  limit := state.baseLimit
+//  if state.blockOn && state.blockLimit > 0 {
+//    limit = state.blockLimit
+//  }
+//
+//  state.mu.Unlock()
+//
+//  writeStateLocked(songID, limit)
+//
+//  if err := scanner.Err(); err != nil {
+//    return err
+//  }
+//
+//  return nil
+//}
+
 func sendIPCCommand(cmd string) error {
-  conn, err := net.Dial("unix", socketPath)
-  if err != nil {
-    return err
-  }
-  defer conn.Close()
+    conn, err := net.Dial("unix", socketPath)
+    if err != nil {
+        return fmt.Errorf("failed to connect to daemon: %w", err)
+    }
+    defer conn.Close()
 
-  _, err = fmt.Fprintln(conn, cmd)
-  if err != nil {
-    return err
-  }
+    _, err = fmt.Fprintln(conn, cmd)
+    if err != nil {
+        return fmt.Errorf("failed to send command: %w", err)
+    }
 
-  // read single-line response
-  scanner := bufio.NewScanner(conn)
-  if scanner.Scan() {
-    fmt.Println(scanner.Text())
-  }
+    // read single-line response from daemon
+    scanner := bufio.NewScanner(conn)
+    if scanner.Scan() {
+        fmt.Println(scanner.Text()) // Paused / Resumed / Status
+    }
 
+    // Derive final state and write state file
+    state.mu.Lock()
+    songID := state.lastSongID
+    limit := state.baseLimit
+    if state.blockOn && state.blockLimit > 0 {
+        limit = state.blockLimit
+    }
+    state.mu.Unlock()
 
-  // Derive final state once per IPC session
-  state.mu.Lock()
+    writeStateLocked(songID, limit)
 
-  songID := state.lastSongID
+    if err := scanner.Err(); err != nil {
+        return fmt.Errorf("scanner error: %w", err)
+    }
 
-  limit := state.baseLimit
-  if state.blockOn && state.blockLimit > 0 {
-    limit = state.blockLimit
-  }
-
-  state.mu.Unlock()
-
-  writeStateLocked(songID, limit)
-
-  if err := scanner.Err(); err != nil {
-    return err
-  }
-
-  return nil
+    return nil
 }
+
 
 func writeStateLocked(songID string, limit int) {
   if !stateEnabled {
@@ -871,6 +1037,13 @@ func main() {
       if err := sendIPCCommand("status"); err != nil {
         log.Fatalf("IPC error: %v", err)
       }
+      return
+
+    case "toggle":
+      if err := sendIPCCommand("toggle"); err != nil {
+        log.Fatalf("IPC error: %v", err)
+      }
+      fmt.Println("OK")
       return
 
     case "pause":
