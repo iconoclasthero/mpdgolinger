@@ -9,6 +9,7 @@ import (
   "net"
   "os"
   "os/exec"
+  "path/filepath"
   "strconv"
   "strings"
   "sync"
@@ -17,7 +18,7 @@ import (
   "github.com/fhs/gompd/v2/mpd"
 )
 
-const version = "0.01.1-alpha"
+const version = "0.02.0"
 
 // State holds daemon state
 type State struct {
@@ -31,6 +32,12 @@ type State struct {
   pollMode     int
   baseLimit    int
   blockOn      bool
+}
+
+type configFile struct {
+    path   string
+    data   string
+    exists bool
 }
 
 const (
@@ -67,23 +74,75 @@ var (
   listenPort int
 
   daemonMode bool
+
+  configFlag string
 )
 
-//// central safe MPD executor
-//func mpdDo(fn func(c *mpd.Client) error, src string) error {
-//  c, err := mpd.Dial("tcp", mpdHost)
-//  if err != nil {
-//    log.Printf("[%s] MPD dial failed: %v", src, err)
-//    return err
-//  }
-//  defer c.Close()
-//
-//  if err := fn(c); err != nil {
-//    log.Printf("[%s] MPD command failed: %v", src, err)
-//    return err
-//  }
-//  return nil
-//}
+func loadConfig(cliPath string) configFile {
+    var path string
+
+    if cliPath != "" {
+        path = cliPath
+    } else {
+        home, err := os.UserHomeDir()
+        if err != nil {
+            return configFile{}
+        }
+        path = filepath.Join(home, ".config", "mpdgolinger.conf")
+    }
+
+    cf := configFile{path: path}
+
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return cf
+    }
+
+    cf.exists = true
+    cf.data = string(data)
+    return cf
+}
+
+func dumpConfig(cf configFile) {
+    fmt.Fprintf(os.Stderr, "config path: %s\n", cf.path)
+
+    if !cf.exists {
+        fmt.Fprintln(os.Stderr, "config file: not found")
+        return
+    }
+
+    fmt.Fprintln(os.Stderr, "config contents:")
+    fmt.Fprintln(os.Stderr, "-----")
+    fmt.Fprint(os.Stderr, cf.data)
+    if !strings.HasSuffix(cf.data, "\n") {
+        fmt.Fprintln(os.Stderr)
+    }
+    fmt.Fprintln(os.Stderr, "-----")
+}
+
+func parseConfig(data string) map[string]string {
+    cfg := make(map[string]string)
+
+    for _, line := range strings.Split(data, "\n") {
+        line = strings.TrimSpace(line)
+        if line == "" || strings.HasPrefix(line, "#") {
+            continue
+        }
+
+        k, v, ok := strings.Cut(line, "=")
+        if !ok {
+            continue
+        }
+
+        k = strings.TrimSpace(k)
+        v = strings.TrimSpace(v)
+
+        if k != "" {
+            cfg[k] = v
+        }
+    }
+    return cfg
+}
 
 func mpdDo(fn func(c *mpd.Client) error, src string) error {
     c, err := dialMPD()
@@ -1029,244 +1088,529 @@ func requestShutdown() {
 } // func requestShutdown()
 
 func main() {
-  // CLI subcommands (client mode)
-  if len(os.Args) > 1 {
-    switch os.Args[1] {
+    // ------------------------------------------------------------------
+    // Shared flags (client + daemon)
+    // ------------------------------------------------------------------
+    var configFlag string
+    var startupLimit int
+    var daemonMode bool
+    var showVersion bool
+    var showHelp bool
 
-    case "status":
-      if err := sendIPCCommand("status"); err != nil {
-        log.Fatalf("IPC error: %v", err)
-      }
-      return
+    flag.StringVar(&configFlag, "config", "", "path to config file")
 
-    case "toggle":
-      if err := sendIPCCommand("toggle"); err != nil {
-        log.Fatalf("IPC error: %v", err)
-      }
-      fmt.Println("OK")
-      return
+    flag.BoolVar(&showVersion, "version", false, "Print version and exit")
+    flag.BoolVar(&showHelp, "help", false, "Print help and exit")
+    flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent <limit>")
+    flag.BoolVar(&daemonMode, "daemon", false, "Run as daemon")
 
-    case "pause":
-      if err := sendIPCCommand("pause"); err != nil {
-        log.Fatalf("IPC error: %v", err)
-      }
-      fmt.Println("OK")
-      return
+    flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
+    flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
+    flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
 
-    case "resume":
-      if err := sendIPCCommand("resume"); err != nil {
-        log.Fatalf("IPC error: %v", err)
-      }
-      fmt.Println("OK")
-      return
+    var listenIP string
+    flag.StringVar(&listenIP, "listen", "", "Daemon listen IP")
+    var listenPort int
+    flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port")
 
-    case "limit":
-      if len(os.Args) < 3 {
-        log.Fatal("Usage: mpdgolinger limit N")
-      }
-      n, err := strconv.Atoi(os.Args[2])
-      if err != nil || n <= 0 {
-        log.Fatalf("Invalid limit: %q", os.Args[2])
-      }
-      sendIPCCommand(fmt.Sprintf("limit %d", n))
-      return
+    flag.Func("state", "Write state file to <path>", func(v string) error {
+        stateEnabled = true
+        statePath = v
+        return nil
+    })
 
-    case "block", "blocklimit":
-      if len(os.Args) >= 3 {
-        n, err := strconv.Atoi(os.Args[2])
-        if err != nil || n <= 0 {
-          log.Fatalf("Invalid block size: %s", os.Args[2])
+    // ------------------------------------------------------------------
+    // Parse flags ONCE
+    // ------------------------------------------------------------------
+    flag.Parse()
+
+    // ------------------------------------------------------------------
+    // Load + dump config (always visible for now)
+    // ------------------------------------------------------------------
+    cfg := loadConfig(configFlag)
+    dumpConfig(cfg)
+
+if cfg.exists {
+    kv := parseConfig(cfg.data)
+
+    if v, ok := kv["socket"]; ok && v != "" {
+        socketPath = v
+    }
+}
+    // ------------------------------------------------------------------
+    // Client subcommands (positional args only)
+    // ------------------------------------------------------------------
+    args := flag.Args()
+    if len(args) > 0 {
+        switch args[0] {
+
+        case "status":
+            if err := sendIPCCommand("status"); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            return
+
+        case "toggle":
+            if err := sendIPCCommand("toggle"); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            fmt.Println("OK")
+            return
+
+        case "pause":
+            if err := sendIPCCommand("pause"); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            fmt.Println("OK")
+            return
+
+        case "resume":
+            if err := sendIPCCommand("resume"); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            fmt.Println("OK")
+            return
+
+        case "limit":
+            if len(args) < 2 {
+                log.Fatal("Usage: mpdgolinger limit N")
+            }
+            n, err := strconv.Atoi(args[1])
+            if err != nil || n <= 0 {
+                log.Fatalf("Invalid limit: %q", args[1])
+            }
+            sendIPCCommand(fmt.Sprintf("limit %d", n))
+            return
+
+        case "block", "blocklimit":
+            if len(args) < 2 {
+                log.Fatalf("Usage: mpdgolinger %s N", args[0])
+            }
+            n, err := strconv.Atoi(args[1])
+            if err != nil || n <= 0 {
+                log.Fatalf("Invalid block size: %q", args[1])
+            }
+            if err := sendIPCCommand(fmt.Sprintf("setblock %d", n)); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            fmt.Println("OK")
+            return
+
+        case "next":
+            if err := sendIPCCommand("next"); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            fmt.Println("OK")
+            return
+
+        case "skip":
+            if err := sendIPCCommand("skip"); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            fmt.Println("OK")
+            return
+
+        case "quit", "exit":
+            if err := sendIPCCommand("quit"); err != nil {
+                log.Fatalf("IPC error: %v", err)
+            }
+            fmt.Println("OK")
+            return
         }
-        // Send IPC command to set running block limit
-        if err := sendIPCCommand(fmt.Sprintf("setblock %d", n)); err != nil {
-          log.Fatalf("IPC error: %v", err)
-        }
-        fmt.Println("OK")
+    }
+
+    // ------------------------------------------------------------------
+    // Version / help
+    // ------------------------------------------------------------------
+    if showVersion {
+        fmt.Println()
+        fmt.Println(" mpdgolinger version:", version)
+        fmt.Println("mpd protocol version:", mpdProtocolVersion())
+        mpdPath := "/usr/bin/mpd"
+        fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+        fmt.Println()
         return
-      }
-      log.Fatalf("Usage: %s %s N", os.Args[0], os.Args[1])
-
-    case "next":
-      if err := sendIPCCommand("next"); err != nil {
-        log.Fatalf("IPC error: %v", err)
-      }
-      fmt.Println("OK")
-      return
-
-    case "skip":
-      if err := sendIPCCommand("skip"); err != nil {
-        log.Fatalf("IPC error: %v", err)
-      }
-      fmt.Println("OK")
-      return
-
-    case "quit", "exit":
-      if err := sendIPCCommand("quit"); err != nil {
-        log.Fatalf("IPC error: %v", err)
-      }
-      fmt.Println("OK")
-      return
     }
-  }
 
-  // ------------------------------------------------------------------
-  // Normal daemon startup
-  //
-  // --daemon now gates startup
-  // --mpdhost, --mpdport, --listen, --listenport are placeholders
-  // ------------------------------------------------------------------
+    if showHelp {
+        fmt.Println()
+        fmt.Println(" mpdgolinger version:", version)
+        fmt.Println("mpd protocol version:", mpdProtocolVersion())
+        mpdPath := "/usr/bin/mpd"
+        fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+        fmt.Println()
+        fmt.Println("Usage: mpdgolinger --daemon [flags] or client subcommands")
+        flag.PrintDefaults()
+        return
+    }
 
-  // ------------------------------------------------------------------
-  var startupLimit int
-  var daemonMode bool
-  var showVersion bool
-  var showHelp bool
-  // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // Enforce daemon gate
+    // ------------------------------------------------------------------
+    if !daemonMode {
+        log.Fatalf("Refusing to start daemon without --daemon")
+    }
 
-  flag.BoolVar(&showVersion, "version", false, "Print version and exit")
-  flag.BoolVar(&showHelp, "help", false, "Print help and exit")
-  flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent <limit>")
-  flag.BoolVar(&daemonMode, "daemon", false, "Run as daemon")
-  flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
-  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
-  flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
+    // ------------------------------------------------------------------
+    // Daemon startup continues unchanged
+    // ------------------------------------------------------------------
+    if startupLimit > 0 {
+        state.baseLimit = startupLimit
+    }
 
-  // Placeholders for future flags
-//  var mpdPort int
-//  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host")
-//  flag.IntVar(&mpdPort, "mpdport", 6600, "MPD port")
-  var listenIP string
-  flag.StringVar(&listenIP, "listen", "", "Daemon listen IP for remote clients")
-  var listenPort int
-  flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port for remote clients")
-
-  flag.Func("state", "Write state file to <path>", func(v string) error {
-    stateEnabled = true
-    statePath = v
-    return nil
-  })
-
-  flag.Parse()
-
-  // ------------------------------------------------------------------
-  // Version flag: print & exit
-  // ------------------------------------------------------------------
-//  if showVersion {
-//    fmt.Println("mpdgolinger version", version)
-//    return
-//  }
-	if showVersion {
-    fmt.Println()
-		fmt.Println(" mpdgolinger version:", version)
-
-		fmt.Println("mpd protocol version:", mpdProtocolVersion())
-
-		mpdPath := "/usr/bin/mpd"
-		fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
-    fmt.Println()
-		return
-	}
-	if showHelp {
-    fmt.Println()
-		fmt.Println(" mpdgolinger version:", version)
-
-		fmt.Println("mpd protocol version:", mpdProtocolVersion())
-
-		mpdPath := "/usr/bin/mpd"
-		fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
-//    fmt.Printf("mpdgolinger %s\n", version)
-    fmt.Println()
-    fmt.Println("Usage: mpdgolinger --daemon [flags] or as client subcommands")
-    flag.PrintDefaults()
-
-		return
-	}
-  // ------------------------------------------------------------------
-  // Enforce daemon mode (new behavior)
-  // ------------------------------------------------------------------
-  if !daemonMode {
-    log.Fatalf("Refusing to start daemon without --daemon")
-  }
-  // ------------------------------------------------------------------
-
-  if startupLimit > 0 {
-    state.baseLimit = startupLimit
-  }
-
-  // Connect to MPD for initial state
-//  client, err := mpd.Dial("tcp", mpdHost)
-  client, err := dialMPD() //mpd.Dial("tcp", mpdHost)
-  if err != nil {
-    log.Printf("Failed to connect to MPD at startup: %v", err)
-    state.count = 0
-    state.lastSongID = ""
-  } else {
-    status, err := client.Status()
+    client, err := dialMPD()
     if err != nil {
-      log.Printf("Status error at startup: %v", err)
-      state.count = 0
-      state.lastSongID = ""
-    } else {
-      state.lastSongID = status["songid"]
-      switch status["state"] {
-      case "paused", "stop":
+        log.Printf("Failed to connect to MPD at startup: %v", err)
         state.count = 0
-      default:
-        state.count = 1
-      }
-    }
-    client.Close()
-  }
-
-  log.Printf(
-    "Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
-    state.count,
-    state.lastSongID,
-    state.baseLimit,
-    state.blockLimit,
-  )
-  setRandom(false, "startup")
-
-  // Start IPC listener
-  os.Remove(socketPath)
-  go startIPC(socketPath)
-
-  if stateEnabled {
-    state.mu.Lock()
-    writeStateLocked(state.lastSongID, state.baseLimit)
-    state.mu.Unlock()
-  }
-
-  // Start idle supervisor
-  go daemonSupervisor()
-
-//  // Block forever
-//  select {}
-
-  // Block until shutdown received
-  select {
-  case <-shutdown:
-    log.Println("Shutdown requested")
-
-    exitCode := 0
-
-    if err := os.Remove(socketPath); err != nil {
-      log.Printf("Failed to remove socket: %v\n", err)
-      exitCode = 1
+        state.lastSongID = ""
     } else {
-      log.Println("Socket removed")
+        status, err := client.Status()
+        if err != nil {
+            log.Printf("Status error at startup: %v", err)
+            state.count = 0
+            state.lastSongID = ""
+        } else {
+            state.lastSongID = status["songid"]
+            switch status["state"] {
+            case "paused", "stop":
+                state.count = 0
+            default:
+                state.count = 1
+            }
+        }
+        client.Close()
     }
+
+    log.Printf(
+        "Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
+        state.count,
+        state.lastSongID,
+        state.baseLimit,
+        state.blockLimit,
+    )
+    setRandom(false, "startup")
+
+    os.Remove(socketPath)
+    go startIPC(socketPath)
 
     if stateEnabled {
-      if err := os.Remove(statePath); err != nil {
-        log.Printf("Failed to remove state file: %v\n", err)
-        exitCode = 1
-      } else {
-        log.Println("State file removed")
-      }
+        state.mu.Lock()
+        writeStateLocked(state.lastSongID, state.baseLimit)
+        state.mu.Unlock()
     }
-    log.Println("Cleanup steps completed, exiting")
-    os.Exit(exitCode)
-  }
-} // func main()
-// End of mpdgolinger
+
+    go daemonSupervisor()
+
+    select {
+    case <-shutdown:
+        log.Println("Shutdown requested")
+        exitCode := 0
+
+        if err := os.Remove(socketPath); err != nil {
+            log.Printf("Failed to remove socket: %v\n", err)
+            exitCode = 1
+        } else {
+            log.Println("Socket removed")
+        }
+
+        if stateEnabled {
+            if err := os.Remove(statePath); err != nil {
+                log.Printf("Failed to remove state file: %v\n", err)
+                exitCode = 1
+            } else {
+                log.Println("State file removed")
+            }
+        }
+
+        log.Println("Cleanup steps completed, exiting")
+        os.Exit(exitCode)
+    }
+}
+
+//func main() {
+//  var configFlag string
+//
+//  // ------------------------------------------------------------------
+//  // Flags (shared by client + daemon)
+//  // ------------------------------------------------------------------
+//  flag.StringVar(&configFlag, "config", "", "path to config file")
+//
+//  // ------------------------------------------------------------------
+//  // Daemon-only flags (parsed even in client mode; harmless)
+//  // ------------------------------------------------------------------
+//  var startupLimit int
+//  var daemonMode bool
+//  var showVersion bool
+//  var showHelp bool
+//
+//  flag.BoolVar(&showVersion, "version", false, "Print version and exit")
+//  flag.BoolVar(&showHelp, "help", false, "Print help and exit")
+//  flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent <limit>")
+//  flag.BoolVar(&daemonMode, "daemon", false, "Run as daemon")
+//  flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
+//  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
+//  flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
+//
+//  var listenIP string
+//  flag.StringVar(&listenIP, "listen", "", "Daemon listen IP for remote clients")
+//  var listenPort int
+//  flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port for remote clients")
+//
+//  flag.Func("state", "Write state file to <path>", func(v string) error {
+//    stateEnabled = true
+//    statePath = v
+//    return nil
+//  })
+//
+//  // ------------------------------------------------------------------
+//  // Parse flags ONCE
+//  // ------------------------------------------------------------------
+//  flag.Parse()
+//
+//  // ------------------------------------------------------------------
+//  // Load + dump config (step one; always visible for now)
+//  // ------------------------------------------------------------------
+//  cfg := loadConfig(configFlag)
+//  dumpConfig(cfg)
+//
+//  // CLI subcommands (client mode)
+//  if len(os.Args) > 1 {
+//    switch os.Args[1] {
+//
+//    case "status":
+//      if err := sendIPCCommand("status"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      return
+//
+//    case "toggle":
+//      if err := sendIPCCommand("toggle"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//
+//    case "pause":
+//      if err := sendIPCCommand("pause"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//
+//    case "resume":
+//      if err := sendIPCCommand("resume"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//
+//    case "limit":
+//      if len(os.Args) < 3 {
+//        log.Fatal("Usage: mpdgolinger limit N")
+//      }
+//      n, err := strconv.Atoi(os.Args[2])
+//      if err != nil || n <= 0 {
+//        log.Fatalf("Invalid limit: %q", os.Args[2])
+//      }
+//      sendIPCCommand(fmt.Sprintf("limit %d", n))
+//      return
+//
+//    case "block", "blocklimit":
+//      if len(os.Args) >= 3 {
+//        n, err := strconv.Atoi(os.Args[2])
+//        if err != nil || n <= 0 {
+//          log.Fatalf("Invalid block size: %s", os.Args[2])
+//        }
+//        // Send IPC command to set running block limit
+//        if err := sendIPCCommand(fmt.Sprintf("setblock %d", n)); err != nil {
+//          log.Fatalf("IPC error: %v", err)
+//        }
+//        fmt.Println("OK")
+//        return
+//      }
+//      log.Fatalf("Usage: %s %s N", os.Args[0], os.Args[1])
+//
+//    case "next":
+//      if err := sendIPCCommand("next"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//
+//    case "skip":
+//      if err := sendIPCCommand("skip"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//
+//    case "quit", "exit":
+//      if err := sendIPCCommand("quit"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    }
+//  }
+//
+////  // ------------------------------------------------------------------
+////  // Normal daemon startup
+////  //
+////  // --daemon now gates startup
+////  // --mpdhost, --mpdport, --listen, --listenport are placeholders
+////  // ------------------------------------------------------------------
+////
+////  // ------------------------------------------------------------------
+////  var startupLimit int
+////  var daemonMode bool
+////  var showVersion bool
+////  var showHelp bool
+////  // ------------------------------------------------------------------
+////
+////  flag.BoolVar(&showVersion, "version", false, "Print version and exit")
+////  flag.BoolVar(&showHelp, "help", false, "Print help and exit")
+////  flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent <limit>")
+////  flag.BoolVar(&daemonMode, "daemon", false, "Run as daemon")
+////  flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
+////  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
+////  flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
+////
+////  // Placeholders for future flags
+//////  var mpdPort int
+//////  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host")
+//////  flag.IntVar(&mpdPort, "mpdport", 6600, "MPD port")
+////  var listenIP string
+////  flag.StringVar(&listenIP, "listen", "", "Daemon listen IP for remote clients")
+////  var listenPort int
+////  flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port for remote clients")
+////
+////  flag.Func("state", "Write state file to <path>", func(v string) error {
+////    stateEnabled = true
+////    statePath = v
+////    return nil
+////  })
+////
+////  flag.Parse()
+//
+//  // ------------------------------------------------------------------
+//  // Version flag: print & exit
+//  // ------------------------------------------------------------------
+////  if showVersion {
+////    fmt.Println("mpdgolinger version", version)
+////    return
+////  }
+//	if showVersion {
+//    fmt.Println()
+//		fmt.Println(" mpdgolinger version:", version)
+//
+//		fmt.Println("mpd protocol version:", mpdProtocolVersion())
+//
+//		mpdPath := "/usr/bin/mpd"
+//		fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+//    fmt.Println()
+//		return
+//	}
+//	if showHelp {
+//    fmt.Println()
+//		fmt.Println(" mpdgolinger version:", version)
+//
+//		fmt.Println("mpd protocol version:", mpdProtocolVersion())
+//
+//		mpdPath := "/usr/bin/mpd"
+//		fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+////    fmt.Printf("mpdgolinger %s\n", version)
+//    fmt.Println()
+//    fmt.Println("Usage: mpdgolinger --daemon [flags] or as client subcommands")
+//    flag.PrintDefaults()
+//
+//		return
+//	}
+//  // ------------------------------------------------------------------
+//  // Enforce daemon mode (new behavior)
+//  // ------------------------------------------------------------------
+//  if !daemonMode {
+//    log.Fatalf("Refusing to start daemon without --daemon")
+//  }
+//  // ------------------------------------------------------------------
+//
+//  if startupLimit > 0 {
+//    state.baseLimit = startupLimit
+//  }
+//
+//  // Connect to MPD for initial state
+////  client, err := mpd.Dial("tcp", mpdHost)
+//  client, err := dialMPD() //mpd.Dial("tcp", mpdHost)
+//  if err != nil {
+//    log.Printf("Failed to connect to MPD at startup: %v", err)
+//    state.count = 0
+//    state.lastSongID = ""
+//  } else {
+//    status, err := client.Status()
+//    if err != nil {
+//      log.Printf("Status error at startup: %v", err)
+//      state.count = 0
+//      state.lastSongID = ""
+//    } else {
+//      state.lastSongID = status["songid"]
+//      switch status["state"] {
+//      case "paused", "stop":
+//        state.count = 0
+//      default:
+//        state.count = 1
+//      }
+//    }
+//    client.Close()
+//  }
+//
+//  log.Printf(
+//    "Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
+//    state.count,
+//    state.lastSongID,
+//    state.baseLimit,
+//    state.blockLimit,
+//  )
+//  setRandom(false, "startup")
+//
+//  // Start IPC listener
+//  os.Remove(socketPath)
+//  go startIPC(socketPath)
+//
+//  if stateEnabled {
+//    state.mu.Lock()
+//    writeStateLocked(state.lastSongID, state.baseLimit)
+//    state.mu.Unlock()
+//  }
+//
+//  // Start idle supervisor
+//  go daemonSupervisor()
+//
+////  // Block forever
+////  select {}
+//
+//  // Block until shutdown received
+//  select {
+//  case <-shutdown:
+//    log.Println("Shutdown requested")
+//
+//    exitCode := 0
+//
+//    if err := os.Remove(socketPath); err != nil {
+//      log.Printf("Failed to remove socket: %v\n", err)
+//      exitCode = 1
+//    } else {
+//      log.Println("Socket removed")
+//    }
+//
+//    if stateEnabled {
+//      if err := os.Remove(statePath); err != nil {
+//        log.Printf("Failed to remove state file: %v\n", err)
+//        exitCode = 1
+//      } else {
+//        log.Println("State file removed")
+//      }
+//    }
+//    log.Println("Cleanup steps completed, exiting")
+//    os.Exit(exitCode)
+//  }
+//} // func main()
+//// End of mpdgolinger
