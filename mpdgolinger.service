@@ -7,7 +7,8 @@ Requires=mpd.service
 Type=simple
 User=mpd
 Group=mpd
-ExecStart=mpdgolinger --daemon --state /var/lib/mpd/mpdlinger/mpdlinger.state --mpdsocket=/run/mpd/socket
+#ExecStart=mpdgolinger --daemon --state /var/lib/mpd/mpdlinger/mpdlinger.state --mpdsocket=/run/mpd/socket
+ExecStart=mpdgolinger --daemon --config=/var/lib/mpd/mpdlinger/mpdgolinger.conf
 Restart=on-failure
 RestartSec=2s
 RuntimeDirectory=mpdgolinger

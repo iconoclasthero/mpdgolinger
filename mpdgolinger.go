@@ -1342,7 +1342,9 @@ func main() {
 
     go daemonSupervisor()
 
-    select {
+   initShutdownHandler()
+
+   select {
     case <-shutdown:
         log.Println("Shutdown requested")
         exitCode := 0
