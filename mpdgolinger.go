@@ -20,7 +20,7 @@ import (
   "github.com/fhs/gompd/v2/mpd"
 )
 
-const version = "0.02.0"
+const version = "0.02.1"
 
 // State holds daemon state
 type State struct {
@@ -37,9 +37,9 @@ type State struct {
 }
 
 type configFile struct {
-    path   string
-    data   string
-    exists bool
+  path         string
+  data         string
+  exists       bool
 }
 
 const (
@@ -81,80 +81,80 @@ var (
 )
 
 func loadConfig(cliPath string) configFile {
-    var path string
+  var path string
 
-    if cliPath != "" {
-        path = cliPath
-    } else {
-        home, err := os.UserHomeDir()
-        if err != nil {
-            return configFile{}
-        }
-        path = filepath.Join(home, ".config", "mpdgolinger.conf")
-    }
-
-    cf := configFile{path: path}
-
-    data, err := os.ReadFile(path)
+  if cliPath != "" {
+    path = cliPath
+  } else {
+    home, err := os.UserHomeDir()
     if err != nil {
-        return cf
+      return configFile{}
     }
+    path = filepath.Join(home, ".config", "mpdgolinger.conf")
+  }
 
-    cf.exists = true
-    cf.data = string(data)
+  cf := configFile{path: path}
+
+  data, err := os.ReadFile(path)
+  if err != nil {
     return cf
+  }
+
+  cf.exists = true
+  cf.data = string(data)
+  return cf
 }
 
 func dumpConfig(cf configFile) {
-    fmt.Fprintf(os.Stderr, "config path: %s\n", cf.path)
+  fmt.Fprintf(os.Stderr, "config path: %s\n", cf.path)
 
-    if !cf.exists {
-        fmt.Fprintln(os.Stderr, "config file: not found")
-        return
-    }
+  if !cf.exists {
+    fmt.Fprintln(os.Stderr, "config file: not found")
+    return
+  }
 
-    fmt.Fprintln(os.Stderr, "config contents:")
-    fmt.Fprintln(os.Stderr, "-----")
-    fmt.Fprint(os.Stderr, cf.data)
-    if !strings.HasSuffix(cf.data, "\n") {
-        fmt.Fprintln(os.Stderr)
-    }
-    fmt.Fprintln(os.Stderr, "-----")
+  fmt.Fprintln(os.Stderr, "config contents:")
+  fmt.Fprintln(os.Stderr, "-----")
+  fmt.Fprint(os.Stderr, cf.data)
+  if !strings.HasSuffix(cf.data, "\n") {
+    fmt.Fprintln(os.Stderr)
+  }
+  fmt.Fprintln(os.Stderr, "-----")
 }
 
 func parseConfig(data string) map[string]string {
-    cfg := make(map[string]string)
+  cfg := make(map[string]string)
 
-    for _, line := range strings.Split(data, "\n") {
-        line = strings.TrimSpace(line)
-        if line == "" || strings.HasPrefix(line, "#") {
-            continue
-        }
-
-        k, v, ok := strings.Cut(line, "=")
-        if !ok {
-            continue
-        }
-
-        k = strings.TrimSpace(k)
-        v = strings.TrimSpace(v)
-
-        if k != "" {
-            cfg[k] = v
-        }
+  for _, line := range strings.Split(data, "\n") {
+    line = strings.TrimSpace(line)
+    if line == "" || strings.HasPrefix(line, "#") {
+      continue
     }
-    return cfg
+
+    k, v, ok := strings.Cut(line, "=")
+    if !ok {
+      continue
+    }
+
+    k = strings.TrimSpace(k)
+    v = strings.TrimSpace(v)
+
+    if k != "" {
+      cfg[k] = v
+    }
+  }
+  return cfg
 }
 
 func mpdDo(fn func(c *mpd.Client) error, src string) error {
-    c, err := dialMPD()
-    if err != nil {
-        log.Printf("[%s] MPD dial failed: %v", src, err)
-        return err
-    }
-    defer c.Close()
+  c, err := dialMPD()
+  if err != nil {
+    log.Printf("[%s] MPD dial failed: %v", src, err)
+    return err
+  }
+  defer c.Close()
 
-    return fn(c)
+  return fn(c)
 }
 
 func mpdProtocolVersion() string {
@@ -194,28 +194,28 @@ func mpdProtocolVersion() string {
 //}
 
 func mpdBinaryVersion(path string) string {
-    cmd := exec.Command(path, "--version")
-    out, err := cmd.Output()
-    if err != nil {
-        return "unavailable"
-    }
-
-    scanner := bufio.NewScanner(bytes.NewReader(out))
-    if scanner.Scan() {
-        version := strings.TrimSpace(scanner.Text())
-
-        // Strip prefix up to "(v"
-        if idx := strings.Index(version, "(v"); idx != -1 {
-            version = version[idx+2:] // skip "(v"
-        }
-
-        // Strip trailing ")"
-        version = strings.TrimSuffix(version, ")")
-
-        return version
-    }
-
+  cmd := exec.Command(path, "--version")
+  out, err := cmd.Output()
+  if err != nil {
     return "unavailable"
+  }
+
+  scanner := bufio.NewScanner(bytes.NewReader(out))
+  if scanner.Scan() {
+    version := strings.TrimSpace(scanner.Text())
+
+    // Strip prefix up to "(v"
+    if idx := strings.Index(version, "(v"); idx != -1 {
+      version = version[idx+2:] // skip "(v"
+    }
+
+    // Strip trailing ")"
+    version = strings.TrimSuffix(version, ")")
+
+    return version
+  }
+
+  return "unavailable"
 }
 
 
@@ -258,12 +258,12 @@ func mpdPlayPause(play bool, src string) {
 
 // dialMPD returns a connected MPD client using either TCP or UNIX socket
 func dialMPD() (*mpd.Client, error) {
-    if mpdSocket != "" {
-        // Use UNIX socket if provided
-        return mpd.Dial("unix", mpdSocket)
-    }
-    // Otherwise, use TCP host:port
-    return mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort))
+  if mpdSocket != "" {
+    // Use UNIX socket if provided
+    return mpd.Dial("unix", mpdSocket)
+  }
+  // Otherwise, use TCP host:port
+  return mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort))
 }
 
 // newWatcherMPD returns a new watcher for idle loop
@@ -305,8 +305,8 @@ func logCurrentSong(c *mpd.Client, prefix string) {
 
 // daemonSupervisor maintains all long-lived daemon invariants including MPD connection, idle loop, and socket
 func daemonSupervisor() { // renamed from idleSupervisor
-//  var ipcRunning bool
-var ipcRunning int32
+  //  var ipcRunning bool
+  var ipcRunning int32
 
   for {
     select {
@@ -331,20 +331,20 @@ var ipcRunning int32
 //      }
 //    }
 
-// Ensure IPC socket exists (daemon responsibility)
-if _, err := os.Stat(socketPath); err != nil {
-  if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {     // #274
-    log.Printf("IPC socket missing, recreating: %s", socketPath)
-    os.Remove(socketPath)
-    go func() {
-      atomic.StoreInt32(&ipcRunning, 1)
-      startIPC(socketPath)
-      atomic.StoreInt32(&ipcRunning, 0)                             // #280
-    }()
-  } else {
-    log.Printf("IPC socket stat error: %v", err)
-  }
-}
+		// Ensure IPC socket exists (daemon responsibility)
+		if _, err := os.Stat(socketPath); err != nil {
+		  if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {     // #274
+		    log.Printf("IPC socket missing, recreating: %s", socketPath)
+		    os.Remove(socketPath)
+		    go func() {
+		      atomic.StoreInt32(&ipcRunning, 1)
+		      startIPC(socketPath)
+		      atomic.StoreInt32(&ipcRunning, 0)                             // #280
+		    }()
+		  } else {
+		    log.Printf("IPC socket stat error: %v", err)
+		  }
+	  }
 
 
     log.Println("Connecting to MPD for idle loop...")
@@ -648,22 +648,22 @@ func startIPC(path string) {
 }
 
 func setPaused(paused bool) (expired bool, limit int) {
-    state.mu.Lock()
-    defer state.mu.Unlock()
+  state.mu.Lock()
+  defer state.mu.Unlock()
 
-    state.paused = paused
+  state.paused = paused
 
-    limit = state.baseLimit
-    if state.blockOn && state.blockLimit > 0 {
-        limit = state.blockLimit
-    }
+  limit = state.baseLimit
+  if state.blockOn && state.blockLimit > 0 {
+    limit = state.blockLimit
+  }
 
-    expired = state.count >= limit
-    if expired && !paused {
-        state.transition = true
-    }
+  expired = state.count >= limit
+  if expired && !paused {
+    state.transition = true
+  }
 
-    return
+  return
 }
 
 
@@ -797,37 +797,37 @@ func ipcHandler(conn net.Conn) {
 //      }
 
 
-case "pause":
-    log.Printf("IPC: received pause command")
-    expired, limit := setPaused(true)
-    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
-        state.paused, expired, state.count, limit, state.transition)
-    fmt.Fprintln(conn, "Paused")
+	  case "pause":
+	    log.Printf("IPC: received pause command")
+	    expired, limit := setPaused(true)
+	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+	      state.paused, expired, state.count, limit, state.transition)
+	    fmt.Fprintln(conn, "Paused")
 
-case "resume":
-    log.Printf("IPC: received resume command")
-    expired, limit := setPaused(false)
-    if expired {
-        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-resume")
-    }
-    mpdPlayPause(true, "IPC-resume")
-    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
-        state.paused, expired, state.count, limit, state.transition)
-    fmt.Fprintln(conn, "Resumed")
+	  case "resume":
+	    log.Printf("IPC: received resume command")
+	    expired, limit := setPaused(false)
+	    if expired {
+	      _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-resume")
+	    }
+	    mpdPlayPause(true, "IPC-resume")
+	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+	      state.paused, expired, state.count, limit, state.transition)
+	    fmt.Fprintln(conn, "Resumed")
 
-case "toggle":
-    paused := !state.paused
-    log.Printf("IPC: received toggle command")
-    expired, limit := setPaused(paused)
-    if !paused && expired {
-        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-toggle-resume")
-    }
-    if !paused {
-        mpdPlayPause(true, "IPC-toggle-resume")
-    }
-    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
-        state.paused, expired, state.count, limit, state.transition)
-    fmt.Fprintln(conn, map[bool]string{true:"Paused", false:"Resumed"}[paused])
+	  case "toggle":
+	    paused := !state.paused
+	    log.Printf("IPC: received toggle command")
+	    expired, limit := setPaused(paused)
+	    if !paused && expired {
+	      _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-toggle-resume")
+	    }
+	    if !paused {
+	      mpdPlayPause(true, "IPC-toggle-resume")
+	    }
+	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+	      state.paused, expired, state.count, limit, state.transition)
+	    fmt.Fprintln(conn, map[bool]string{true:"Paused", false:"Resumed"}[paused])
 
 
     // next: force start of a new block; always resumes playback;
@@ -1005,39 +1005,39 @@ case "toggle":
 //}
 
 func sendIPCCommand(cmd string) error {
-    conn, err := net.Dial("unix", socketPath)
-    if err != nil {
-        return fmt.Errorf("failed to connect to daemon: %w", err)
-    }
-    defer conn.Close()
+  conn, err := net.Dial("unix", socketPath)
+  if err != nil {
+    return fmt.Errorf("failed to connect to daemon: %w", err)
+  }
+  defer conn.Close()
 
-    _, err = fmt.Fprintln(conn, cmd)
-    if err != nil {
-        return fmt.Errorf("failed to send command: %w", err)
-    }
+  _, err = fmt.Fprintln(conn, cmd)
+  if err != nil {
+    return fmt.Errorf("failed to send command: %w", err)
+  }
 
-    // read single-line response from daemon
-    scanner := bufio.NewScanner(conn)
-    if scanner.Scan() {
-        fmt.Println(scanner.Text()) // Paused / Resumed / Status
-    }
+  // read single-line response from daemon
+  scanner := bufio.NewScanner(conn)
+  if scanner.Scan() {
+    fmt.Println(scanner.Text()) // Paused / Resumed / Status
+  }
 
-    // Derive final state and write state file
-    state.mu.Lock()
-    songID := state.lastSongID
-    limit := state.baseLimit
-    if state.blockOn && state.blockLimit > 0 {
-        limit = state.blockLimit
-    }
-    state.mu.Unlock()
+  // Derive final state and write state file
+  state.mu.Lock()
+  songID := state.lastSongID
+  limit := state.baseLimit
+  if state.blockOn && state.blockLimit > 0 {
+    limit = state.blockLimit
+  }
+  state.mu.Unlock()
 
-    writeStateLocked(songID, limit)
+  writeStateLocked(songID, limit)
 
-    if err := scanner.Err(); err != nil {
-        return fmt.Errorf("scanner error: %w", err)
-    }
+  if err := scanner.Err(); err != nil {
+    return fmt.Errorf("scanner error: %w", err)
+  }
 
-    return nil
+  return nil
 }
 
 
@@ -1090,12 +1090,12 @@ func requestShutdown() {
 } // func requestShutdown()
 
 func initShutdownHandler() {
-    sigs := make(chan os.Signal, 1)
-    signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-    go func() {
-        <-sigs
-        close(shutdown)
-    }()
+  sigs := make(chan os.Signal, 1)
+  signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+  go func() {
+    <-sigs
+    close(shutdown)
+  }()
 }
 
 func main() {
@@ -1190,9 +1190,40 @@ func main() {
     // ------------------------------------------------------------------
     // Client subcommands (positional args only)
     // ------------------------------------------------------------------
-    args := flag.Args()
-    if len(args) > 0 {
-        switch args[0] {
+//    args := flag.Args()
+//    if len(args) > 0 {
+//        switch args[0] {
+
+
+// ------------------------------------------------------------------
+// Client subcommands (positional args only)
+// ------------------------------------------------------------------
+args := flag.Args()
+allowed := map[string]bool{
+    "status": true, "toggle": true, "pause": true, "resume": true,
+    "limit": true, "block": true, "blocklimit": true,
+    "next": true, "skip": true, "quit": true, "exit": true,
+}
+
+if len(args) > 0 {
+    cmd := args[0]
+    if !allowed[cmd] {
+
+        // Attempt to output status if IPC socket exists
+        if socketPath != "" {
+            fmt.Printf("\n[status] ")
+            if err := sendIPCCommand("status"); err != nil {
+                fmt.Fprintf(os.Stderr, "Failed to get status: %v\n", err)
+            }
+        }
+
+        fmt.Fprintf(os.Stderr, "\nUnknown client command: %s\n", cmd)
+
+        os.Exit(1)
+    }
+
+
+    switch cmd {
         case "status":
             if err := sendIPCCommand("status"); err != nil {
                 log.Fatalf("IPC error: %v", err)
