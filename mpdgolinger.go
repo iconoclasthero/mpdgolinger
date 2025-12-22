@@ -1,7 +1,8 @@
 package main
 
 import (
-  "flag"
+//  "flag"
+   flag "github.com/spf13/pflag"
   "bufio"
   "bytes"
   "fmt"
@@ -20,7 +21,7 @@ import (
   "github.com/fhs/gompd/v2/mpd"
 )
 
-const version = "0.02.1"
+const version = "0.03.0"
 
 // State holds daemon state
 type State struct {
@@ -78,6 +79,12 @@ var (
   daemonMode bool
 
   configFlag string
+  verbose    bool
+  allowed = map[string]bool{
+    "status": true, "toggle": true, "pause": true, "resume": true,
+    "limit": true, "block": true, "blocklimit": true,
+    "next": true, "skip": true, "quit": true, "exit": true,
+  }
 )
 
 func loadConfig(cliPath string) configFile {
@@ -113,13 +120,15 @@ func dumpConfig(cf configFile) {
     return
   }
 
-  fmt.Fprintln(os.Stderr, "config contents:")
-  fmt.Fprintln(os.Stderr, "-----")
-  fmt.Fprint(os.Stderr, cf.data)
-  if !strings.HasSuffix(cf.data, "\n") {
-    fmt.Fprintln(os.Stderr)
+  if verbose {
+    fmt.Fprintln(os.Stderr, "config contents:")
+    fmt.Fprintln(os.Stderr, "-----")
+    fmt.Fprint(os.Stderr, cf.data)
+    if !strings.HasSuffix(cf.data, "\n") {
+      fmt.Fprintln(os.Stderr)
+    }
+    fmt.Fprintln(os.Stderr, "-----")
   }
-  fmt.Fprintln(os.Stderr, "-----")
 }
 
 func parseConfig(data string) map[string]string {
@@ -1041,6 +1050,20 @@ func sendIPCCommand(cmd string) error {
 }
 
 
+func acceptClients(ln net.Listener) {
+  log.Printf("acceptClients started")
+  for {
+    conn, err := ln.Accept()
+    if err != nil {
+      log.Printf("Accept error: %v", err)
+      continue
+    }
+    log.Printf("Client connected from %s", conn.RemoteAddr())
+    go handleClient(conn)
+  }
+}
+
+
 func writeStateLocked(songID string, limit int) {
   if !stateEnabled {
     return
@@ -1076,6 +1099,262 @@ func writeStateLocked(songID string, limit int) {
   os.Rename(tmp, statePath)
 } // func writeStateLocked(songID string, limit int)
 
+
+////func sendClientCommand(cmd string) error {
+////  // prefer IPC socket if set
+////  if socketPath != "" {
+////    return sendIPCCommand(cmd)
+////  }
+////
+////  // fall back to TCP if listenIP/Port are configured
+////  if listenIP != "" && listenPort != 0 {
+////    addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
+////    conn, err := net.Dial("tcp", addr)
+////    if err != nil {
+////      return fmt.Errorf("failed to connect to daemon at %s: %w", addr, err)
+////    }
+////    defer conn.Close()
+////
+////    _, err = fmt.Fprintf(conn, "%s\n", cmd)
+////    if err != nil {
+////      return fmt.Errorf("failed to send command: %w", err)
+////    }
+////
+////    // read single-line response
+////    scanner := bufio.NewScanner(conn)
+////    if scanner.Scan() {
+////      fmt.Println(scanner.Text())
+////    }
+////    if err := scanner.Err(); err != nil {
+////      return fmt.Errorf("failed to read response: %w", err)
+////    }
+////
+////    return nil
+////  }
+////
+////  return fmt.Errorf("no IPC socket or TCP listener configured")
+////}
+//
+//func sendClientCommand(cmd string) error {
+//  // prefer IPC socket if set
+//  if socketPath != "" {
+//    log.Printf("Using IPC socket %s", socketPath)
+//    return sendIPCCommand(cmd)
+//  }
+//
+//  // fall back to TCP if listenIP/Port are configured
+//  if listenIP != "" && listenPort != 0 {
+//    addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
+//    log.Printf("Connecting to daemon via TCP at %s", addr)
+//
+//    conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+//    if err != nil {
+//      log.Printf("TCP connect failed: %v", err)
+//      return fmt.Errorf("failed to connect to daemon at %s: %w", addr, err)
+//    }
+//    defer conn.Close()
+//
+//    // set read/write deadlines to avoid hanging
+//    _ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+//
+//    log.Printf("Sending command: %s", cmd)
+//    _, err = fmt.Fprintf(conn, "%s\n", cmd)
+//    if err != nil {
+//      log.Printf("Failed to send command: %v", err)
+//      return fmt.Errorf("failed to send command: %w", err)
+//    }
+//
+//    scanner := bufio.NewScanner(conn)
+//    if scanner.Scan() {
+//      log.Printf("Received response: %s", scanner.Text())
+//      fmt.Println(scanner.Text())
+//    } else if err := scanner.Err(); err != nil {
+//      log.Printf("Failed to read response: %v", err)
+//      return fmt.Errorf("failed to read response: %w", err)
+//    }
+//
+//    return nil
+//  }
+//
+//  return fmt.Errorf("no IPC socket or TCP listener configured")
+//}
+
+func sendClientCommand(cmd string) error {
+    // prefer IPC socket if set
+    if verbose {
+      log.Printf("[sendClientCommand] Connecting to daemon via socket at %s", socketPath)
+    }
+
+    if socketPath != "" && socketPath != "none" {
+        log.Printf("Using IPC socket %s", socketPath)
+        return sendIPCCommand(cmd)
+    }
+
+
+    // fall back to TCP if listenIP/Port are configured
+    if verbose {
+      log.Printf("[sendClientCommand] listenIP:listenPort %s:%d", listenIP, listenPort)
+    }
+
+    if listenIP != "" && listenPort != 0 {
+        addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
+        log.Printf("Connecting to daemon via TCP at %s", addr)
+
+        conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+        if err != nil {
+            log.Printf("TCP connect failed: %v", err)
+            return fmt.Errorf("failed to connect to daemon at %s: %w", addr, err)
+        }
+        defer conn.Close()
+
+        _ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+        log.Printf("Sending command: %s", cmd)
+        _, err = fmt.Fprintf(conn, "%s\n", cmd)
+        if err != nil {
+            log.Printf("Failed to send command: %v", err)
+            return fmt.Errorf("failed to send command: %w", err)
+        }
+
+//        scanner := bufio.NewScanner(conn)
+//        if scanner.Scan() {
+//            log.Printf("Received response: %s", scanner.Text())
+//            fmt.Println(scanner.Text())
+//        } else if err := scanner.Err(); err != nil {
+//            log.Printf("Failed to read response: %v", err)
+//            return fmt.Errorf("failed to read response: %w", err)
+//        }
+
+scanner := bufio.NewScanner(conn)
+for scanner.Scan() {
+    line := scanner.Text()
+    if verbose {
+        log.Printf("Received response line: %s", line)
+    }
+    fmt.Println(line)
+}
+if err := scanner.Err(); err != nil {
+    log.Printf("Failed to read response: %v", err)
+    return fmt.Errorf("failed to read response: %w", err)
+}
+
+
+        return nil
+    }
+
+    return fmt.Errorf("no IPC socket or TCP listener configured")
+}
+
+
+
+func sendStateToClient(conn net.Conn) {
+  defer conn.Close()
+
+  if !stateEnabled || statePath == "" {
+    fmt.Fprintln(conn, "No state file enabled")
+    return
+  }
+
+  f, err := os.Open(statePath)
+  if err != nil {
+    fmt.Fprintf(conn, "Failed to open state file: %v\n", err)
+    return
+  }
+  defer f.Close()
+
+  scanner := bufio.NewScanner(f)
+  for scanner.Scan() {
+    fmt.Fprintln(conn, scanner.Text())
+  }
+
+  if err := scanner.Err(); err != nil {
+    fmt.Fprintf(conn, "Error reading state file: %v\n", err)
+  }
+}
+
+////func handleClient(conn net.Conn) {
+////  defer conn.Close()
+////  scanner := bufio.NewScanner(conn)
+////  for scanner.Scan() {
+////    cmd := strings.TrimSpace(scanner.Text())
+////    log.Printf("Received command from %s: %s", conn.RemoteAddr(), cmd)
+////    switch cmd {
+////    case "status":
+////      sendStateToClient(conn)
+////    default:
+////      fmt.Fprintf(conn, "Unknown command: %s\n", cmd)
+////    }
+////  }
+////}
+//
+//func handleClient(conn net.Conn) {
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//  for scanner.Scan() {
+//    cmd := strings.TrimSpace(scanner.Text())
+//    log.Printf("Received command from %s: %s", conn.RemoteAddr(), cmd)
+//
+//    if !allowed[cmd] {
+//      fmt.Fprintf(conn, "Unknown command: %s\n", cmd)
+//      log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), cmd)
+//      continue
+//    }
+//
+//    switch cmd {
+//    case "status":
+//      sendStateToClient(conn)
+//    default:
+//      err := sendIPCCommand(cmd)
+//      if err != nil {
+//        fmt.Fprintf(conn, "Error executing command: %v\n", err)
+//        log.Printf("IPC command error for '%s' from %s: %v", cmd, conn.RemoteAddr(), err)
+//      } else {
+//        fmt.Fprintln(conn, "OK")
+//        log.Printf("Executed command '%s' from %s", cmd, conn.RemoteAddr())
+//      }
+//    }
+//  }
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
+//  } else {
+//    log.Printf("Connection closed from %s", conn.RemoteAddr())
+//  }
+//}
+
+func handleClient(conn net.Conn) {
+  defer conn.Close()
+  scanner := bufio.NewScanner(conn)
+  if scanner.Scan() {
+    cmd := strings.TrimSpace(scanner.Text())
+    log.Printf("Received command from %s: %s", conn.RemoteAddr(), cmd)
+
+    if !allowed[cmd] {
+      fmt.Fprintf(conn, "Unknown command: %s\n", cmd)
+      log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), cmd)
+      return
+    }
+
+    switch cmd {
+    case "status":
+      sendStateToClient(conn)
+    default:
+      if err := sendIPCCommand(cmd); err != nil {
+        fmt.Fprintf(conn, "Error executing command: %v\n", err)
+        log.Printf("IPC command error for '%s' from %s: %v", cmd, conn.RemoteAddr(), err)
+      } else {
+        fmt.Fprintln(conn, "OK")
+        log.Printf("Executed command '%s' from %s", cmd, conn.RemoteAddr())
+      }
+    }
+  }
+
+  if err := scanner.Err(); err != nil {
+    log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
+  }
+}
+
+
 func btoi(b bool) int {
   if b {
     return 1
@@ -1099,97 +1378,149 @@ func initShutdownHandler() {
 }
 
 func main() {
-    // ------------------------------------------------------------------
-    // Shared flags (client + daemon)
-    // ------------------------------------------------------------------
-    var (
-        configFlag  string
-        startupLimit int
-        daemonMode  bool
-        showVersion bool
-        showHelp    bool
-        socketFlag  string
-        listenIP    string
-        listenPort  int
-    )
+  // ------------------------------------------------------------------
+  // Shared flags (client + daemon)
+  // ------------------------------------------------------------------
+  var (
+      configFlag   string
+      startupLimit int
+      daemonMode   bool
+      showVersion  bool
+      showHelp     bool
+      socketFlag   string
+//      verbose      bool
+  )
 
-    flag.StringVar(&configFlag, "config", "", "path to config file")
-    flag.StringVar(&socketFlag, "socket", "", "mpdgolinger IPC socket path")
-    flag.BoolVar(&showVersion, "version", false, "Print version and exit")
-    flag.BoolVar(&showHelp, "help", false, "Print help and exit")
-    flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent <limit>")
-    flag.BoolVar(&daemonMode, "daemon", false, "Run as daemon")
-    flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
-    flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
-    flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
-    flag.StringVar(&listenIP, "listen", "", "Daemon listen IP")
-    flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port")
-    flag.Func("state", "Write state file to <path>", func(v string) error {
-        stateEnabled = true
-        statePath = v
-        return nil
-    })
+  flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
+  flag.StringVar(&configFlag, "config", "", "path to config file")
+  flag.StringVar(&socketFlag, "socket", "", "mpdgolinger IPC socket path")
+  flag.BoolVar(&showVersion, "version", false, "Print version and exit")
+  flag.BoolVar(&showHelp, "help", false, "Print help and exit")
+  flag.IntVar(&startupLimit, "limit", 0, "Set initial persistent <limit>")
+  flag.BoolVar(&daemonMode, "daemon", false, "Run as daemon")
+  flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
+  flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
+  flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
+  flag.StringVar(&listenIP, "listen", "", "Daemon listen IP")
+  flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port")
+  flag.Func("state", "Write state file to <path>", func(v string) error {
+       stateEnabled = true
+       statePath = v
+       return nil
+  })
 
-    // ------------------------------------------------------------------
-    // Parse flags ONCE
-    // ------------------------------------------------------------------
-    flag.Parse()
+  // ------------------------------------------------------------------
+  // Parse flags ONCE
+  // ------------------------------------------------------------------
+  flag.Parse()
 
-    // ------------------------------------------------------------------
-    // Load + dump config
-    // ------------------------------------------------------------------
-    cfg := loadConfig(configFlag)
-    dumpConfig(cfg)
+  // ------------------------------------------------------------------
+  // Load + dump config
+  // ------------------------------------------------------------------
+  cfg := loadConfig(configFlag)
+  dumpConfig(cfg)
 
-    // parse config key/value map
-    kv := parseConfig(cfg.data)
+  // parse config key/value map
+  kv := parseConfig(cfg.data)
 
-    // ------------------------------------------------------------------
-    // Apply config values with precedence: CLI > config > default
-    // ------------------------------------------------------------------
-    if socketFlag != "" {
-        socketPath = socketFlag
-    } else if v, ok := kv["socket"]; ok && v != "" {
-        socketPath = v
-    }
+  // ------------------------------------------------------------------
+  // Apply config values with precedence: CLI > config > default
+  // ------------------------------------------------------------------
+//  if socketFlag != "" {
+//    socketPath = socketFlag
+//  } else if v, ok := kv["socket"]; ok && v != "" {
+//    socketPath = v
+//  }
+//
+//  if socketPath == "none" {
+//    socketPath = ""
+//  }
+//
+//  if v, ok := kv["mpdsocket"]; ok && v != "" && mpdSocket == "" {
+//    mpdSocket = v
+//  }
+//  if v, ok := kv["mpdhost"]; ok && v != "" && mpdHost == "" {
+//    mpdHost = v
+//  }
+//  if v, ok := kv["mpdport"]; ok && v != "" && mpdPort == 0 {
+//    if n, err := strconv.Atoi(v); err == nil {
+//      mpdPort = n
+//    }
+//  }
+//  if v, ok := kv["listen"]; ok && v != "" && listenIP == "" {
+//    listenIP = v
+//  }
+//  if v, ok := kv["listenport"]; ok && v != "" && listenPort == 0 {
+//    if n, err := strconv.Atoi(v); err == nil {
+//      listenPort = n
+//    }
+//  }
+//  if v, ok := kv["state"]; ok && v != "" && statePath == "" {
+//    stateEnabled = true
+//    statePath = v
+//  }
+//  if v, ok := kv["limit"]; ok && v != "" && startupLimit == 0 {
+//    if n, err := strconv.Atoi(v); err == nil {
+//      startupLimit = n
+//      state.baseLimit = n
+//    }
+//  }
 
-    if socketPath == "none" {
-        socketPath = ""
-    }
+  if socketFlag != "" {
+    socketPath = socketFlag
+  } else if v, ok := kv["socket"]; ok && v != "" {
+    socketPath = v
+  }
 
-    if v, ok := kv["mpdsocket"]; ok && v != "" && mpdSocket == "" {
-        mpdSocket = v
-    }
-    if v, ok := kv["mpdhost"]; ok && v != "" && mpdHost == "" {
-        mpdHost = v
-    }
-    if v, ok := kv["mpdport"]; ok && v != "" && mpdPort == 0 {
-        if n, err := strconv.Atoi(v); err == nil {
-            mpdPort = n
-        }
-    }
-    if v, ok := kv["listen"]; ok && v != "" && listenIP == "" {
-        listenIP = v
-    }
-    if v, ok := kv["listenport"]; ok && v != "" && listenPort == 0 {
-        if n, err := strconv.Atoi(v); err == nil {
-            listenPort = n
-        }
-    }
-    if v, ok := kv["state"]; ok && v != "" && statePath == "" {
-        stateEnabled = true
-        statePath = v
-    }
-    if v, ok := kv["limit"]; ok && v != "" && startupLimit == 0 {
-        if n, err := strconv.Atoi(v); err == nil {
-            startupLimit = n
-            state.baseLimit = n
-        }
-    }
+  if socketPath == "none" {
+    socketPath = ""
+  }
 
-    // ------------------------------------------------------------------
-    // Client subcommands (positional args only)
-    // ------------------------------------------------------------------
+  if v, ok := kv["mpdsocket"]; ok && v != "" && mpdSocket == "" {
+    mpdSocket = v
+  }
+  if v, ok := kv["mpdhost"]; ok && v != "" && mpdHost == "" {
+    mpdHost = v
+  }
+  if v, ok := kv["mpdport"]; ok && v != "" && mpdPort == 0 {
+    if n, err := strconv.Atoi(v); err == nil {
+      mpdPort = n
+    }
+  }
+
+  if listenIP == "" {
+    if v, ok := kv["listen"]; ok && v != "" {
+      listenIP = v
+    } else {
+      listenIP = "0.0.0.0"
+    }
+  }
+
+  if listenPort == 0 {
+    if v, ok := kv["listenport"]; ok && v != "" {
+      if n, err := strconv.Atoi(v); err == nil {
+        listenPort = n
+      }
+    } else {
+      listenPort = 6599
+    }
+  }
+
+  if v, ok := kv["state"]; ok && v != "" && statePath == "" {
+    stateEnabled = true
+    statePath = v
+  }
+
+  if v, ok := kv["limit"]; ok && v != "" && startupLimit == 0 {
+    if n, err := strconv.Atoi(v); err == nil {
+      startupLimit = n
+      state.baseLimit = n
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Client subcommands (positional args only)
+  // ------------------------------------------------------------------
 //    args := flag.Args()
 //    if len(args) > 0 {
 //        switch args[0] {
@@ -1198,98 +1529,128 @@ func main() {
 // ------------------------------------------------------------------
 // Client subcommands (positional args only)
 // ------------------------------------------------------------------
-args := flag.Args()
-allowed := map[string]bool{
-    "status": true, "toggle": true, "pause": true, "resume": true,
-    "limit": true, "block": true, "blocklimit": true,
-    "next": true, "skip": true, "quit": true, "exit": true,
-}
+  args := flag.Args()
 
-if len(args) > 0 {
+//  if len(args) > 0 {
+//    cmd := args[0]
+//    if !allowed[cmd] {
+//
+//      // Attempt to output status if IPC socket exists
+//      if socketPath != "" {
+//        fmt.Printf("\n[status] ")
+//        if err := sendIPCCommand("status"); err != nil {
+//          fmt.Fprintf(os.Stderr, "Failed to get status: %v\n", err)
+//        }
+//      }
+//
+//    fmt.Fprintf(os.Stderr, "\nUnknown client command: %s\n", cmd)
+//
+//    os.Exit(1)
+//  }
+//
+//
+//  switch cmd {
+//    case "status":
+//      if err := sendIPCCommand("status"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      return
+//    case "toggle":
+//      if err := sendIPCCommand("toggle"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    case "pause":
+//      if err := sendIPCCommand("pause"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    case "resume":
+//      if err := sendIPCCommand("resume"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    case "limit":
+//      if len(args) < 2 {
+//        log.Fatal("Usage: mpdgolinger limit N")
+//      }
+//      n, err := strconv.Atoi(args[1])
+//      if err != nil || n <= 0 {
+//        log.Fatalf("Invalid limit: %q", args[1])
+//      }
+//      sendIPCCommand(fmt.Sprintf("limit %d", n))
+//      return
+//    case "block", "blocklimit":
+//      if len(args) < 2 {
+//        log.Fatalf("Usage: mpdgolinger %s N", args[0])
+//      }
+//      n, err := strconv.Atoi(args[1])
+//      if err != nil || n <= 0 {
+//        log.Fatalf("Invalid block size: %q", args[1])
+//      }
+//      if err := sendIPCCommand(fmt.Sprintf("setblock %d", n)); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    case "next":
+//      if err := sendIPCCommand("next"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    case "skip":
+//      if err := sendIPCCommand("skip"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    case "quit", "exit":
+//      if err := sendIPCCommand("quit"); err != nil {
+//        log.Fatalf("IPC error: %v", err)
+//      }
+//      fmt.Println("OK")
+//      return
+//    }
+//  }
+
+
+  // ------------------------------------------------------------------
+  // BEGIN HERE: Client command handling if args are provided
+  // ------------------------------------------------------------------
+  args = flag.Args()
+  if len(args) > 0 {
     cmd := args[0]
     if !allowed[cmd] {
-
-        // Attempt to output status if IPC socket exists
-        if socketPath != "" {
-            fmt.Printf("\n[status] ")
-            if err := sendIPCCommand("status"); err != nil {
-                fmt.Fprintf(os.Stderr, "Failed to get status: %v\n", err)
-            }
-        }
-
-        fmt.Fprintf(os.Stderr, "\nUnknown client command: %s\n", cmd)
-
-        os.Exit(1)
+      fmt.Fprintf(os.Stderr, "\nUnknown client command: %s\n", cmd)
+      os.Exit(1)
     }
 
-
-    switch cmd {
-        case "status":
-            if err := sendIPCCommand("status"); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            return
-        case "toggle":
-            if err := sendIPCCommand("toggle"); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            fmt.Println("OK")
-            return
-        case "pause":
-            if err := sendIPCCommand("pause"); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            fmt.Println("OK")
-            return
-        case "resume":
-            if err := sendIPCCommand("resume"); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            fmt.Println("OK")
-            return
-        case "limit":
-            if len(args) < 2 {
-                log.Fatal("Usage: mpdgolinger limit N")
-            }
-            n, err := strconv.Atoi(args[1])
-            if err != nil || n <= 0 {
-                log.Fatalf("Invalid limit: %q", args[1])
-            }
-            sendIPCCommand(fmt.Sprintf("limit %d", n))
-            return
-        case "block", "blocklimit":
-            if len(args) < 2 {
-                log.Fatalf("Usage: mpdgolinger %s N", args[0])
-            }
-            n, err := strconv.Atoi(args[1])
-            if err != nil || n <= 0 {
-                log.Fatalf("Invalid block size: %q", args[1])
-            }
-            if err := sendIPCCommand(fmt.Sprintf("setblock %d", n)); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            fmt.Println("OK")
-            return
-        case "next":
-            if err := sendIPCCommand("next"); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            fmt.Println("OK")
-            return
-        case "skip":
-            if err := sendIPCCommand("skip"); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            fmt.Println("OK")
-            return
-        case "quit", "exit":
-            if err := sendIPCCommand("quit"); err != nil {
-                log.Fatalf("IPC error: %v", err)
-            }
-            fmt.Println("OK")
-            return
-        }
+    // Send command via client TCP if socketPath is empty but listen is set
+    if socketPath == "" && listenPort > 0 {
+      log.Printf("[main] listenIP:listenPort %s:%d", listenIP, listenPort)
+      if err := sendClientCommand(cmd); err != nil {
+        log.Fatalf("Client command failed: %v", err)
+      }
+      return
     }
+
+    // Otherwise send via IPC socket
+    if err := sendIPCCommand(cmd); err != nil {
+      log.Fatalf("IPC error: %v", err)
+    }
+
+    fmt.Println("OK") // one-and-done behavior
+    return
+  }
+  // ------------------------------------------------------------------
+  // END HERE
+  // ------------------------------------------------------------------
+
+
 
     // ------------------------------------------------------------------
     // Version / help
@@ -1371,34 +1732,50 @@ if len(args) > 0 {
         state.mu.Unlock()
     }
 
-    go daemonSupervisor()
+  // ------------------------------------------------------------------
+  // Start daemon TCP listener for remote clients
+  // ------------------------------------------------------------------
+  log.Printf("About to listen on %s:%d", listenIP, listenPort)
 
-   initShutdownHandler()
+  addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
+  ln, err := net.Listen("tcp", addr)
+  if err != nil {
+    log.Fatalf("Failed to listen on %s: %v", addr, err)
+  }
+  log.Printf("Listening for clients on %s", addr)
 
-   select {
-    case <-shutdown:
-        log.Println("Shutdown requested")
-        exitCode := 0
+  // Spawn a goroutine to accept clients
+  go acceptClients(ln)
 
-        if err := os.Remove(socketPath); err != nil {
-            log.Printf("Failed to remove socket: %v\n", err)
-            exitCode = 1
-        } else {
-            log.Println("Socket removed")
-        }
 
-        if stateEnabled {
-            if err := os.Remove(statePath); err != nil {
-                log.Printf("Failed to remove state file: %v\n", err)
-                exitCode = 1
-            } else {
-                log.Println("State file removed")
-            }
-        }
+  go daemonSupervisor()
 
-        log.Println("Cleanup steps completed, exiting")
-        os.Exit(exitCode)
+  initShutdownHandler()
+
+  select {
+  case <-shutdown:
+    log.Println("Shutdown requested")
+    exitCode := 0
+
+    if err := os.Remove(socketPath); err != nil {
+      log.Printf("Failed to remove socket: %v\n", err)
+      exitCode = 1
+    } else {
+      log.Println("Socket removed")
     }
+
+    if stateEnabled {
+      if err := os.Remove(statePath); err != nil {
+        log.Printf("Failed to remove state file: %v\n", err)
+        exitCode = 1
+      } else {
+        log.Println("State file removed")
+      }
+    }
+
+    log.Println("Cleanup steps completed, exiting")
+    os.Exit(exitCode)
+  }
 } // func main()
 // End of mpdgolinger
 
