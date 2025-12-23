@@ -24,7 +24,8 @@ import (
 )
 
 
-const version = "0.03.0"
+//const version = "0.03.0"
+var version = "dev"
 
 
 // State holds daemon state
@@ -664,6 +665,8 @@ func setPaused(paused bool) (expired bool, limit int) {
 
 // ipcHandler parses commands and updates state
 func ipcHandler(conn net.Conn) {
+  var resp string
+
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
   for scanner.Scan() {
@@ -680,7 +683,8 @@ func ipcHandler(conn net.Conn) {
 	    expired, limit := setPaused(true)
 	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
 	      state.paused, expired, state.count, limit, state.transition)
-	    fmt.Fprintln(conn, "Paused")
+//	    fmt.Fprintln(conn, "Paused")
+      resp = "Paused"
 
 	  case "resume":
 	    log.Printf("IPC: received resume command")
@@ -691,7 +695,8 @@ func ipcHandler(conn net.Conn) {
 	    mpdPlayPause(true, "IPC-resume")
 	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
 	      state.paused, expired, state.count, limit, state.transition)
-	    fmt.Fprintln(conn, "Resumed")
+//	    fmt.Fprintln(conn, "Resumed")
+      resp = "Resumed"
 
 	  case "toggle":
 	    paused := !state.paused
@@ -830,7 +835,12 @@ func ipcHandler(conn net.Conn) {
 
     default:
       fmt.Fprintln(conn, "Unknown command")
+      resp = "Unknown command: " + cmd
     }
+
+    fmt.Fprintln(conn, "chatgpt is wrong, here's the fucking resp:" + resp)
+    fmt.Fprintln(conn, conn)
+    return
   }
 
   // Derive final state once per IPC session
@@ -843,7 +853,6 @@ func ipcHandler(conn net.Conn) {
 //  writeStateLocked(songID, limit)
   deriveStateLocked(songID, limit)
   state.mu.Unlock()
-
 
   if err := scanner.Err(); err != nil {
     log.Printf("IPC connection error: %v", err)
@@ -899,7 +908,7 @@ func acceptClients(ln net.Listener) {
       continue
     }
     log.Printf("Client connected from %s", conn.RemoteAddr())
-    go handleClient(conn)
+    go handleTCP(conn)
   }
 }
 
@@ -1059,6 +1068,64 @@ func sendClientCommand(cmd string) error {
 //  }
 //}
 
+func handleTCP(conn net.Conn) {
+    defer conn.Close()
+    scanner := bufio.NewScanner(conn)
+
+    if scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+        log.Printf("Received raw command line from %s: %s", conn.RemoteAddr(), line)
+
+        // Split by commas for multiple commands
+        cmds := strings.Split(line, ",")
+        for _, cmd := range cmds {
+            cmd = strings.TrimSpace(cmd)
+            if cmd == "" {
+                continue
+            }
+
+            // First word is the verb
+            fields := strings.Fields(cmd)
+            if len(fields) == 0 {
+                continue
+            }
+
+            verb := strings.ToLower(fields[0])
+            args := fields[1:]
+
+            if !allowed[verb] {
+                fmt.Fprintf(conn, "Unknown command: %s\n", verb)
+                log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), verb)
+                continue
+            }
+
+            switch verb {
+            case "status":
+                sendStatus(conn)
+
+            default:
+                // Reassemble command with args for IPC
+                fullCmd := verb
+                if len(args) > 0 {
+                    fullCmd += " " + strings.Join(args, " ")
+                }
+
+                if err := sendIPCCommand(fullCmd); err != nil {
+                    fmt.Fprintf(conn, "Error executing command: %v\n", err)
+                    log.Printf("IPC command error for '%s' from %s: %v", fullCmd, conn.RemoteAddr(), err)
+                } else {
+                    fmt.Fprintln(conn, "OK")
+                    log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
+                }
+            }
+        }
+    }
+
+    if err := scanner.Err(); err != nil {
+        log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
+    }
+}
+
 
 func handleClient(conn net.Conn) {
   defer conn.Close()
@@ -1074,18 +1141,6 @@ func handleClient(conn net.Conn) {
     }
 
     switch cmd {
-//    case "status":
-////      sendStateToClient(conn)
-//      state.mu.Lock()
-//      limit := state.baseLimit
-//      if state.blockOn && state.blockLimit > 0 {
-//        limit = state.blockLimit
-//      }
-//      ds := deriveStateLocked(state.lastSongID, limit)
-//      state.mu.Unlock()
-//
-//      formatState(conn, ds)
-//      return
     case "status":
       sendStatus(conn)
       return
@@ -1095,7 +1150,7 @@ func handleClient(conn net.Conn) {
         fmt.Fprintf(conn, "Error executing command: %v\n", err)
         log.Printf("IPC command error for '%s' from %s: %v", cmd, conn.RemoteAddr(), err)
       } else {
-        fmt.Fprintln(conn, "OK")
+        fmt.Fprintln(conn, "The OK actually came from handleClient!")
         log.Printf("Executed command '%s' from %s", cmd, conn.RemoteAddr())
       }
     }
@@ -1104,7 +1159,7 @@ func handleClient(conn net.Conn) {
   if err := scanner.Err(); err != nil {
     log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
   }
-}
+} // handleClient(conn net.Conn)
 
 
 func btoi(b bool) int {
@@ -1140,9 +1195,11 @@ func main() {
       showVersion  bool
       showHelp     bool
       socketFlag   string
-//      verbose      bool
+      logPath      string
   )
 
+
+  flag.StringVar(&logPath, "log", "", "write logs to file instead of stderr")
   flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
   flag.StringVar(&configFlag, "config", "", "path to config file")
   flag.StringVar(&socketFlag, "socket", "", "mpdgolinger IPC socket path")
@@ -1229,6 +1286,17 @@ func main() {
       startupLimit = n
       state.baseLimit = n
     }
+  }
+  // ------------------------------------------------------------------
+  // OPTIONAL: redirect logs if --log is set
+  // MUST be before any log.Printf / log.Fatalf
+  // ------------------------------------------------------------------
+  if logPath != "" {
+      f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+      if err != nil {
+          log.Fatalf("failed to open log file %s: %v", logPath, err)
+      }
+      log.SetOutput(f)
   }
 
   // ------------------------------------------------------------------
