@@ -21,68 +21,70 @@ Classic rock stations have long had gimmicks like "Rock Blocks," "Double Shots,"
 
 Basic build:
 
-\```sh
+```sh
 go build -o mpdgolinger mpdgolinger.go
-\```
+```
 
 Optional static build:
 
-\```sh
+```sh
 CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o mpdgolinger mpdgolinger.go
-\```
+```
 
 ## Usage
 
 ### Daemon Mode
 
-\```sh
+```sh
 ./mpdgolinger --daemon --limit=3 --mpdhost=localhost --mpdport=6600
-\```
+```
 
 Optional flags:
 
-  --mpdsocket=<path>  : MPD server socket, (e.g., `/run/mpd/socket`)  
-  --mpdhost=<host>    : MPD server host (default localhost)  
-  --mpdport=<port>    : MPD server TCP port (default 6600)  
-  --state=<path>      : Optional path for persistent state file  
-  --version           : Prints version and mpd protocol/binary versions  
-  --help              : Prints help  
-  --socket=<path>     : IPC socket path  
-  --listen=<host>     : IPC listen address  
-  --listenport=<port> : IPC listen port  
+  --mpdsocket=<path>  : MPD server socket, (e.g., `/run/mpd/socket`)
+  --mpdhost=<host>    : MPD server host (default localhost)
+  --mpdport=<port>    : MPD server TCP port (default 6600)
+  --state=<path>      : Optional path for persistent state file
+  --socket=<path>     : IPC socket path
+  --listen=<host>     : IPC listen address
+  --listenport=<port> : IPC listen port
+  --version           : Prints version and mpd protocol/binary versions
+  --help              : Prints help
 
 ### Client Mode
 
 Run commands against the running daemon:
 
-\```sh
-./mpdgolinger status    # prints one-line status message; serves as ping
-./mpdgolinger pause     # pauses linger function; mpd playback unchanged
-./mpdgolinger resume    # resumes linger function; mpd playback restarted if paused
-./mpdgolinger toggle    # toggles linger play/pause; resumes mpd playback if paused
-./mpdgolinger limit 5   # resets the ongoing limit to e.g., 5
-./mpdgolinger block 3   # sets a limit of e.g., 3 to current block only
-./mpdgolinger next      # skips to the next song and block
-./mpdgolinger skip      # skips to the next song within block
-./mpdgolinger quit      # exits daemon
-\```
+```sh
+./mpdgolinger status           # prints one-line status message; serves as ping
+./mpdgolinger pause            # pauses linger function; mpd playback unchanged
+./mpdgolinger resume           # resumes linger function; mpd playback restarted if paused
+./mpdgolinger toggle           # toggles linger play/pause; resumes mpd playback if paused
+./mpdgolinger limit 5          # changes the ongoing limit to e.g., 5
+./mpdgolinger limit            # resets the ongoing limit to default/startup limit (as does 0)
+./mpdgolinger block[limit] 3   # sets a limit of e.g., 3 to current block only
+./mpdgolinger block[limit]     # turns off the block limit override (as does 0)
+./mpdgolinger next             # skips to the next song and block
+./mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
+./mpdgolinger quit             # exits daemon
+```
 
 ## Development
 
-- Go 1.21+  
+- Go 1.21+
 - Uses github.com/fhs/gompd/v2/mpd for MPD communication.
 
 ## Notes
 
-- IPC socket must exist and be writable by clients.  
-- The IPC socket is presently hard-coded to `/var/lib/mpd/mpdlinger/mpdlinger.sock`  
+- IPC socket must exist and be writable by clients.
+- The IPC socket is presently hard-coded to `/var/lib/mpd/mpdlinger/mpdlinger.sock`
 - Daemon supervises both MPD idle events and the IPC socket, reconnecting if necessary.
 
 ## Statefile
 
 To create an optional state file that can be parsed/sourced for other uses, enable the `--state=<path>` when launching the daemon. The format of the state file is:
 
-\```txt
+```txt
 writetime=2025-12-20T10:35:57.330310379-05:00
 lingersongid=139234  # to verify sync with other MPD clients
 lingerpause=0
@@ -91,4 +93,4 @@ lingerbase=4
 lingerlimit=4
 lingerblocklmt=5     # 0 if blocklimit is not set
 lingerpid=4042418
-\```
+```
