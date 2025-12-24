@@ -4,6 +4,8 @@ package main
 import (
 //  "flag"
    flag "github.com/spf13/pflag"
+  "github.com/fhs/gompd/v2/mpd"
+  "regexp"
   "bufio"
   "bytes"
   "fmt"
@@ -20,7 +22,6 @@ import (
   "sync"
   "time"
   "sync/atomic"
-  "github.com/fhs/gompd/v2/mpd"
 )
 
 
@@ -63,7 +64,6 @@ type derivedState struct {
 
 
 const (
-  defaultLimit = 4
   PollOff = iota
   PollLogging
   PollOn
@@ -77,6 +77,8 @@ var (
     baseLimit: defaultLimit,
     pollMode:  PollOff,
   }
+
+  defaultLimit = 4
 
   shutdown = make(chan struct{})
   shutdownOnce sync.Once
@@ -790,29 +792,30 @@ state.mu.Unlock()
       fmt.Fprintln(conn, "Skipped to next track")
 
     case "limit":
-      if len(fields) < 2 {
-        fmt.Fprintln(conn, "Usage: limit N")
-//        return
-        continue
-      }
-      n, err := strconv.Atoi(fields[1])
-      if err != nil || n <= 0 {
-        fmt.Fprintln(conn, "Invalid limit")
-//        return
-        continue
+      n := 0
+      if len(fields) >= 2 {
+        n, _ = strconv.Atoi(fields[1])
       }
 
       state.mu.Lock()
-      state.baseLimit = n
+      if n <= 0 {
+        state.baseLimit = defaultLimit
+      } else {
+        state.baseLimit = n
+      }
+
       limit := state.baseLimit
       if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
         limit = state.blockLimit
       }
       deriveStateLocked(state.lastSongID, limit)
-//      deriveStateLocked(state.lastSongId, state.baseLimit)
       state.mu.Unlock()
 
-      log.Printf("STATE CHANGE: [IPC] persistent limit set=%d", n)
+      log.Printf(
+        "STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
+        state.baseLimit,
+        limit,
+      )
       fmt.Fprintln(conn, "Persistent limit set")
 
     case "setblock", "blocklimit":
@@ -1065,6 +1068,7 @@ func clientCommandHandler(args []string) error {  // primary handler of commands
 
     // ---- phase 2: validate + batch ----
     var batch []string
+    var numberRegex = regexp.MustCompile(`^[0123456789]+$`)
 
     for i := 0; i < len(toks); {
         tok := toks[i]
@@ -1087,7 +1091,7 @@ func clientCommandHandler(args []string) error {  // primary handler of commands
           tok = "blocklimit"
         }
 
-        if i+1 < len(toks) && isNumber(toks[i+1]) {
+        if i+1 < len(toks) && numberRegex.MatchString(toks[i+1]) {
           batch = append(batch, tok+" "+toks[i+1])
           i += 2
         } else {
@@ -1095,18 +1099,31 @@ func clientCommandHandler(args []string) error {  // primary handler of commands
           i++
         }
 
-//        case "limit", "blocklimit":
-//            if i+1 >= len(toks) {
-//                return fmt.Errorf("%s requires numeric argument", tok)
-//            }
+//      case "limit", "blocklimit", "block":
+//        if tok == "block" {
+//          tok = "blocklimit"
+//        }
 //
-//            n, err := strconv.Atoi(toks[i+1])
-//            if err != nil || n < 0 {
-//                return fmt.Errorf("invalid %s value: %s", tok, toks[i+1])
-//            }
+//        if i+1 < len(toks) && isNumber(toks[i+1]) {
+//          batch = append(batch, tok+" "+toks[i+1])
+//          i += 2
+//        } else {
+//          batch = append(batch, tok)
+//          i++
+//        }
 //
-//            batch = append(batch, fmt.Sprintf("%s %d", tok, n))
-//            i += 2
+////        case "limit", "blocklimit":
+////            if i+1 >= len(toks) {
+////                return fmt.Errorf("%s requires numeric argument", tok)
+////            }
+////
+////            n, err := strconv.Atoi(toks[i+1])
+////            if err != nil || n < 0 {
+////                return fmt.Errorf("invalid %s value: %s", tok, toks[i+1])
+////            }
+////
+////            batch = append(batch, fmt.Sprintf("%s %d", tok, n))
+////            i += 2
 
         case "verbose":
           if i+1 < len(toks) {
@@ -1441,9 +1458,10 @@ func main() {
   }
 
   if v, ok := kv["limit"]; ok && v != "" && startupLimit == 0 {
-    if n, err := strconv.Atoi(v); err == nil {
+    if n, err := strconv.Atoi(v); err == nil && n > 0 {
       startupLimit = n
       state.baseLimit = n
+      defaultLimit = n
     }
   }
 
