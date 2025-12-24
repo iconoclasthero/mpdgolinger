@@ -31,6 +31,12 @@ Optional static build:
 CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o mpdgolinger mpdgolinger.go
 ```
 
+Optional strip builds (to remove debug symbols for a smaller bianry):
+
+```sh
+strip mpdgolinger
+```
+
 ## Usage
 
 ### Daemon Mode
