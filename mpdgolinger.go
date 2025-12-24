@@ -191,24 +191,24 @@ func mpdDo(fn func(c *mpd.Client) error, src string) error {
 }
 
 func mpdProtocolVersion() string {
-	var (
-		c   *mpd.Client
-		err error
-	)
+  var (
+    c   *mpd.Client
+    err error
+  )
 
-	if mpdSocket != "" {
-		c, err = mpd.Dial("unix", mpdSocket)
-	} else {
-		addr := fmt.Sprintf("%s:%d", mpdHost, mpdPort)
-		c, err = mpd.Dial("tcp", addr)
-	}
+  if mpdSocket != "" {
+  c, err = mpd.Dial("unix", mpdSocket)
+  } else {
+    addr := fmt.Sprintf("%s:%d", mpdHost, mpdPort)
+    c, err = mpd.Dial("tcp", addr)
+  }
 
-	if err != nil {
-		return "unavailable"
-	}
-	defer c.Close()
+  if err != nil {
+    return "unavailable"
+  }
+  defer c.Close()
 
-	return c.Version()
+  return c.Version()
 }
 
 
@@ -325,20 +325,20 @@ func daemonSupervisor() { // renamed from idleSupervisor
     default:
     }
 
-		// Ensure IPC socket exists (daemon responsibility)
-		if _, err := os.Stat(socketPath); err != nil {
-		  if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {     // #274
-		    log.Printf("IPC socket missing, recreating: %s", socketPath)
-		    os.Remove(socketPath)
-		    go func() {
-		      atomic.StoreInt32(&ipcRunning, 1)
-		      startIPC(socketPath)
-		      atomic.StoreInt32(&ipcRunning, 0)                             // #280
-		    }()
-		  } else {
-		    log.Printf("IPC socket stat error: %v", err)
-		  }
-	  }
+    // Ensure IPC socket exists (daemon responsibility)
+    if _, err := os.Stat(socketPath); err != nil {
+      if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {     // #274
+        log.Printf("IPC socket missing, recreating: %s", socketPath)
+        os.Remove(socketPath)
+        go func() {
+          atomic.StoreInt32(&ipcRunning, 1)
+          startIPC(socketPath)
+          atomic.StoreInt32(&ipcRunning, 0)                             // #280
+        }()
+      } else {
+        log.Printf("IPC socket stat error: %v", err)
+      }
+    }
 
 
     log.Println("Connecting to MPD for idle loop...")
@@ -580,67 +580,67 @@ func runIdleLoop(w *mpd.Watcher) error {
 
 // poller optionally polls MPD based on pollMode
 func poller(client *mpd.Client) {
-	for {
-		state.mu.Lock()
-		mode := state.pollMode
-		state.mu.Unlock()
+  for {
+    state.mu.Lock()
+    mode := state.pollMode
+    state.mu.Unlock()
 
-		if mode == PollOff {
-			time.Sleep(time.Second)
-			continue
-		}
+    if mode == PollOff {
+      time.Sleep(time.Second)
+      continue
+    }
 
-		mpdDo(func(c *mpd.Client) error {
-			status, err := c.Status()
-			if err != nil {
-				return err
-			}
-			songID := status["songid"]
+    mpdDo(func(c *mpd.Client) error {
+      status, err := c.Status()
+      if err != nil {
+        return err
+      }
+      songID := status["songid"]
 
-			state.mu.Lock()
-			defer state.mu.Unlock()
+      state.mu.Lock()
+      defer state.mu.Unlock()
 
-			if mode == PollLogging {
-				log.Printf("Poll logging: songid=%s", songID)
-			} else if mode == PollOn && songID != state.lastSongID && !state.paused {
-				state.count++
-				if state.count >= state.blockLimit {
-					state.count = 0
-					log.Println("Poll: block finished — starting new block")
-				} else {
-					log.Printf("Poll: song %d/%d in current block", state.count, state.blockLimit)
-				}
-			}
-			state.lastSongID = songID
-			return nil
-		}, "poller")
+      if mode == PollLogging {
+        log.Printf("Poll logging: songid=%s", songID)
+      } else if mode == PollOn && songID != state.lastSongID && !state.paused {
+        state.count++
+        if state.count >= state.blockLimit {
+          state.count = 0
+          log.Println("Poll: block finished — starting new block")
+        } else {
+          log.Printf("Poll: song %d/%d in current block", state.count, state.blockLimit)
+        }
+      }
+      state.lastSongID = songID
+      return nil
+    }, "poller")
 
-		time.Sleep(1 * time.Second)
-	}
+    time.Sleep(1 * time.Second)
+  }
 }
 
 // startIPC listens on UNIX socket for client commands
 func startIPC(path string) {
-	ln, err := net.Listen("unix", path)
-	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", path, err)
-	}
-	defer ln.Close()
+  ln, err := net.Listen("unix", path)
+  if err != nil {
+    log.Fatalf("Failed to listen on %s: %v", path, err)
+  }
+  defer ln.Close()
 
-  // Now the socket exists → set ownership and permissions
+// Now the socket exists → set ownership and permissions
 //  os.Chown(socketPath, uid, gid) // uid/gid for mpd user
   os.Chmod(socketPath, 0660)     // owner+group read/write
 
-	log.Printf("IPC listening on %s", path)
+  log.Printf("IPC listening on %s", path)
 
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Printf("IPC accept error: %v", err)
-			continue
-		}
-		go ipcHandler(conn)
-	}
+  for {
+    conn, err := ln.Accept()
+    if err != nil {
+      log.Printf("IPC accept error: %v", err)
+      continue
+    }
+    go ipcHandler(conn)
+  }
 }
 
 func setPaused(paused bool) (expired bool, limit int) {
@@ -669,48 +669,76 @@ func ipcHandler(conn net.Conn) {
 
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
+//  for scanner.Scan() {
+//    line := scanner.Text()
+//
+//    log.Printf("[ipcHandler] raw line received: %q from %s", line, conn.RemoteAddr())
+//
+//
+//    fields := strings.Fields(line)
+//    if len(fields) == 0 {
+//      continue
+//    }
   for scanner.Scan() {
-    line := scanner.Text()
-    fields := strings.Fields(line)
-    if len(fields) == 0 {
-      continue
+    raw := scanner.Text()
+
+    if verbose {
+      log.Printf("[ipcHandler] raw line received: %q", raw)
     }
+
+    parts := strings.Split(raw, ",")
+    for _, part := range parts {
+      line := strings.TrimSpace(part)
+      if line == "" {
+        continue
+      }
+
+      fields := strings.Fields(line)
+      if len(fields) == 0 {
+        continue
+      }
+
 
     cmd := strings.ToLower(fields[0])
     switch cmd {
-	  case "pause":
-	    log.Printf("IPC: received pause command")
-	    expired, limit := setPaused(true)
-	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
-	      state.paused, expired, state.count, limit, state.transition)
+    case "pause":
+      log.Printf("IPC: received pause command")
+      expired, limit := setPaused(true)
+      log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+        state.paused, expired, state.count, limit, state.transition)
+state.mu.Lock()
+state.paused = true
+deriveStateLocked(state.lastSongID, limit)
+state.mu.Unlock()
+
 //	    fmt.Fprintln(conn, "Paused")
       resp = "Paused"
 
-	  case "resume":
-	    log.Printf("IPC: received resume command")
-	    expired, limit := setPaused(false)
-	    if expired {
-	      _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-resume")
-	    }
-	    mpdPlayPause(true, "IPC-resume")
-	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
-	      state.paused, expired, state.count, limit, state.transition)
+    case "resume":
+      log.Printf("IPC: received resume command")
+      expired, limit := setPaused(false)
+      if expired {
+        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-resume")
+      }
+      mpdPlayPause(true, "IPC-resume")
+      log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+        state.paused, expired, state.count, limit, state.transition)
 //	    fmt.Fprintln(conn, "Resumed")
       resp = "Resumed"
 
-	  case "toggle":
-	    paused := !state.paused
-	    log.Printf("IPC: received toggle command")
-	    expired, limit := setPaused(paused)
-	    if !paused && expired {
-	      _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-toggle-resume")
-	    }
-	    if !paused {
-	      mpdPlayPause(true, "IPC-toggle-resume")
-	    }
-	    log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
-	      state.paused, expired, state.count, limit, state.transition)
-	    fmt.Fprintln(conn, map[bool]string{true:"Paused", false:"Resumed"}[paused])
+    case "toggle":
+      paused := !state.paused
+      log.Printf("IPC: received toggle command")
+      expired, limit := setPaused(paused)
+      if !paused && expired {
+        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-toggle-resume")
+      }
+      if !paused {
+        mpdPlayPause(true, "IPC-toggle-resume")
+      }
+      log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+        state.paused, expired, state.count, limit, state.transition)
+      fmt.Fprintln(conn, map[bool]string{true:"Paused", false:"Resumed"}[paused])
 
 
     // next: force start of a new block; always resumes playback;
@@ -739,7 +767,6 @@ func ipcHandler(conn net.Conn) {
       }, "IPC-nextBlock")
 
       log.Printf("STATE CHANGE: [IPC-nextBlock] forced block advance, count reset")
-      fmt.Fprintln(conn, "OK")
 
     // skip is to advance song within block without requiring another client, e.g., mpc
     case "skip":
@@ -765,16 +792,24 @@ func ipcHandler(conn net.Conn) {
     case "limit":
       if len(fields) < 2 {
         fmt.Fprintln(conn, "Usage: limit N")
-        return
+//        return
+        continue
       }
       n, err := strconv.Atoi(fields[1])
       if err != nil || n <= 0 {
         fmt.Fprintln(conn, "Invalid limit")
-        return
+//        return
+        continue
       }
 
       state.mu.Lock()
       state.baseLimit = n
+      limit := state.baseLimit
+      if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+        limit = state.blockLimit
+      }
+      deriveStateLocked(state.lastSongID, limit)
+//      deriveStateLocked(state.lastSongId, state.baseLimit)
       state.mu.Unlock()
 
       log.Printf("STATE CHANGE: [IPC] persistent limit set=%d", n)
@@ -825,7 +860,38 @@ func ipcHandler(conn net.Conn) {
 //      return
     case "status":
       sendStatus(conn)
-      return
+//      return
+
+    case "verbose":
+      val := strings.ToLower(fields[1])
+      state.mu.Lock()
+      verbose = (val == "on")
+      state.mu.Unlock()
+      log.Printf("[IPC] Verbose mode turned %s", val)
+      fmt.Fprintln(conn, "Verbose mode "+val)
+
+//    case "verbose":
+//      if len(fields) < 2 {
+//        fmt.Fprintln(conn, "Usage: verbose on|off")
+//        continue
+//      }
+//      val := strings.ToLower(fields[1])
+//      switch val {
+//      case "on":
+//        state.mu.Lock()
+//        state.verbose = true
+//        state.mu.Unlock()
+//        fmt.Fprintln(conn, "Verbose mode enabled")
+//        log.Printf("[IPC] Verbose mode turned ON")
+//      case "off":
+//        state.mu.Lock()
+//        state.verbose = false
+//        state.mu.Unlock()
+//        fmt.Fprintln(conn, "Verbose mode disabled")
+//        log.Printf("[IPC] Verbose mode turned OFF")
+//      default:
+//        fmt.Fprintln(conn, "Usage: verbose on|off")
+//      }
 
     case "exit", "quit":
       log.Printf("IPC: received %s, shutting down", cmd)
@@ -834,15 +900,14 @@ func ipcHandler(conn net.Conn) {
       return
 
     default:
-      fmt.Fprintln(conn, "Unknown command")
+      fmt.Fprintln(conn, "[ipcHandler] Unknown command")
       resp = "Unknown command: " + cmd
     }
 
-    fmt.Fprintln(conn, "chatgpt is wrong, here's the fucking resp:" + resp)
-    fmt.Fprintln(conn, conn)
+    fmt.Fprintln(conn, resp)
+  }
     return
   }
-
   // Derive final state once per IPC session
   state.mu.Lock()
   songID := state.lastSongID
@@ -896,7 +961,8 @@ func sendIPCCommand(cmd string) error {
   }
 
   return nil
-}
+} // func sendIPCCommand(cmd string) error
+
 
 
 func acceptClients(ln net.Listener) {
@@ -983,6 +1049,99 @@ func sendStatus(w io.Writer) {
   formatState(w, ds)
 }
 
+func clientCommandHandler(args []string) error {  // primary handler of commands from IPC/UDS clients
+    if len(args) == 0 {
+        return fmt.Errorf("No client commands provided")
+    }
+
+    // ---- phase 1: normalize (strip commas, split tokens) ----
+    var toks []string
+    for _, a := range args {
+        a = strings.ReplaceAll(a, ",", " ")
+        for _, f := range strings.Fields(a) {
+            toks = append(toks, f)
+        }
+    }
+
+    // ---- phase 2: validate + batch ----
+    var batch []string
+
+    for i := 0; i < len(toks); {
+        tok := toks[i]
+
+        switch tok {
+
+      case "status",
+           "pause",
+           "resume",
+           "next",
+           "skip",
+           "toggle",
+           "quit",
+           "exit":
+          batch = append(batch, tok)
+          i++
+
+      case "limit", "blocklimit", "block":
+        if tok == "block" {
+          tok = "blocklimit"
+        }
+
+        if i+1 < len(toks) && isNumber(toks[i+1]) {
+          batch = append(batch, tok+" "+toks[i+1])
+          i += 2
+        } else {
+          batch = append(batch, tok)
+          i++
+        }
+
+//        case "limit", "blocklimit":
+//            if i+1 >= len(toks) {
+//                return fmt.Errorf("%s requires numeric argument", tok)
+//            }
+//
+//            n, err := strconv.Atoi(toks[i+1])
+//            if err != nil || n < 0 {
+//                return fmt.Errorf("invalid %s value: %s", tok, toks[i+1])
+//            }
+//
+//            batch = append(batch, fmt.Sprintf("%s %d", tok, n))
+//            i += 2
+
+        case "verbose":
+          if i+1 < len(toks) {
+            val := strings.ToLower(toks[i+1])
+            if val == "on" || val == "off" {
+              batch = append(batch, "verbose "+val)
+              i += 2
+              continue
+            }
+          }
+          return fmt.Errorf("verbose requires 'on' or 'off' argument")
+
+
+        default:
+            return fmt.Errorf("unknown client verb: %s", tok)
+        }
+    }
+
+    if verbose {
+      log.Printf("[client] raw args: %#v", args)
+      log.Printf("[client] normalized toks: %#v", toks)
+      log.Printf("[client] batch cmds: %#v", batch)
+    }
+
+    // ---- phase 3: send ----
+    cmd := strings.Join(batch, ", ")
+    if verbose { log.Printf("[client] final send string: %q", cmd) }
+    return sendClientCommand(cmd)
+} // func clientCommandHandler(args []string)
+
+// helper to check numeric argument
+func isNumber(s string) bool {
+    _, err := strconv.Atoi(s)
+    return err == nil
+}
 
 func sendClientCommand(cmd string) error {
     // prefer IPC socket if set
@@ -1002,44 +1161,44 @@ func sendClientCommand(cmd string) error {
     }
 
     if listenIP != "" && listenPort != 0 {
-        addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
-        log.Printf("Connecting to daemon via TCP at %s", addr)
+      addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
+      log.Printf("Connecting to daemon via TCP at %s", addr)
 
-        conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-        if err != nil {
-            log.Printf("TCP connect failed: %v", err)
-            return fmt.Errorf("failed to connect to daemon at %s: %w", addr, err)
+      conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+      if err != nil {
+        log.Printf("TCP connect failed: %v", err)
+        return fmt.Errorf("failed to connect to daemon at %s: %w", addr, err)
+      }
+      defer conn.Close()
+
+      _ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+      log.Printf("Sending command: %s", cmd)
+      _, err = fmt.Fprintf(conn, "%s\n", cmd)
+      if err != nil {
+        log.Printf("Failed to send command: %v", err)
+        return fmt.Errorf("failed to send command: %w", err)
+      }
+
+      scanner := bufio.NewScanner(conn)
+      for scanner.Scan() {
+        line := scanner.Text()
+        if verbose {
+          log.Printf("Received response line: %s", line)
         }
-        defer conn.Close()
-
-        _ = conn.SetDeadline(time.Now().Add(3 * time.Second))
-
-        log.Printf("Sending command: %s", cmd)
-        _, err = fmt.Fprintf(conn, "%s\n", cmd)
-        if err != nil {
-            log.Printf("Failed to send command: %v", err)
-            return fmt.Errorf("failed to send command: %w", err)
-        }
-
-				scanner := bufio.NewScanner(conn)
-				for scanner.Scan() {
-				    line := scanner.Text()
-				    if verbose {
-				        log.Printf("Received response line: %s", line)
-				    }
-				    fmt.Println(line)
-				}
-				if err := scanner.Err(); err != nil {
-				    log.Printf("Failed to read response: %v", err)
-				    return fmt.Errorf("failed to read response: %w", err)
-				}
+        fmt.Println(line)
+      }
+      if err := scanner.Err(); err != nil {
+        log.Printf("Failed to read response: %v", err)
+        return fmt.Errorf("failed to read response: %w", err)
+      }
 
 
-        return nil
+      return nil
     }
 
     return fmt.Errorf("no IPC socket or TCP listener configured")
-}
+} // func sendClientCommand(cmd string) error
 
 
 
@@ -1069,61 +1228,61 @@ func sendClientCommand(cmd string) error {
 //}
 
 func handleTCP(conn net.Conn) {
-    defer conn.Close()
-    scanner := bufio.NewScanner(conn)
+  defer conn.Close()
+  scanner := bufio.NewScanner(conn)
 
-    if scanner.Scan() {
-        line := strings.TrimSpace(scanner.Text())
-        log.Printf("Received raw command line from %s: %s", conn.RemoteAddr(), line)
+  if scanner.Scan() {
+    line := strings.TrimSpace(scanner.Text())
+    log.Printf("Received raw command line from %s: %s", conn.RemoteAddr(), line)
 
-        // Split by commas for multiple commands
-        cmds := strings.Split(line, ",")
-        for _, cmd := range cmds {
-            cmd = strings.TrimSpace(cmd)
-            if cmd == "" {
-                continue
-            }
+    // Split by commas for multiple commands
+    cmds := strings.Split(line, ",")
+    for _, cmd := range cmds {
+      cmd = strings.TrimSpace(cmd)
+      if cmd == "" {
+        continue
+      }
 
-            // First word is the verb
-            fields := strings.Fields(cmd)
-            if len(fields) == 0 {
-                continue
-            }
+      // First word is the verb
+      fields := strings.Fields(cmd)
+      if len(fields) == 0 {
+        continue
+      }
 
-            verb := strings.ToLower(fields[0])
-            args := fields[1:]
+      verb := strings.ToLower(fields[0])
+      args := fields[1:]
 
-            if !allowed[verb] {
-                fmt.Fprintf(conn, "Unknown command: %s\n", verb)
-                log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), verb)
-                continue
-            }
+      if !allowed[verb] {
+        fmt.Fprintf(conn, "Unknown command: %s\n", verb)
+        log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), verb)
+        continue
+      }
 
-            switch verb {
-            case "status":
-                sendStatus(conn)
+      switch verb {
+      case "status":
+        sendStatus(conn)
 
-            default:
-                // Reassemble command with args for IPC
-                fullCmd := verb
-                if len(args) > 0 {
-                    fullCmd += " " + strings.Join(args, " ")
-                }
-
-                if err := sendIPCCommand(fullCmd); err != nil {
-                    fmt.Fprintf(conn, "Error executing command: %v\n", err)
-                    log.Printf("IPC command error for '%s' from %s: %v", fullCmd, conn.RemoteAddr(), err)
-                } else {
-                    fmt.Fprintln(conn, "OK")
-                    log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
-                }
-            }
+      default:
+        // Reassemble command with args for IPC
+        fullCmd := verb
+        if len(args) > 0 {
+          fullCmd += " " + strings.Join(args, " ")
         }
-    }
 
-    if err := scanner.Err(); err != nil {
-        log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
+        if err := sendIPCCommand(fullCmd); err != nil {
+          fmt.Fprintf(conn, "Error executing command: %v\n", err)
+          log.Printf("IPC command error for '%s' from %s: %v", fullCmd, conn.RemoteAddr(), err)
+        } else {
+          fmt.Fprintln(conn, "OK")
+          log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
+        }
+      }
     }
+  }
+
+  if err := scanner.Err(); err != nil {
+    log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
+  }
 }
 
 
@@ -1135,7 +1294,7 @@ func handleClient(conn net.Conn) {
     log.Printf("Received command from %s: %s", conn.RemoteAddr(), cmd)
 
     if !allowed[cmd] {
-      fmt.Fprintf(conn, "Unknown command: %s\n", cmd)
+      fmt.Fprintf(conn, "[handleClient] Unknown command: %s\n", cmd)
       log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), cmd)
       return
     }
@@ -1287,138 +1446,165 @@ func main() {
       state.baseLimit = n
     }
   }
+
+  if v, ok := kv["log"]; ok && v != "" && logPath == "" {
+    logPath = v
+  }
+
   // ------------------------------------------------------------------
   // OPTIONAL: redirect logs if --log is set
   // MUST be before any log.Printf / log.Fatalf
   // ------------------------------------------------------------------
   if logPath != "" {
-      f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-      if err != nil {
-          log.Fatalf("failed to open log file %s: %v", logPath, err)
-      }
-      log.SetOutput(f)
+    f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+      log.Fatalf("failed to open log file %s: %v", logPath, err)
+    }
+    log.SetOutput(f)
   }
 
+
+
   // ------------------------------------------------------------------
-  // Client subcommands (positional args only)
+  // Client command handling (positional args only)
   // ------------------------------------------------------------------
 
   args := flag.Args()
-
-  // ------------------------------------------------------------------
-  // BEGIN: Client command handling if args are provided
-  // ------------------------------------------------------------------
-  args = flag.Args()
   if len(args) > 0 {
-    cmd := args[0]
-    if !allowed[cmd] {
-      fmt.Fprintf(os.Stderr, "\nUnknown client command: %s\n", cmd)
+    if err := clientCommandHandler(args); err != nil {
+      fmt.Fprintln(os.Stderr, err)
       os.Exit(1)
     }
-
-    // Send command via client TCP if socketPath is empty but listen is set
-    if socketPath == "" && listenPort > 0 {
-      log.Printf("[main] listenIP:listenPort %s:%d", listenIP, listenPort)
-      if err := sendClientCommand(cmd); err != nil {
-        log.Fatalf("Client command failed: %v", err)
-      }
-      return
-    }
-
-    // Otherwise send via IPC socket
-    if err := sendIPCCommand(cmd); err != nil {
-      log.Fatalf("IPC error: %v", err)
-    }
-
-    fmt.Println("OK") // one-and-done behavior
     return
   }
+
   // ------------------------------------------------------------------
   // END: Client command handling if args are provided
   // ------------------------------------------------------------------
 
 
 
-    // ------------------------------------------------------------------
-    // Version / help
-    // ------------------------------------------------------------------
-    if showVersion {
-        fmt.Println()
-        fmt.Println(" mpdgolinger version:", version)
-        fmt.Println("mpd protocol version:", mpdProtocolVersion())
-        mpdPath := "/usr/bin/mpd"
-        fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
-        fmt.Println()
-        return
-    }
 
-    if showHelp {
-        fmt.Println()
-        fmt.Println(" mpdgolinger version:", version)
-        fmt.Println("mpd protocol version:", mpdProtocolVersion())
-        mpdPath := "/usr/bin/mpd"
-        fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
-        fmt.Println()
-        fmt.Println("Usage: mpdgolinger --daemon [flags] or client subcommands")
-        flag.PrintDefaults()
-        return
-    }
+//  // ------------------------------------------------------------------
+//  // Client subcommands (positional args only)
+//  // ------------------------------------------------------------------
+//
+//  args := flag.Args()
+//
+//  // ------------------------------------------------------------------
+//  // BEGIN: Client command handling if args are provided
+//  // ------------------------------------------------------------------
+//  args = flag.Args()
+//  if len(args) > 0 {
+//    cmd := args[0]
+//    if !allowed[cmd] {
+//      fmt.Fprintf(os.Stderr, "\nUnknown client command: %s\n", cmd)
+//      os.Exit(1)
+//    }
+//
+//    // Send command via client TCP if socketPath is empty but listen is set
+//    if socketPath == "" && listenPort > 0 {
+//      log.Printf("[main] listenIP:listenPort %s:%d", listenIP, listenPort)
+//      if err := sendTCPCommand(cmd); err != nil {
+//        log.Fatalf("Client command failed: %v", err)
+//      }
+//      return
+//    }
+//
+//    // Otherwise send via IPC socket
+//    if err := sendIPCCommand(cmd); err != nil {
+//      log.Fatalf("IPC error: %v", err)
+//    }
+//
+//    fmt.Println("OK") // one-and-done behavior
+//    return
+//  }
+//  // ------------------------------------------------------------------
+//  // END: Client command handling if args are provided
+//  // ------------------------------------------------------------------
 
-    // ------------------------------------------------------------------
-    // Enforce daemon gate
-    // ------------------------------------------------------------------
-    if !daemonMode {
-        log.Fatalf("Refusing to start daemon without --daemon")
-    }
 
-    // ------------------------------------------------------------------
-    // Daemon startup continues unchanged
-    // ------------------------------------------------------------------
-    if startupLimit > 0 {
-        state.baseLimit = startupLimit
-    }
 
-    client, err := dialMPD()
+  // ------------------------------------------------------------------
+  // Version / help
+  // ------------------------------------------------------------------
+  if showVersion {
+    fmt.Println()
+    fmt.Println(" mpdgolinger version:", version)
+    fmt.Println("mpd protocol version:", mpdProtocolVersion())
+    mpdPath := "/usr/bin/mpd"
+    fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+    fmt.Println()
+    return
+  }
+
+  if showHelp {
+    fmt.Println()
+    fmt.Println(" mpdgolinger version:", version)
+    fmt.Println("mpd protocol version:", mpdProtocolVersion())
+    mpdPath := "/usr/bin/mpd"
+    fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+    fmt.Println()
+    fmt.Println("Usage: mpdgolinger --daemon [flags] or client subcommands")
+    flag.PrintDefaults()
+    return
+  }
+
+  // ------------------------------------------------------------------
+  // Enforce daemon gate
+  // ------------------------------------------------------------------
+  if !daemonMode {
+    log.Fatalf("Refusing to start daemon without --daemon")
+  }
+
+  // ------------------------------------------------------------------
+  // Daemon startup continues unchanged
+  // ------------------------------------------------------------------
+  if startupLimit > 0 {
+    state.baseLimit = startupLimit
+  }
+
+  client, err := dialMPD()
+  if err != nil {
+    log.Printf("Failed to connect to MPD at startup: %v", err)
+    state.count = 0
+    state.lastSongID = ""
+  } else {
+    status, err := client.Status()
     if err != nil {
-        log.Printf("Failed to connect to MPD at startup: %v", err)
-        state.count = 0
-        state.lastSongID = ""
+      log.Printf("Status error at startup: %v", err)
+      state.count = 0
+      state.lastSongID = ""
     } else {
-        status, err := client.Status()
-        if err != nil {
-            log.Printf("Status error at startup: %v", err)
-            state.count = 0
-            state.lastSongID = ""
-        } else {
-            state.lastSongID = status["songid"]
-            switch status["state"] {
-            case "paused", "stop":
-                state.count = 0
-            default:
-                state.count = 1
-            }
-        }
-        client.Close()
+      state.lastSongID = status["songid"]
+      switch status["state"] {
+      case "paused", "stop":
+        state.count = 0
+      default:
+        state.count = 1
+      }
     }
+    client.Close()
+  }
 
-    log.Printf(
-        "Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
-        state.count,
-        state.lastSongID,
-        state.baseLimit,
-        state.blockLimit,
-    )
-    setRandom(false, "startup")
+  log.Printf(
+      "Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
+      state.count,
+      state.lastSongID,
+      state.baseLimit,
+      state.blockLimit,
+  )
+  setRandom(false, "startup")
 
-    os.Remove(socketPath)
-    go startIPC(socketPath)
+  os.Remove(socketPath)
+  go startIPC(socketPath)
 
-    if stateEnabled {
-        state.mu.Lock()
-//        writeStateLocked(state.lastSongID, state.baseLimit)
-        deriveStateLocked(state.lastSongID, state.baseLimit)
-        state.mu.Unlock()
-    }
+  if stateEnabled {
+    state.mu.Lock()
+//      writeStateLocked(state.lastSongID, state.baseLimit)
+    deriveStateLocked(state.lastSongID, state.baseLimit)
+    state.mu.Unlock()
+  }
 
   // ------------------------------------------------------------------
   // Start daemon TCP listener for remote clients
