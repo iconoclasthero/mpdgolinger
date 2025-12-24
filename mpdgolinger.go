@@ -708,10 +708,10 @@ func ipcHandler(conn net.Conn) {
       expired, limit := setPaused(true)
       log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
         state.paused, expired, state.count, limit, state.transition)
-state.mu.Lock()
-state.paused = true
-deriveStateLocked(state.lastSongID, limit)
-state.mu.Unlock()
+			state.mu.Lock()
+			state.paused = true
+			deriveStateLocked(state.lastSongID, limit)
+			state.mu.Unlock()
 
 //	    fmt.Fprintln(conn, "Paused")
       resp = "Paused"
@@ -818,34 +818,57 @@ state.mu.Unlock()
       )
       fmt.Fprintln(conn, "Persistent limit set")
 
-    case "setblock", "blocklimit":
-      if len(fields) < 2 {
-        fmt.Fprintln(conn, "Usage: setblock N")
-        continue
-      }
-      n, err := strconv.Atoi(fields[1])
-      if err != nil || n <= 0 {
-        fmt.Fprintln(conn, "Invalid block size")
-        continue
+    case "blocklimit":
+      n := 0
+
+      if len(fields) >= 2 {
+        n, _ = strconv.Atoi(fields[1])  // client already ensures numeric
       }
 
-      state.mu.Lock()
-      state.blockOn = true   // activate blockLimit immediately
-      state.blockLimit = n       // update the running block limit
-//    state.count = 0            // reset count so next song starts fresh
-      state.transition = false
-      block := state.blockLimit
-      state.mu.Unlock()
-      _ = mpdDo(func(c *mpd.Client) error {
-        // ensure we break out of the current block
-        if err := c.Random(false); err != nil {
-          return err
-        }
-        return nil
-      }, "IPC-blocklimit")
+		  state.mu.Lock()
+		  if n < 0 {
+		    fmt.Fprintln(conn, "Invalid block limit")
+		    state.mu.Unlock()
+		    continue
+		  }
+
+		  if n == 0 {
+		    // disable block mode
+		    state.blockLimit = 0
+		    state.blockOn = false
+		    // recalc transition: true if count >= baseLimit else false
+		    state.transition = state.count >= state.baseLimit
+		  } else {
+		  state.blockLimit = n
+		  state.blockOn = true    // activate blockLimit immediately
+		  state.transition = false
+      }
+
+		  limit := state.baseLimit
+		  if state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+		    limit = state.blockLimit
+		  }
+
+		  deriveStateLocked(state.lastSongID, limit)
+		  state.mu.Unlock()
+
+			err := mpdDo(func(c *mpd.Client) error {
+			  if err := c.Random(false); err != nil {
+			    return err
+			  }
+			  return nil
+			}, "IPC-blocklimit")
+			if err != nil {
+			  log.Printf("[IPC-blocklimit] MPD command failed: %v", err)
+			}
 
 
-      log.Printf("STATE CHANGE: [IPC] block limit set=%d, count=%d, transition=%v", block, state.count, state.transition)
+      log.Printf("STATE CHANGE: [IPC] block limit set=%d (effective=%d), count=%d, transition=%v",
+        state.blockLimit,
+        limit,
+        state.count,
+        state.transition)
+
       fmt.Fprintf(conn, "Block limit set to %d\nOK\n", n)
 
 //    case "status":
@@ -1104,7 +1127,7 @@ func clientCommandHandler(args []string) error {  // primary handler of commands
 //          tok = "blocklimit"
 //        }
 //
-//        if i+1 < len(toks) && isNumber(toks[i+1]) {
+//        if i+1 < len(toks) && isNumber(toks[i+1]) {  // isNumber deleted!
 //          batch = append(batch, tok+" "+toks[i+1])
 //          i += 2
 //        } else {
@@ -1153,12 +1176,6 @@ func clientCommandHandler(args []string) error {  // primary handler of commands
     if verbose { log.Printf("[client] final send string: %q", cmd) }
     return sendClientCommand(cmd)
 } // func clientCommandHandler(args []string)
-
-// helper to check numeric argument
-func isNumber(s string) bool {
-    _, err := strconv.Atoi(s)
-    return err == nil
-}
 
 func sendClientCommand(cmd string) error {
     // prefer IPC socket if set
