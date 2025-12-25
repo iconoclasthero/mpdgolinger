@@ -61,6 +61,9 @@ type derivedState struct {
 
 
 const (
+  defaultMPDhost = "localhost"
+  defaultMPDpost = 6600
+  defaultMPDsocket = "/run/mpd/socket"
   stateDefault = "/var/lib/mpd/mpdlinger/mpdgolinger.state"
 ) // const
 
@@ -179,16 +182,83 @@ func parseConfig(data string) map[string]string {
 
 
 // mpdDo runs a function with a short-lived MPD client and logs errors
-func mpdDo(fn func(c *mpd.Client) error, src string) error {
-  c, err := dialMPD()
-  if err != nil {
-    log.Printf("[%s] MPD dial failed: %v", src, err)
-    return err
-  }
-  defer c.Close()
+func mpdDo(fn func(*mpd.Client) error, ctx string) error {
+  var client *mpd.Client
+  var err error
 
-  return fn(c)
-} // func mpdDo(fn func(c *mpd.Client) error, src string) error
+  useSocket := false
+  useTCP := false
+
+  // 1. User defined both TCP and socket
+  if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
+    if _, err = os.Stat(mpdSocket); err == nil {
+      useSocket = true
+    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+      useTCP = true
+    }
+  }
+
+  // 2. Only socket defined
+  if !useTCP && !useSocket && mpdSocket != "" {
+    if _, err = os.Stat(mpdSocket); err == nil {
+      useSocket = true
+    }
+  }
+
+  // 3. Only TCP defined
+  if !useTCP && !useSocket && mpdHost != "" && mpdPort != 0 {
+    if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+      useTCP = true
+    }
+  }
+
+  // 4. Fallback to defaults
+  if !useTCP && !useSocket {
+    if _, err = os.Stat(defaultMPDsocket); err == nil {
+      useSocket = true
+    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDpost)); err == nil {
+      useTCP = true
+    } else {
+      return fmt.Errorf("mpd: no connection available")
+    }
+  }
+
+  // Connect via socket if flagged
+  if useSocket {
+    client, err = mpd.Dial("unix", mpdSocket)
+    if err != nil {
+      return fmt.Errorf("mpd: failed to connect via socket: %v", err)
+    }
+  }
+
+  // Wrap execution in a timeout
+  done := make(chan error, 1)
+  go func() {
+    done <- fn(client)
+  }()
+
+  select {
+  case err := <-done:
+    client.Close()
+    return err
+  case <-time.After(3 * time.Second):
+    client.Close()
+    return fmt.Errorf("mpd: command timed out in context %s", ctx)
+  }
+} // func mpdDo(fn func(*mpd.Client) error, ctx string) error
+
+
+//// mpdDo runs a function with a short-lived MPD client and logs errors
+//func mpdDo(fn func(c *mpd.Client) error, src string) error {
+//  c, err := dialMPD()
+//  if err != nil {
+//    log.Printf("[%s] MPD dial failed: %v", src, err)
+//    return err
+//  }
+//  defer c.Close()
+//
+//  return fn(c)
+//} // func mpdDo(fn func(c *mpd.Client) error, src string) error
 
 
 // mpdProtocolVersion returns the protocol version of the running MPD instance

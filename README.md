@@ -42,11 +42,15 @@ strip mpdgolinger
 ### Daemon Mode
 
 ```sh
-./mpdgolinger --daemon --limit=3 --mpdhost=localhost --mpdport=6600
+./mpdgolinger --daemon --limit=3 --mpdhost=localhost --mpdport=6600   # to specify via cli flags
+./mpdgolinger --daemon --config=./mpdgolinger.conf                    # to use a config file
 ```
+
+An example systemd unit file is included for reference.
 
 Optional flags:
 
+```
   --mpdsocket=<path>  : MPD server socket, (e.g., `/run/mpd/socket`)
   --mpdhost=<host>    : MPD server host (default localhost)
   --mpdport=<port>    : MPD server TCP port (default 6600)
@@ -56,6 +60,7 @@ Optional flags:
   --listenport=<port> : IPC listen port
   --version           : Prints version and mpd protocol/binary versions
   --help              : Prints help
+```
 
 ### Client Mode
 
