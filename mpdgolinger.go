@@ -26,7 +26,6 @@ import (
 
 
 //const version = "0.03.0"
-var version = "dev"
 
 
 // State holds daemon state
@@ -34,21 +33,19 @@ type State struct {
   mu           sync.Mutex
   paused       bool
   count        int    // current position in block
-//limit        int    // persistent block size  // removed from state as it will be computed
   blockLimit   int    // temporary override (later)
   transition   bool   // true between last-song-start and next-song-start
   lastSongID   string
-  pollMode     int
   baseLimit    int
   blockOn      bool
-}
+} // type State struct
 
 
 type configFile struct {
   path         string
   data         string
   exists       bool
-}
+} // type configFile struct
 
 
 type derivedState struct {
@@ -60,22 +57,19 @@ type derivedState struct {
   Limit          int
   BlockLimit     int
   PID            int
-}
+} // type derivedState struct
 
 
 const (
-  PollOff = iota
-  PollLogging
-  PollOn
   stateDefault = "/var/lib/mpd/mpdlinger/mpdgolinger.state"
-)
+) // const
 
 
 var (
+  version = "dev"
   // Core daemon state
   state = &State{
     baseLimit: defaultLimit,
-    pollMode:  PollOff,
   }
 
   defaultLimit = 4
@@ -107,9 +101,10 @@ var (
     "limit": true, "block": true, "blocklimit": true,
     "next": true, "skip": true, "quit": true, "exit": true,
   }
-)
+) // var
 
 
+// loadConfig loads the config file from a given path or defaults to ~/.config/mpdgolinger.conf
 func loadConfig(cliPath string) configFile {
   var path string
 
@@ -133,9 +128,10 @@ func loadConfig(cliPath string) configFile {
   cf.exists = true
   cf.data = string(data)
   return cf
-}
+} // func loadConfig(cliPath string) configFile {
 
 
+// dumpConfig prints the config path and optionally its contents if verbose
 func dumpConfig(cf configFile) {
   fmt.Fprintf(os.Stderr, "config path: %s\n", cf.path)
 
@@ -153,9 +149,10 @@ func dumpConfig(cf configFile) {
     }
     fmt.Fprintln(os.Stderr, "-----")
   }
-}
+} // func dumpConfig(cf configFile) {
 
 
+// parseConfig parses key=value lines from a string into a map
 func parseConfig(data string) map[string]string {
   cfg := make(map[string]string)
 
@@ -178,9 +175,10 @@ func parseConfig(data string) map[string]string {
     }
   }
   return cfg
-}
+} // func parseConfig(data string) map[string]string
 
 
+// mpdDo runs a function with a short-lived MPD client and logs errors
 func mpdDo(fn func(c *mpd.Client) error, src string) error {
   c, err := dialMPD()
   if err != nil {
@@ -190,8 +188,10 @@ func mpdDo(fn func(c *mpd.Client) error, src string) error {
   defer c.Close()
 
   return fn(c)
-}
+} // func mpdDo(fn func(c *mpd.Client) error, src string) error
 
+
+// mpdProtocolVersion returns the protocol version of the running MPD instance
 func mpdProtocolVersion() string {
   var (
     c   *mpd.Client
@@ -211,9 +211,10 @@ func mpdProtocolVersion() string {
   defer c.Close()
 
   return c.Version()
-}
+} // func mpdProtocolVersion() string {
 
 
+// mpdBinaryVersion returns the binary version of MPD from the executable path
 func mpdBinaryVersion(path string) string {
   cmd := exec.Command(path, "--version")
   out, err := cmd.Output()
@@ -237,26 +238,28 @@ func mpdBinaryVersion(path string) string {
   }
 
   return "unavailable"
-}
+} // func mpdBinaryVersion(path string) string {
 
 
-// wrapper to set MPD random state
+// setRandom toggles MPD random mode and logs the change
 func setRandom(on bool, src string) {
   _ = mpdDo(func(c *mpd.Client) error {
     return c.Random(on)
   }, src)
   log.Printf("STATE CHANGE: [%s] mpd random=%v", src, on)
-}
+} // } // func mpdBinaryVersion(path string) string
 
-// wrapper to skip next track
+
+// mpdNext skips to the next track in MPD and logs the action
 func mpdNext(src string) {
   _ = mpdDo(func(c *mpd.Client) error {
     return c.Next()
   }, src)
   log.Printf("STATE CHANGE: [%s] mpd next track", src)
-}
+} // func mpdNext(src string)
 
-// wrapper to play/pause
+
+// mpdPlayPause plays or pauses MPD and logs the action
 func mpdPlayPause(play bool, src string) {
   _ = mpdDo(func(c *mpd.Client) error {
     if play {
@@ -265,9 +268,10 @@ func mpdPlayPause(play bool, src string) {
     return c.Pause(true)
   }, src)
   log.Printf("STATE CHANGE: [%s] mpd play=%v", src, play)
-}
+} // func mpdPlayPause(play bool, src string)
 
-// dialMPD returns a connected MPD client using either TCP or UNIX socket
+
+// dialMPD returns a connected MPD client using UNIX socket or TCP
 func dialMPD() (*mpd.Client, error) {
   if mpdSocket != "" {
     // Use UNIX socket if provided
@@ -275,24 +279,28 @@ func dialMPD() (*mpd.Client, error) {
   }
   // Otherwise, use TCP host:port
   return mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort))
-}
+} // func dialMPD() (*mpd.Client, error)
 
-// newWatcherMPD returns a new watcher for idle loop
+
+// newWatcherMPD returns a new MPD watcher for idle events
 func newWatcherMPD() (*mpd.Watcher, error) {
   if mpdSocket != "" {
     return mpd.NewWatcher("unix", mpdSocket, "", "player")
   }
   return mpd.NewWatcher("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort), "", "player")
-}
+} //vfunc newWatcherMPD() (*mpd.Watcher, error)
 
-// logStateChange logs a standardized message for state transitions
+
+// logStateChange logs standardized state transition information
 func logStateChange(src, songID string, count, limit int, transition bool) {
   log.Printf(
     "STATE CHANGE: [%s]: songID=%s count=%d/limit=%d transition=%v",
     src, songID, count, limit, transition,
   )
-}
+} // func logStateChange(src, songID string, count, limit int, transition bool)
 
+
+// logCurrentSong logs the current song’s file for debugging
 func logCurrentSong(c *mpd.Client, prefix string) {
   if c == nil {
     log.Printf("%s: currentsong skipped (nil client)", prefix)
@@ -312,11 +320,11 @@ func logCurrentSong(c *mpd.Client, prefix string) {
   }
 
   log.Printf("%s: currentsong file=%q", prefix, file)
-}
+} // func logCurrentSong(c *mpd.Client, prefix string)
 
-// daemonSupervisor maintains all long-lived daemon invariants including MPD connection, idle loop, and socket
-func daemonSupervisor() { // renamed from idleSupervisor
-  //  var ipcRunning bool
+
+// daemonSupervisor ensures the daemon’s main loops, reconnects, and IPC listener
+func daemonSupervisor() {
   var ipcRunning int32
 
   for {
@@ -329,13 +337,13 @@ func daemonSupervisor() { // renamed from idleSupervisor
 
     // Ensure IPC socket exists (daemon responsibility)
     if _, err := os.Stat(socketPath); err != nil {
-      if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {     // #274
+      if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {
         log.Printf("IPC socket missing, recreating: %s", socketPath)
         os.Remove(socketPath)
         go func() {
           atomic.StoreInt32(&ipcRunning, 1)
           startIPC(socketPath)
-          atomic.StoreInt32(&ipcRunning, 0)                             // #280
+          atomic.StoreInt32(&ipcRunning, 0)
         }()
       } else {
         log.Printf("IPC socket stat error: %v", err)
@@ -368,6 +376,7 @@ func daemonSupervisor() { // renamed from idleSupervisor
 } // func daemonSupervisor()
 
 
+// runIdleLoop runs the MPD idle loop, updating state on song changes
 func runIdleLoop(w *mpd.Watcher) error {
   log.Println("MPD connection established, entering idle loop")
 
@@ -456,7 +465,6 @@ func runIdleLoop(w *mpd.Watcher) error {
           } else {
             log.Printf("Paused: idle event, song unchanged")
           }
-//          writeStateLocked(songID, limit) // <--- write after increment to update state count while paused
           deriveStateLocked(songID, limit)  // <--- write after increment to update state count while paused
 
           state.mu.Unlock()
@@ -542,8 +550,6 @@ func runIdleLoop(w *mpd.Watcher) error {
         )
 
         // Write out to the statefile
-//        writeStateLocked(songID)
-//        writeStateLocked(songID, limit)
         deriveStateLocked(songID, limit)
 
         // Log the song again *after* state changes and random toggles.
@@ -580,48 +586,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 } // func runIdleLoop()
 
 
-// poller optionally polls MPD based on pollMode
-func poller(client *mpd.Client) {
-  for {
-    state.mu.Lock()
-    mode := state.pollMode
-    state.mu.Unlock()
-
-    if mode == PollOff {
-      time.Sleep(time.Second)
-      continue
-    }
-
-    mpdDo(func(c *mpd.Client) error {
-      status, err := c.Status()
-      if err != nil {
-        return err
-      }
-      songID := status["songid"]
-
-      state.mu.Lock()
-      defer state.mu.Unlock()
-
-      if mode == PollLogging {
-        log.Printf("Poll logging: songid=%s", songID)
-      } else if mode == PollOn && songID != state.lastSongID && !state.paused {
-        state.count++
-        if state.count >= state.blockLimit {
-          state.count = 0
-          log.Println("Poll: block finished — starting new block")
-        } else {
-          log.Printf("Poll: song %d/%d in current block", state.count, state.blockLimit)
-        }
-      }
-      state.lastSongID = songID
-      return nil
-    }, "poller")
-
-    time.Sleep(1 * time.Second)
-  }
-}
-
-// startIPC listens on UNIX socket for client commands
+// startIPC starts a UNIX socket server to accept client commands
 func startIPC(path string) {
   ln, err := net.Listen("unix", path)
   if err != nil {
@@ -629,8 +594,8 @@ func startIPC(path string) {
   }
   defer ln.Close()
 
-// Now the socket exists → set ownership and permissions
-//  os.Chown(socketPath, uid, gid) // uid/gid for mpd user
+  // Now the socket exists → set ownership and permissions
+  //  os.Chown(socketPath, uid, gid) // uid/gid for mpd user
   os.Chmod(socketPath, 0660)     // owner+group read/write
 
   log.Printf("IPC listening on %s", path)
@@ -643,8 +608,10 @@ func startIPC(path string) {
     }
     go ipcHandler(conn)
   }
-}
+} // func startIPC(path string)
 
+
+// setPaused sets the paused state and returns whether the block limit expired
 func setPaused(paused bool) (expired bool, limit int) {
   state.mu.Lock()
   defer state.mu.Unlock()
@@ -662,25 +629,15 @@ func setPaused(paused bool) (expired bool, limit int) {
   }
 
   return
-}
+} // func setPaused(paused bool) (expired bool, limit int)
 
 
-// ipcHandler parses commands and updates state
+// ipcHandler handles incoming commands over IPC and updates state
 func ipcHandler(conn net.Conn) {
   var resp string
 
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
-//  for scanner.Scan() {
-//    line := scanner.Text()
-//
-//    log.Printf("[ipcHandler] raw line received: %q from %s", line, conn.RemoteAddr())
-//
-//
-//    fields := strings.Fields(line)
-//    if len(fields) == 0 {
-//      continue
-//    }
   for scanner.Scan() {
     raw := scanner.Text()
 
@@ -700,7 +657,6 @@ func ipcHandler(conn net.Conn) {
         continue
       }
 
-
     cmd := strings.ToLower(fields[0])
     switch cmd {
     case "pause":
@@ -713,7 +669,6 @@ func ipcHandler(conn net.Conn) {
 			deriveStateLocked(state.lastSongID, limit)
 			state.mu.Unlock()
 
-//	    fmt.Fprintln(conn, "Paused")
       resp = "Paused"
 
     case "resume":
@@ -725,7 +680,6 @@ func ipcHandler(conn net.Conn) {
       mpdPlayPause(true, "IPC-resume")
       log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
         state.paused, expired, state.count, limit, state.transition)
-//	    fmt.Fprintln(conn, "Resumed")
       resp = "Resumed"
 
     case "toggle":
@@ -862,7 +816,6 @@ func ipcHandler(conn net.Conn) {
 			  log.Printf("[IPC-blocklimit] MPD command failed: %v", err)
 			}
 
-
       log.Printf("STATE CHANGE: [IPC] block limit set=%d (effective=%d), count=%d, transition=%v",
         state.blockLimit,
         limit,
@@ -871,22 +824,8 @@ func ipcHandler(conn net.Conn) {
 
       fmt.Fprintf(conn, "Block limit set to %d\nOK\n", n)
 
-//    case "status":
-////      sendStateToClient(conn)
-////      return
-//      state.mu.Lock()
-//      limit := state.baseLimit
-//      if state.blockOn && state.blockLimit > 0 {
-//        limit = state.blockLimit
-//      }
-//      ds := deriveStateLocked(state.lastSongID, limit)
-//      state.mu.Unlock()
-//
-//      formatState(conn, ds)
-//      return
     case "status":
       sendStatus(conn)
-//      return
 
     case "verbose":
       val := strings.ToLower(fields[1])
@@ -895,29 +834,6 @@ func ipcHandler(conn net.Conn) {
       state.mu.Unlock()
       log.Printf("[IPC] Verbose mode turned %s", val)
       fmt.Fprintln(conn, "Verbose mode "+val)
-
-//    case "verbose":
-//      if len(fields) < 2 {
-//        fmt.Fprintln(conn, "Usage: verbose on|off")
-//        continue
-//      }
-//      val := strings.ToLower(fields[1])
-//      switch val {
-//      case "on":
-//        state.mu.Lock()
-//        state.verbose = true
-//        state.mu.Unlock()
-//        fmt.Fprintln(conn, "Verbose mode enabled")
-//        log.Printf("[IPC] Verbose mode turned ON")
-//      case "off":
-//        state.mu.Lock()
-//        state.verbose = false
-//        state.mu.Unlock()
-//        fmt.Fprintln(conn, "Verbose mode disabled")
-//        log.Printf("[IPC] Verbose mode turned OFF")
-//      default:
-//        fmt.Fprintln(conn, "Usage: verbose on|off")
-//      }
 
     case "exit", "quit":
       log.Printf("IPC: received %s, shutting down", cmd)
@@ -951,6 +867,7 @@ func ipcHandler(conn net.Conn) {
 } // func ipcHandler()
 
 
+// sendIPCCommand sends a command to the daemon via IPC socket
 func sendIPCCommand(cmd string) error {
   conn, err := net.Dial("unix", socketPath)
   if err != nil {
@@ -965,10 +882,7 @@ func sendIPCCommand(cmd string) error {
 
   // read single-line response from daemon
   scanner := bufio.NewScanner(conn)
-//      for scanner.Scan() {
-//        fmt.Println(scanner.Text())
       io.Copy(os.Stdout, conn)
-//    }
 
   // Derive final state and write state file
   state.mu.Lock()
@@ -979,7 +893,6 @@ func sendIPCCommand(cmd string) error {
   }
   state.mu.Unlock()
 
-//  writeStateLocked(songID, limit)
   deriveStateLocked(songID, limit)
 
   if err := scanner.Err(); err != nil {
@@ -991,6 +904,7 @@ func sendIPCCommand(cmd string) error {
 
 
 
+// acceptClients accepts TCP client connections and delegates handling
 func acceptClients(ln net.Listener) {
   log.Printf("acceptClients started")
   for {
@@ -1002,11 +916,11 @@ func acceptClients(ln net.Listener) {
     log.Printf("Client connected from %s", conn.RemoteAddr())
     go handleTCP(conn)
   }
-}
+} // func acceptClients(ln net.Listener)
 
 
+// deriveStateLocked writes the current state to disk (state.mu must be held)
 func deriveStateLocked(songID string, limit int) *derivedState {
-// RENAMED from: func writeStateLocked(songID string, limit int) {
   // state.mu MUST already be held
   now := time.Now().Format(time.RFC3339Nano)
 
@@ -1033,15 +947,6 @@ func deriveStateLocked(songID string, limit int) *derivedState {
     return ds
   }
 
-//  fmt.Fprintf(f, "writetime=%s\n", now)
-//  fmt.Fprintf(f, "lingersongid=%s\n",               songID)
-//  fmt.Fprintf(f, "lingerpause=%d\n",    btoi(state.paused))
-//  fmt.Fprintf(f, "lingercount=%d\n",           state.count)
-//  fmt.Fprintf(f, "lingerbase=%d\n",        state.baseLimit)   // Either the persistent limit unless
-//  fmt.Fprintf(f, "lingerlimit=%d\n",                 limit)   // This is the working limit of runIdleLoop derived from:
-//  fmt.Fprintf(f, "lingerblocklmt=%d\n",   state.blockLimit)   // A temprorary block limit override exists if lingerblocklmt > 0
-//  fmt.Fprintf(f, "lingerpid=%d\n",             os.Getpid())
-
   formatState(f, ds)
 
   f.Close()
@@ -1050,6 +955,8 @@ func deriveStateLocked(songID string, limit int) *derivedState {
   return ds
 } // func writeStateLocked(songID string, limit int)
 
+
+// formatState formats a derivedState struct into key=value lines
 func formatState(w io.Writer, ds *derivedState) {
   fmt.Fprintf(w, "writetime=%s\n", ds.WriteTime)
   fmt.Fprintf(w, "lingersongid=%s\n", ds.SongID)
@@ -1059,8 +966,10 @@ func formatState(w io.Writer, ds *derivedState) {
   fmt.Fprintf(w, "lingerlimit=%d\n", ds.Limit)
   fmt.Fprintf(w, "lingerblocklmt=%d\n", ds.BlockLimit)
   fmt.Fprintf(w, "lingerpid=%d\n", ds.PID)
-}
+} // func formatState(w io.Writer, ds *derivedState)
 
+
+// sendStatus sends the current state to a writer (IPC/TCP client)
 func sendStatus(w io.Writer) {
   state.mu.Lock()
 
@@ -1073,9 +982,11 @@ func sendStatus(w io.Writer) {
   state.mu.Unlock()
 
   formatState(w, ds)
-}
+} // func sendStatus(w io.Writer)
 
-func clientCommandHandler(args []string) error {  // primary handler of commands from IPC/UDS clients
+
+// clientCommandHandler parses client command-line args and sends them to the daemon
+func clientCommandHandler(args []string) error {
     if len(args) == 0 {
         return fmt.Errorf("No client commands provided")
     }
@@ -1122,32 +1033,6 @@ func clientCommandHandler(args []string) error {  // primary handler of commands
           i++
         }
 
-//      case "limit", "blocklimit", "block":
-//        if tok == "block" {
-//          tok = "blocklimit"
-//        }
-//
-//        if i+1 < len(toks) && isNumber(toks[i+1]) {  // isNumber deleted!
-//          batch = append(batch, tok+" "+toks[i+1])
-//          i += 2
-//        } else {
-//          batch = append(batch, tok)
-//          i++
-//        }
-//
-////        case "limit", "blocklimit":
-////            if i+1 >= len(toks) {
-////                return fmt.Errorf("%s requires numeric argument", tok)
-////            }
-////
-////            n, err := strconv.Atoi(toks[i+1])
-////            if err != nil || n < 0 {
-////                return fmt.Errorf("invalid %s value: %s", tok, toks[i+1])
-////            }
-////
-////            batch = append(batch, fmt.Sprintf("%s %d", tok, n))
-////            i += 2
-
         case "verbose":
           if i+1 < len(toks) {
             val := strings.ToLower(toks[i+1])
@@ -1177,6 +1062,8 @@ func clientCommandHandler(args []string) error {  // primary handler of commands
     return sendClientCommand(cmd)
 } // func clientCommandHandler(args []string)
 
+
+// sendClientCommand sends a string command to daemon via IPC or TCP
 func sendClientCommand(cmd string) error {
     // prefer IPC socket if set
     if verbose {
@@ -1235,32 +1122,7 @@ func sendClientCommand(cmd string) error {
 } // func sendClientCommand(cmd string) error
 
 
-
-//func sendStateToClient(conn net.Conn) {
-//  defer conn.Close()
-//
-//  if !stateEnabled || statePath == "" {
-//    fmt.Fprintln(conn, "No state file enabled")
-//    return
-//  }
-//
-//  f, err := os.Open(statePath)
-//  if err != nil {
-//    fmt.Fprintf(conn, "Failed to open state file: %v\n", err)
-//    return
-//  }
-//  defer f.Close()
-//
-//  scanner := bufio.NewScanner(f)
-//  for scanner.Scan() {
-//    fmt.Fprintln(conn, scanner.Text())
-//  }
-//
-//  if err := scanner.Err(); err != nil {
-//    fmt.Fprintf(conn, "Error reading state file: %v\n", err)
-//  }
-//}
-
+// handleTCP handles incoming TCP connections, validating and forwarding commands
 func handleTCP(conn net.Conn) {
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
@@ -1317,9 +1179,10 @@ func handleTCP(conn net.Conn) {
   if err := scanner.Err(); err != nil {
     log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
   }
-}
+} // func handleTCP(conn net.Conn) {
 
 
+// handleClient handles a single client connection, validating and forwarding commands
 func handleClient(conn net.Conn) {
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
@@ -1355,6 +1218,7 @@ func handleClient(conn net.Conn) {
 } // handleClient(conn net.Conn)
 
 
+// btoi converts a bool to int (true=1, false=0)
 func btoi(b bool) int {
   if b {
     return 1
@@ -1362,12 +1226,16 @@ func btoi(b bool) int {
   return 0
 } // func btoi(b bool)
 
+
+// requestShutdown closes the shutdown channel exactly once
 func requestShutdown() {
   shutdownOnce.Do(func() {
     close(shutdown)
   })
 } // func requestShutdown()
 
+
+// initShutdownHandler installs a signal handler to trigger shutdown
 func initShutdownHandler() {
   sigs := make(chan os.Signal, 1)
   signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -1375,8 +1243,10 @@ func initShutdownHandler() {
     <-sigs
     close(shutdown)
   }()
-}
+} // func initShutdownHandler()
 
+
+// main parses flags, initializes state, and optionally runs as daemon
 func main() {
   // ------------------------------------------------------------------
   // Shared flags (client + daemon)
@@ -1498,8 +1368,6 @@ func main() {
     log.SetOutput(f)
   }
 
-
-
   // ------------------------------------------------------------------
   // Client command handling (positional args only)
   // ------------------------------------------------------------------
@@ -1516,49 +1384,6 @@ func main() {
   // ------------------------------------------------------------------
   // END: Client command handling if args are provided
   // ------------------------------------------------------------------
-
-
-
-
-//  // ------------------------------------------------------------------
-//  // Client subcommands (positional args only)
-//  // ------------------------------------------------------------------
-//
-//  args := flag.Args()
-//
-//  // ------------------------------------------------------------------
-//  // BEGIN: Client command handling if args are provided
-//  // ------------------------------------------------------------------
-//  args = flag.Args()
-//  if len(args) > 0 {
-//    cmd := args[0]
-//    if !allowed[cmd] {
-//      fmt.Fprintf(os.Stderr, "\nUnknown client command: %s\n", cmd)
-//      os.Exit(1)
-//    }
-//
-//    // Send command via client TCP if socketPath is empty but listen is set
-//    if socketPath == "" && listenPort > 0 {
-//      log.Printf("[main] listenIP:listenPort %s:%d", listenIP, listenPort)
-//      if err := sendTCPCommand(cmd); err != nil {
-//        log.Fatalf("Client command failed: %v", err)
-//      }
-//      return
-//    }
-//
-//    // Otherwise send via IPC socket
-//    if err := sendIPCCommand(cmd); err != nil {
-//      log.Fatalf("IPC error: %v", err)
-//    }
-//
-//    fmt.Println("OK") // one-and-done behavior
-//    return
-//  }
-//  // ------------------------------------------------------------------
-//  // END: Client command handling if args are provided
-//  // ------------------------------------------------------------------
-
-
 
   // ------------------------------------------------------------------
   // Version / help
@@ -1636,7 +1461,6 @@ func main() {
 
   if stateEnabled {
     state.mu.Lock()
-//      writeStateLocked(state.lastSongID, state.baseLimit)
     deriveStateLocked(state.lastSongID, state.baseLimit)
     state.mu.Unlock()
   }
