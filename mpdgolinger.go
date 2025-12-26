@@ -116,7 +116,7 @@ var (
   verbose    bool
   allowed = map[string]bool{
     "status": true, "toggle": true, "pause": true, "resume": true,
-    "limit": true, "block": true, "blocklimit": true,
+    "limit": true, "block": true, "blocklimit": true, "version": true,
     "next": true, "skip": true, "quit": true, "exit": true,
   }
 ) // var
@@ -865,7 +865,8 @@ func startIPC(path string) {
       log.Printf("IPC accept error: %v", err)
       continue
     }
-    go ipcHandler(conn)
+    go handleUDS(conn)
+//    go ipcHandler(conn)
   }
 } // func startIPC(path string)
 
@@ -891,43 +892,610 @@ func setPaused(paused bool) (expired bool, limit int) {
 } // func setPaused(paused bool) (expired bool, limit int)
 
 
-// ipcHandler handles incoming commands over IPC and updates state
-func ipcHandler(conn net.Conn) {
-  var resp string
+//// ipcHandler handles incoming commands over IPC and updates state
+//func ipcHandler(conn net.Conn) {
+//  var resp string
+//
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//  for scanner.Scan() {
+//    raw := scanner.Text()
+//
+//    if verbose {
+//      log.Printf("[ipcHandler] raw line received: %q", raw)
+//    }
+//
+//    parts := strings.Split(raw, ",")
+//    for _, part := range parts {
+//      line := strings.TrimSpace(part)
+//      if line == "" {
+//        continue
+//      }
+//
+//      fields := strings.Fields(line)
+//      if len(fields) == 0 {
+//        continue
+//      }
+//
+//    cmd := strings.ToLower(fields[0])
+//    switch cmd {
+//    case "pause":
+//      log.Printf("IPC: received pause command")
+//      expired, limit := setPaused(true)
+//      log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+//        state.paused, expired, state.count, limit, state.transition)
+//			state.mu.Lock()
+//			state.paused = true
+//			deriveStateLocked(state.lastSongID, limit)
+//			state.mu.Unlock()
+//
+//      resp = "Paused"
+//
+//    case "resume":
+//      log.Printf("IPC: received resume command")
+//      expired, limit := setPaused(false)
+//      if expired {
+//        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-resume")
+//      }
+//      mpdPlayPause(true, "IPC-resume")
+//      log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+//        state.paused, expired, state.count, limit, state.transition)
+//      resp = "Resumed"
+//
+//    case "toggle":
+//      paused := !state.paused
+//      log.Printf("IPC: received toggle command")
+//      expired, limit := setPaused(paused)
+//      if !paused && expired {
+//        _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-toggle-resume")
+//      }
+//      if !paused {
+//        mpdPlayPause(true, "IPC-toggle-resume")
+//      }
+//      log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+//        state.paused, expired, state.count, limit, state.transition)
+//      fmt.Fprintln(conn, map[bool]string{true:"Paused", false:"Resumed"}[paused])
+//
+//
+//    // next: force start of a new block; always resumes playback;
+//    // idle loop owns count reset and random-off transition
+//    case "next":
+//      log.Printf("IPC: received next command")
+//      // imperative block advance
+//      state.mu.Lock()
+//      state.transition = true   // tell idle loop “new block boundary”
+//      state.paused = false      // we are explicitly resuming
+//      state.mu.Unlock()
+//
+//      _ = mpdDo(func(c *mpd.Client) error {
+//        // ensure we break out of the current block
+//        if err := c.Random(true); err != nil {
+//          return err
+//        }
+//
+//        // advance to next song (randomized start of block)
+//        if err := c.Next(); err != nil {
+//          return err
+//        }
+//
+//        // always resume playback
+//        return c.Play(-1)
+//      }, "IPC-nextBlock")
+//
+//      log.Printf("STATE CHANGE: [IPC-nextBlock] forced block advance, count reset")
+//
+//    // skip is to advance song within block without requiring another client, e.g., mpc
+//    case "skip":
+//      log.Printf("IPC: received skip command")
+//      _ = mpdDo(func(c *mpd.Client) error {
+//        // advance to next song
+//        if err := c.Next(); err != nil {
+//          return err
+//        }
+//        // always resume playback
+//        return c.Play(-1)
+//      }, "IPC-skip")
+//
+//      state.mu.Lock()
+//      log.Printf(
+//        "STATE CHANGE: [IPC-skip] count=%d baseLimit=%d blockLimit=%d transition=%v paused=%v",
+//        state.count, state.baseLimit, state.blockLimit, state.transition, state.paused,
+//      )
+//      state.mu.Unlock()
+//
+//      fmt.Fprintln(conn, "Skipped to next track")
+//
+//    case "limit":
+//      n := 0
+//      if len(fields) >= 2 {
+//        n, _ = strconv.Atoi(fields[1])
+//      }
+//
+//      state.mu.Lock()
+//      if n <= 0 {
+//        state.baseLimit = defaultLimit
+//      } else {
+//        state.baseLimit = n
+//      }
+//
+//      limit := state.baseLimit
+//      if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+//        limit = state.blockLimit
+//      }
+//      deriveStateLocked(state.lastSongID, limit)
+//      state.mu.Unlock()
+//
+//      log.Printf(
+//        "STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
+//        state.baseLimit,
+//        limit,
+//      )
+//      fmt.Fprintln(conn, "Persistent limit set")
+//
+//    case "blocklimit":
+//      n := 0
+//
+//      if len(fields) >= 2 {
+//        n, _ = strconv.Atoi(fields[1])  // client already ensures numeric
+//      }
+//
+//		  state.mu.Lock()
+//		  if n < 0 {
+//		    fmt.Fprintln(conn, "Invalid block limit")
+//		    state.mu.Unlock()
+//		    continue
+//		  }
+//
+//		  if n == 0 {
+//		    // disable block mode
+//		    state.blockLimit = 0
+//		    state.blockOn = false
+//		    // recalc transition: true if count >= baseLimit else false
+//		    state.transition = state.count >= state.baseLimit
+//		  } else {
+//		  state.blockLimit = n
+//		  state.blockOn = true    // activate blockLimit immediately
+//		  state.transition = false
+//      }
+//
+//		  limit := state.baseLimit
+//		  if state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+//		    limit = state.blockLimit
+//		  }
+//
+//		  deriveStateLocked(state.lastSongID, limit)
+//		  state.mu.Unlock()
+//
+//			err := mpdDo(func(c *mpd.Client) error {
+//			  if err := c.Random(false); err != nil {
+//			    return err
+//			  }
+//			  return nil
+//			}, "IPC-blocklimit")
+//			if err != nil {
+//			  log.Printf("[IPC-blocklimit] MPD command failed: %v", err)
+//			}
+//
+//      log.Printf("STATE CHANGE: [IPC] block limit set=%d (effective=%d), count=%d, transition=%v",
+//        state.blockLimit,
+//        limit,
+//        state.count,
+//        state.transition)
+//
+//      fmt.Fprintf(conn, "Block limit set to %d\nOK\n", n)
+//
+//    case "status":
+//      sendStatus(conn)
+//
+//    case "verbose":
+//      val := strings.ToLower(fields[1])
+//      state.mu.Lock()
+//      verbose = (val == "on")
+//      state.mu.Unlock()
+//      log.Printf("[IPC] Verbose mode turned %s", val)
+//      fmt.Fprintln(conn, "Verbose mode "+val)
+//
+//    case "version":
+//      // helper: writes to log and client if clientConn is non-nil
+//      writeOut := func(msg string) {
+//        fmt.Println(msg) // always log
+//        fmt.Fprintln(conn, msg)
+////        if clientConn != nil { // replace with actual client connection if available
+////          fmt.Fprintln(clientConn, msg)
+////        }
+//      }
+//
+//      writeOut(fmt.Sprintf("mpdgolinger daemon   %s", version))
+//
+//      err := mpdDo(func(c *mpd.Client) error {
+//        proto := c.Version()
+//        writeOut(fmt.Sprintf("mpd protocol version %s", proto))
+//        return nil
+//      }, "version")
+//
+//      if err != nil {
+//        writeOut("mpd protocol version unavailable")
+//      }
+//
+//      // local mpd binary version
+//      cmd := exec.Command(mpdPath, "--version")
+//      stdout, err := cmd.StdoutPipe()
+//      if err != nil {
+//        writeOut(fmt.Sprintf("failed to get %s version: %v", mpdPath, err))
+//        break
+//      }
+//
+//      if err = cmd.Start(); err != nil {
+//        writeOut(fmt.Sprintf("failed to start %s: %v", mpdPath, err))
+//        break
+//      }
+//
+//      scanner := bufio.NewScanner(stdout)
+//      if scanner.Scan() {
+//        line := strings.TrimSpace(scanner.Text())
+//
+//        // regex match Music Player Daemon X.Y.Z (vX.Y.Z)
+//        re := regexp.MustCompile(`^Music Player Daemon .* \(v([0-9]+\.[0-9]+\.[0-9]+)\)$`)
+//        matches := re.FindStringSubmatch(line)
+//        verStr := line
+//        if len(matches) == 2 {
+//          verStr = matches[1]
+//        }
+//
+//        writeOut(fmt.Sprintf("%s version %s", mpdPath, verStr))
+//      }
+//
+//      _ = cmd.Wait()
+//
+//      return
+//
+//    case "exit", "quit":
+//      log.Printf("IPC: received %s, shutting down", cmd)
+//      fmt.Fprintln(conn, "OK")
+//      requestShutdown()
+//      return
+//
+//    default:
+//      fmt.Fprintln(conn, "[ipcHandler] Unknown command")
+//      resp = "Unknown command: " + cmd
+//    }
+//
+//    fmt.Fprintln(conn, resp)
+//  }
+//    return
+//  }
+//  // Derive final state once per IPC session
+//  state.mu.Lock()
+//  songID := state.lastSongID
+//  limit := state.baseLimit
+//  if state.blockOn && state.blockLimit > 0 {
+//    limit = state.blockLimit
+//  }
+////  writeStateLocked(songID, limit)
+//  deriveStateLocked(songID, limit)
+//  state.mu.Unlock()
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("IPC connection error: %v", err)
+//  }
+//} // func ipcHandler()
 
-  defer conn.Close()
-  scanner := bufio.NewScanner(conn)
-  for scanner.Scan() {
-    raw := scanner.Text()
+//// ipcHandler handles incoming commands over IPC and updates state
+//func ipcHandler(conn net.Conn) []string {
+//  var resp string
+//  var responses []string
+//
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//  for scanner.Scan() {
+//    raw := scanner.Text()
+//
+//    if verbose {
+//      log.Printf("[ipcHandler] raw line received: %q", raw)
+//    }
+//
+//    parts := strings.Split(raw, ",")
+//    for _, part := range parts {
+//      line := strings.TrimSpace(part)
+//      if line == "" {
+//        continue
+//      }
+//
+//      fields := strings.Fields(line)
+//      if len(fields) == 0 {
+//        continue
+//      }
+//
+//      cmd := strings.ToLower(fields[0])
+//      switch cmd {
+//      case "pause":
+//        log.Printf("IPC: received pause command")
+//        expired, limit := setPaused(true)
+//        log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+//          state.paused, expired, state.count, limit, state.transition)
+//        state.mu.Lock()
+//        state.paused = true
+//        deriveStateLocked(state.lastSongID, limit)
+//        state.mu.Unlock()
+//
+//        resp = "Paused"
+//        responses = append(responses, resp)
+//
+//      case "resume":
+//        log.Printf("IPC: received resume command")
+//        expired, limit := setPaused(false)
+//        if expired {
+//          _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-resume")
+//        }
+//        mpdPlayPause(true, "IPC-resume")
+//        log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+//          state.paused, expired, state.count, limit, state.transition)
+//        resp = "Resumed"
+//        responses = append(responses, resp)
+//
+//      case "toggle":
+//        paused := !state.paused
+//        log.Printf("IPC: received toggle command")
+//        expired, limit := setPaused(paused)
+//        if !paused && expired {
+//          _ = mpdDo(func(c *mpd.Client) error { return c.Random(true) }, "IPC-toggle-resume")
+//        }
+//        if !paused {
+//          mpdPlayPause(true, "IPC-toggle-resume")
+//        }
+//        log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
+//          state.paused, expired, state.count, limit, state.transition)
+//
+//        resp = map[bool]string{true: "Paused", false: "Resumed"}[paused]
+//        responses = append(responses, resp)
+//
+//      case "next":
+//        log.Printf("IPC: received next command")
+//        state.mu.Lock()
+//        state.transition = true
+//        state.paused = false
+//        state.mu.Unlock()
+//
+//        _ = mpdDo(func(c *mpd.Client) error {
+//          if err := c.Random(true); err != nil {
+//            return err
+//          }
+//          if err := c.Next(); err != nil {
+//            return err
+//          }
+//          return c.Play(-1)
+//        }, "IPC-nextBlock")
+//
+//        log.Printf("STATE CHANGE: [IPC-nextBlock] forced block advance, count reset")
+//        resp = "Next block started"
+//        responses = append(responses, resp)
+//
+//      case "skip":
+//        log.Printf("IPC: received skip command")
+//        _ = mpdDo(func(c *mpd.Client) error {
+//          if err := c.Next(); err != nil {
+//            return err
+//          }
+//          return c.Play(-1)
+//        }, "IPC-skip")
+//
+//        state.mu.Lock()
+//        log.Printf(
+//          "STATE CHANGE: [IPC-skip] count=%d baseLimit=%d blockLimit=%d transition=%v paused=%v",
+//          state.count, state.baseLimit, state.blockLimit, state.transition, state.paused,
+//        )
+//        state.mu.Unlock()
+//
+//        resp = "Skipped to next track"
+//        responses = append(responses, resp)
+//
+//      case "limit":
+//        n := 0
+//        if len(fields) >= 2 {
+//          n, _ = strconv.Atoi(fields[1])
+//        }
+//
+//        state.mu.Lock()
+//        if n <= 0 {
+//          state.baseLimit = defaultLimit
+//        } else {
+//          state.baseLimit = n
+//        }
+//
+//        limit := state.baseLimit
+//        if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+//          limit = state.blockLimit
+//        }
+//        deriveStateLocked(state.lastSongID, limit)
+//        state.mu.Unlock()
+//
+//        log.Printf("STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
+//          state.baseLimit, limit)
+//        resp = "Persistent limit set"
+//        responses = append(responses, resp)
+//
+//      case "blocklimit":
+//        n := 0
+//        if len(fields) >= 2 {
+//          n, _ = strconv.Atoi(fields[1])
+//        }
+//
+//        state.mu.Lock()
+//        if n < 0 {
+//          resp = "Invalid block limit"
+//          responses = append(responses, resp)
+//          state.mu.Unlock()
+//          continue
+//        }
+//
+//        if n == 0 {
+//          state.blockLimit = 0
+//          state.blockOn = false
+//          state.transition = state.count >= state.baseLimit
+//        } else {
+//          state.blockLimit = n
+//          state.blockOn = true
+//          state.transition = false
+//        }
+//
+//        limit := state.baseLimit
+//        if state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+//          limit = state.blockLimit
+//        }
+//
+//        deriveStateLocked(state.lastSongID, limit)
+//        state.mu.Unlock()
+//
+//        err := mpdDo(func(c *mpd.Client) error {
+//          return c.Random(false)
+//        }, "IPC-blocklimit")
+//        if err != nil {
+//          log.Printf("[IPC-blocklimit] MPD command failed: %v", err)
+//        }
+//
+//        log.Printf("STATE CHANGE: [IPC] block limit set=%d (effective=%d), count=%d, transition=%v",
+//          state.blockLimit, limit, state.count, state.transition)
+//
+//        resp = fmt.Sprintf("Block limit set to %d", n)
+//        responses = append(responses, resp, "OK")
+//
+////      case "status":
+////        lines := getStatusLines()
+////        responses = append(responses, lines...)
+//
+//      case "verbose":
+//        val := strings.ToLower(fields[1])
+//        state.mu.Lock()
+//        verbose = (val == "on")
+//        state.mu.Unlock()
+//        log.Printf("[IPC] Verbose mode turned %s", val)
+//        resp = "Verbose mode " + val
+//        responses = append(responses, resp)
+//
+//      case "version":
+//        writeOut := func(msg string) {
+//          fmt.Println(msg)
+//          responses = append(responses, msg)
+//        }
+//
+//        writeOut(fmt.Sprintf("mpdgolinger daemon   %s", version))
+//        err := mpdDo(func(c *mpd.Client) error {
+//          proto := c.Version()
+//          writeOut(fmt.Sprintf("mpd protocol version %s", proto))
+//          return nil
+//        }, "version")
+//        if err != nil {
+//          writeOut("mpd protocol version unavailable")
+//        }
+//
+//        cmd := exec.Command(mpdPath, "--version")
+//        stdout, err := cmd.StdoutPipe()
+//        if err != nil {
+//          writeOut(fmt.Sprintf("failed to get %s version: %v", mpdPath, err))
+//          break
+//        }
+//        if err = cmd.Start(); err != nil {
+//          writeOut(fmt.Sprintf("failed to start %s: %v", mpdPath, err))
+//          break
+//        }
+//
+//        scanner := bufio.NewScanner(stdout)
+//        if scanner.Scan() {
+//          line := strings.TrimSpace(scanner.Text())
+//          re := regexp.MustCompile(`^Music Player Daemon .* \(v([0-9]+\.[0-9]+\.[0-9]+)\)$`)
+//          matches := re.FindStringSubmatch(line)
+//          verStr := line
+//          if len(matches) == 2 {
+//            verStr = matches[1]
+//          }
+//          writeOut(fmt.Sprintf("%s version %s", mpdPath, verStr))
+//        }
+//        _ = cmd.Wait()
+//
+//      case "exit", "quit":
+//        log.Printf("IPC: received %s, shutting down", cmd)
+//        resp = "OK"
+//        responses = append(responses, resp)
+//        requestShutdown()
+//        return responses
+//
+//      default:
+//        resp = "Unknown command: " + cmd
+//        responses = append(responses, resp)
+//      }
+//    }
+//  }
+//
+//  state.mu.Lock()
+//  songID := state.lastSongID
+//  limit := state.baseLimit
+//  if state.blockOn && state.blockLimit > 0 {
+//    limit = state.blockLimit
+//  }
+//  deriveStateLocked(songID, limit)
+//  state.mu.Unlock()
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("IPC connection error: %v", err)
+//  }
+//
+//  // send accumulated responses to the socket before returning
+//  for _, r := range responses {
+//    fmt.Fprintln(conn, r)
+//  }
+//
+//  return responses
+//} // ipcHander(conn, net.Conn)
 
-    if verbose {
-      log.Printf("[ipcHandler] raw line received: %q", raw)
+func verbProcessor(csv string) []string {
+  var responses []string
+
+  parts := strings.Split(csv, ",")
+  for _, part := range parts {
+    line := strings.TrimSpace(part)
+    if line == "" {
+      continue
     }
 
-    parts := strings.Split(raw, ",")
-    for _, part := range parts {
-      line := strings.TrimSpace(part)
-      if line == "" {
-        continue
-      }
-
-      fields := strings.Fields(line)
-      if len(fields) == 0 {
-        continue
-      }
+    fields := strings.Fields(line)
+    if len(fields) == 0 {
+      continue
+    }
 
     cmd := strings.ToLower(fields[0])
+    var resp string
+
     switch cmd {
+    case "status":
+      state.mu.Lock()
+      limit := state.baseLimit
+      if state.blockOn && state.blockLimit > 0 {
+        limit = state.blockLimit
+      }
+      ds := deriveStateLocked(state.lastSongID, limit)
+      state.mu.Unlock()
+
+      // append lines to responses slice
+      responses = append(responses,
+        fmt.Sprintf("writetime=%s", ds.WriteTime),
+        fmt.Sprintf("lingersongid=%s", ds.SongID),
+        fmt.Sprintf("lingerpause=%d", ds.Paused),
+        fmt.Sprintf("lingercount=%d", ds.Count),
+        fmt.Sprintf("lingerbase=%d", ds.BaseLimit),
+        fmt.Sprintf("lingerlimit=%d", ds.Limit),
+        fmt.Sprintf("lingerblocklmt=%d", ds.BlockLimit),
+        fmt.Sprintf("lingerpid=%d", ds.PID),
+      )
+
     case "pause":
       log.Printf("IPC: received pause command")
       expired, limit := setPaused(true)
       log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
         state.paused, expired, state.count, limit, state.transition)
-			state.mu.Lock()
-			state.paused = true
-			deriveStateLocked(state.lastSongID, limit)
-			state.mu.Unlock()
-
+      state.mu.Lock()
+      state.paused = true
+      deriveStateLocked(state.lastSongID, limit)
+      state.mu.Unlock()
       resp = "Paused"
 
     case "resume":
@@ -953,45 +1521,34 @@ func ipcHandler(conn net.Conn) {
       }
       log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
         state.paused, expired, state.count, limit, state.transition)
-      fmt.Fprintln(conn, map[bool]string{true:"Paused", false:"Resumed"}[paused])
+      resp = map[bool]string{true: "Paused", false: "Resumed"}[paused]
 
-
-    // next: force start of a new block; always resumes playback;
-    // idle loop owns count reset and random-off transition
     case "next":
       log.Printf("IPC: received next command")
-      // imperative block advance
       state.mu.Lock()
-      state.transition = true   // tell idle loop “new block boundary”
-      state.paused = false      // we are explicitly resuming
+      state.transition = true
+      state.paused = false
       state.mu.Unlock()
 
       _ = mpdDo(func(c *mpd.Client) error {
-        // ensure we break out of the current block
         if err := c.Random(true); err != nil {
           return err
         }
-
-        // advance to next song (randomized start of block)
         if err := c.Next(); err != nil {
           return err
         }
-
-        // always resume playback
         return c.Play(-1)
       }, "IPC-nextBlock")
 
       log.Printf("STATE CHANGE: [IPC-nextBlock] forced block advance, count reset")
+      resp = "Advanced to next block"
 
-    // skip is to advance song within block without requiring another client, e.g., mpc
     case "skip":
       log.Printf("IPC: received skip command")
       _ = mpdDo(func(c *mpd.Client) error {
-        // advance to next song
         if err := c.Next(); err != nil {
           return err
         }
-        // always resume playback
         return c.Play(-1)
       }, "IPC-skip")
 
@@ -1001,8 +1558,7 @@ func ipcHandler(conn net.Conn) {
         state.count, state.baseLimit, state.blockLimit, state.transition, state.paused,
       )
       state.mu.Unlock()
-
-      fmt.Fprintln(conn, "Skipped to next track")
+      resp = "Skipped to next track"
 
     case "limit":
       n := 0
@@ -1024,84 +1580,68 @@ func ipcHandler(conn net.Conn) {
       deriveStateLocked(state.lastSongID, limit)
       state.mu.Unlock()
 
-      log.Printf(
-        "STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
-        state.baseLimit,
-        limit,
-      )
-      fmt.Fprintln(conn, "Persistent limit set")
+      log.Printf("STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
+        state.baseLimit, limit)
+      resp = "Persistent limit set"
 
     case "blocklimit":
       n := 0
-
       if len(fields) >= 2 {
-        n, _ = strconv.Atoi(fields[1])  // client already ensures numeric
+        n, _ = strconv.Atoi(fields[1])
       }
 
-		  state.mu.Lock()
-		  if n < 0 {
-		    fmt.Fprintln(conn, "Invalid block limit")
-		    state.mu.Unlock()
-		    continue
-		  }
-
-		  if n == 0 {
-		    // disable block mode
-		    state.blockLimit = 0
-		    state.blockOn = false
-		    // recalc transition: true if count >= baseLimit else false
-		    state.transition = state.count >= state.baseLimit
-		  } else {
-		  state.blockLimit = n
-		  state.blockOn = true    // activate blockLimit immediately
-		  state.transition = false
+      state.mu.Lock()
+      if n < 0 {
+        resp = "Invalid block limit"
+        state.mu.Unlock()
+        responses = append(responses, resp)
+        continue
       }
 
-		  limit := state.baseLimit
-		  if state.blockLimit > 0 && state.blockLimit != state.baseLimit {
-		    limit = state.blockLimit
-		  }
+      if n == 0 {
+        state.blockLimit = 0
+        state.blockOn = false
+        state.transition = state.count >= state.baseLimit
+      } else {
+        state.blockLimit = n
+        state.blockOn = true
+        state.transition = false
+      }
 
-		  deriveStateLocked(state.lastSongID, limit)
-		  state.mu.Unlock()
+      limit := state.baseLimit
+      if state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+        limit = state.blockLimit
+      }
 
-			err := mpdDo(func(c *mpd.Client) error {
-			  if err := c.Random(false); err != nil {
-			    return err
-			  }
-			  return nil
-			}, "IPC-blocklimit")
-			if err != nil {
-			  log.Printf("[IPC-blocklimit] MPD command failed: %v", err)
-			}
+      deriveStateLocked(state.lastSongID, limit)
+      state.mu.Unlock()
+
+      err := mpdDo(func(c *mpd.Client) error {
+        return c.Random(false)
+      }, "IPC-blocklimit")
+      if err != nil {
+        log.Printf("[IPC-blocklimit] MPD command failed: %v", err)
+      }
 
       log.Printf("STATE CHANGE: [IPC] block limit set=%d (effective=%d), count=%d, transition=%v",
-        state.blockLimit,
-        limit,
-        state.count,
-        state.transition)
-
-      fmt.Fprintf(conn, "Block limit set to %d\nOK\n", n)
-
-    case "status":
-      sendStatus(conn)
+        state.blockLimit, limit, state.count, state.transition)
+      resp = fmt.Sprintf("Block limit set to %d", n)
 
     case "verbose":
-      val := strings.ToLower(fields[1])
+      val := ""
+      if len(fields) >= 2 {
+        val = strings.ToLower(fields[1])
+      }
       state.mu.Lock()
       verbose = (val == "on")
       state.mu.Unlock()
       log.Printf("[IPC] Verbose mode turned %s", val)
-      fmt.Fprintln(conn, "Verbose mode "+val)
+      resp = "Verbose mode " + val
 
     case "version":
-      // helper: writes to log and client if clientConn is non-nil
       writeOut := func(msg string) {
-        fmt.Println(msg) // always log
-        fmt.Fprintln(conn, msg)
-//        if clientConn != nil { // replace with actual client connection if available
-//          fmt.Fprintln(clientConn, msg)
-//        }
+        fmt.Println(msg)
+        resp += msg + "\n"
       }
 
       writeOut(fmt.Sprintf("mpdgolinger daemon   %s", version))
@@ -1113,10 +1653,9 @@ func ipcHandler(conn net.Conn) {
       }, "version")
 
       if err != nil {
-        writeOut("mpd protocol version unavailable")
+        writeOut("mpd protocol version unavailable\n")
       }
 
-      // local mpd binary version
       cmd := exec.Command(mpdPath, "--version")
       stdout, err := cmd.StdoutPipe()
       if err != nil {
@@ -1132,88 +1671,202 @@ func ipcHandler(conn net.Conn) {
       scanner := bufio.NewScanner(stdout)
       if scanner.Scan() {
         line := strings.TrimSpace(scanner.Text())
-
-        // regex match Music Player Daemon X.Y.Z (vX.Y.Z)
         re := regexp.MustCompile(`^Music Player Daemon .* \(v([0-9]+\.[0-9]+\.[0-9]+)\)$`)
         matches := re.FindStringSubmatch(line)
         verStr := line
         if len(matches) == 2 {
           verStr = matches[1]
         }
-
         writeOut(fmt.Sprintf("%s version %s", mpdPath, verStr))
       }
 
       _ = cmd.Wait()
 
-      return
-
     case "exit", "quit":
       log.Printf("IPC: received %s, shutting down", cmd)
-      fmt.Fprintln(conn, "OK")
       requestShutdown()
-      return
+      resp = "OK"
 
     default:
-      fmt.Fprintln(conn, "[ipcHandler] Unknown command")
       resp = "Unknown command: " + cmd
     }
 
-    fmt.Fprintln(conn, resp)
+    responses = append(responses, resp)
   }
-    return
-  }
-  // Derive final state once per IPC session
+
   state.mu.Lock()
   songID := state.lastSongID
   limit := state.baseLimit
   if state.blockOn && state.blockLimit > 0 {
     limit = state.blockLimit
   }
-//  writeStateLocked(songID, limit)
   deriveStateLocked(songID, limit)
   state.mu.Unlock()
 
-  if err := scanner.Err(); err != nil {
-    log.Printf("IPC connection error: %v", err)
-  }
-} // func ipcHandler()
+  return responses
+}
 
 
-// sendIPCCommand sends a command to the daemon via IPC socket
-func sendIPCCommand(cmd string) error {
-  conn, err := net.Dial("unix", socketPath)
-  if err != nil {
-    return fmt.Errorf("failed to connect to daemon: %w", err)
-  }
+//func handleTCP(conn net.Conn) {
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//
+//  for scanner.Scan() {
+//    line := scanner.Text()
+//    if line == "" {
+//      continue
+//    }
+//
+//    // Send the entire CSV string to verbProcessor
+//    responses := verbProcessor(line)
+//
+//    // Write all responses back to TCP client
+//    for _, resp := range responses {
+//      fmt.Fprintln(conn, resp)
+//    }
+//
+//    log.Printf("Executed command(s) from %s: %q", conn.RemoteAddr(), line)
+//  }
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("TCP client %s scanner error: %v", conn.RemoteAddr(), err)
+//  }
+//
+//} // func handleTCP()
+//
+//
+//func handleUDS(conn net.Conn) {
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//
+//  for scanner.Scan() {
+//    line := scanner.Text()
+//    if line == "" {
+//      continue
+//    }
+//
+//    // Pass CSV string to verbProcessor
+//    responses := verbProcessor(line)
+//
+//    // Send responses back to UDS client
+//    for _, resp := range responses {
+//      fmt.Fprintln(conn, resp)
+//    }
+//
+//    log.Printf("Executed UDS command(s): %q", line)
+//  }
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("UDS connection error: %v", err)
+//  }
+//} // func handleUDS()
+
+func handleTCP(conn net.Conn) {
   defer conn.Close()
-
-  _, err = fmt.Fprintln(conn, cmd)
-  if err != nil {
-    return fmt.Errorf("failed to send command: %w", err)
-  }
-
-  // read single-line response from daemon
   scanner := bufio.NewScanner(conn)
-      io.Copy(os.Stdout, conn)
 
-  // Derive final state and write state file
-  state.mu.Lock()
-  songID := state.lastSongID
-  limit := state.baseLimit
-  if state.blockOn && state.blockLimit > 0 {
-    limit = state.blockLimit
+  if scanner.Scan() {
+    line := scanner.Text()
+    if line != "" {
+      responses := verbProcessor(line)
+      for _, resp := range responses {
+        fmt.Fprintln(conn, resp)
+      }
+      log.Printf("Executed command(s) from %s: %q", conn.RemoteAddr(), line)
+    }
   }
-  state.mu.Unlock()
-
-  deriveStateLocked(songID, limit)
 
   if err := scanner.Err(); err != nil {
-    return fmt.Errorf("scanner error: %w", err)
+    log.Printf("TCP client %s scanner error: %v", conn.RemoteAddr(), err)
+  }
+} // func handleTCP()
+
+func handleUDS(conn net.Conn) {
+  defer conn.Close()
+  scanner := bufio.NewScanner(conn)
+
+  if scanner.Scan() {
+    line := scanner.Text()
+    if line != "" {
+      responses := verbProcessor(line)
+      for _, resp := range responses {
+        fmt.Fprintln(conn, resp)
+      }
+      log.Printf("Executed UDS command(s): %q", line)
+    }
   }
 
-  return nil
-} // func sendIPCCommand(cmd string) error
+  if err := scanner.Err(); err != nil {
+    log.Printf("UDS connection error: %v", err)
+  }
+} // func handleUDS()
+
+
+
+
+
+//// sendIPCCommand sends a command to the daemon via IPC socket
+//func sendIPCCommand(cmd string) error {
+//  conn, err := net.Dial("unix", socketPath)
+//  if err != nil {
+//    return fmt.Errorf("failed to connect to daemon: %w", err)
+//  }
+//  defer conn.Close()
+//
+//  _, err = fmt.Fprintln(conn, cmd)
+//  if err != nil {
+//    return fmt.Errorf("failed to send command: %w", err)
+//  }
+//
+//  // read single-line response from daemon
+//  scanner := bufio.NewScanner(conn)
+//      io.Copy(os.Stdout, conn)
+//
+//  // Derive final state and write state file
+//  state.mu.Lock()
+//  songID := state.lastSongID
+//  limit := state.baseLimit
+//  if state.blockOn && state.blockLimit > 0 {
+//    limit = state.blockLimit
+//  }
+//  state.mu.Unlock()
+//
+//  deriveStateLocked(songID, limit)
+//
+//  if err := scanner.Err(); err != nil {
+//    return fmt.Errorf("scanner error: %w", err)
+//  }
+//
+//  return nil
+//} // func sendIPCCommand(cmd string) error
+
+
+// sendIPCCommand sends a command to the daemon via IPC socket returns all response lines
+func sendIPCCommand(cmd string) ([]string, error) {
+    conn, err := net.Dial("unix", socketPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to connect to daemon: %w", err)
+    }
+    defer conn.Close()
+
+    // send command
+    if _, err := fmt.Fprintln(conn, cmd); err != nil {
+        return nil, fmt.Errorf("failed to send command: %w", err)
+    }
+
+    // read all lines
+    scanner := bufio.NewScanner(conn)
+    var lines []string
+    for scanner.Scan() {
+        lines = append(lines, scanner.Text())
+    }
+
+    if err := scanner.Err(); err != nil {
+        return lines, fmt.Errorf("scanner error: %w", err)
+    }
+
+    return lines, nil
+} // func sendIPCCommand(cmd string) ([]string, error) {
 
 
 
@@ -1479,7 +2132,7 @@ func sendClientCommand(cmd string) error {
       500*time.Millisecond,
     ); err == nil {
       c.Close()
-      log.Printf("[clientDo] tcp usable: %s:%d", daemonIP, daemonPort)
+      if verbose { log.Printf("[clientDo] tcp usable: %s:%d", daemonIP, daemonPort); }
       useTCP = true
     } else {
       log.Printf("[clientDo] neither user socket nor tcp usable")
@@ -1505,7 +2158,7 @@ func sendClientCommand(cmd string) error {
       500*time.Millisecond,
     ); err == nil {
       c.Close()
-      log.Printf("[clientDo] tcp usable: %s:%d", daemonIP, daemonPort)
+      if verbose { log.Printf("[clientDo] tcp usable: %s:%d", daemonIP, daemonPort); }
       useTCP = true
     } else {
       log.Printf("[clientDo] tcp unusable: %v", err)
@@ -1576,100 +2229,212 @@ func sendClientCommand(cmd string) error {
 }
 
 
-// handleTCP handles incoming TCP connections, validating and forwarding commands
-func handleTCP(conn net.Conn) {
-  defer conn.Close()
-  scanner := bufio.NewScanner(conn)
+//// handleTCP handles incoming TCP connections, validating and forwarding commands
+//func handleTCP(conn net.Conn) {
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//
+//  if scanner.Scan() {
+//    line := strings.TrimSpace(scanner.Text())
+//    log.Printf("Received raw command line from %s: %s", conn.RemoteAddr(), line)
+//
+//    // Split by commas for multiple commands
+//    cmds := strings.Split(line, ",")
+//    for _, cmd := range cmds {
+//      cmd = strings.TrimSpace(cmd)
+//      if cmd == "" {
+//        continue
+//      }
+//
+//      // First word is the verb
+//      fields := strings.Fields(cmd)
+//      if len(fields) == 0 {
+//        continue
+//      }
+//
+//      verb := strings.ToLower(fields[0])
+//      args := fields[1:]
+//
+////      if !allowed[verb] {
+////        fmt.Fprintf(conn, "Unknown command: %s\n", verb)
+////        log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), verb)
+////        continue
+////      }
+//
+//      switch verb {
+//      case "status":
+//        sendStatus(conn)
+//
+//      default:
+//        // Reassemble command with args for IPC
+//        fullCmd := verb
+//        if len(args) > 0 {
+//          fullCmd += " " + strings.Join(args, " ")
+//        }
+//
+////        if err := sendIPCCommand(fullCmd); err != nil {
+////          fmt.Fprintf(conn, "Error executing command: %v\n", err)
+////          log.Printf("IPC command error for '%s' from %s: %v", fullCmd, conn.RemoteAddr(), err)
+////        } else {
+////          fmt.Fprintln(conn, "OK")
+////          log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
+//          lines, err := sendIPCCommand(fullCmd)
+//          if err != nil {
+//            fmt.Fprintf(conn, "Error executing command: %v\n", err)
+//            log.Printf("IPC command error for '%s' from %s: %v", fullCmd, conn.RemoteAddr(), err)
+//          } else {
+//            for _, line := range lines {
+//              fmt.Fprintln(conn, line)
+//            }
+//            log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
+//          }
+//        }
+//      }
+//    }
+//  }
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
+//  }
+//} // func handleTCP(conn net.Conn)
 
-  if scanner.Scan() {
-    line := strings.TrimSpace(scanner.Text())
-    log.Printf("Received raw command line from %s: %s", conn.RemoteAddr(), line)
 
-    // Split by commas for multiple commands
-    cmds := strings.Split(line, ",")
-    for _, cmd := range cmds {
-      cmd = strings.TrimSpace(cmd)
-      if cmd == "" {
-        continue
-      }
+//func handleTCP(conn net.Conn) {
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//
+//  for scanner.Scan() {
+//    line := scanner.Text()
+//    if line == "" {
+//      continue
+//    }
+//
+//    parts := strings.Fields(line)
+//    if len(parts) == 0 {
+//      continue
+//    }
+//
+//    verb := parts[0]
+//    args := parts[1:]
+//
+//    // Reassemble command for IPC
+//    fullCmd := verb
+//    if len(args) > 0 {
+//      fullCmd += " " + strings.Join(args, " ")
+//    }
+//
+//    // Send to daemon via UDS
+//    udsConn, err := net.Dial("unix", socketPath)
+//    if err != nil {
+//      fmt.Fprintf(conn, "Error connecting to daemon: %v\n", err)
+//      log.Printf("TCP client %s connection error: %v", conn.RemoteAddr(), err)
+//      continue
+//    }
+//
+//    fmt.Fprintln(udsConn, fullCmd)
+//
+//    var lines []string
+//    udsScanner := bufio.NewScanner(udsConn)
+//    for udsScanner.Scan() {
+//      lines = append(lines, udsScanner.Text())
+//    }
+//    udsConn.Close()
+//
+//    if err := udsScanner.Err(); err != nil {
+//      fmt.Fprintf(conn, "Error reading response: %v\n", err)
+//      log.Printf("TCP client %s read error for '%s': %v", conn.RemoteAddr(), fullCmd, err)
+//      continue
+//    }
+//
+//    // Write all lines back to TCP client
+//    for _, l := range lines {
+//      fmt.Fprintln(conn, l)
+//    }
+//
+//    log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
+//  }
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("TCP client %s scanner error: %v", conn.RemoteAddr(), err)
+//  }
+//} // func handleTCP
 
-      // First word is the verb
-      fields := strings.Fields(cmd)
-      if len(fields) == 0 {
-        continue
-      }
 
-      verb := strings.ToLower(fields[0])
-      args := fields[1:]
+//func handleTCP(conn net.Conn) {
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//
+//  for scanner.Scan() {
+//    line := scanner.Text()
+//    if line == "" {
+//      continue
+//    }
+//
+//    parts := strings.Fields(line)
+//    if len(parts) == 0 {
+//      continue
+//    }
+//
+//    verb := parts[0]
+//    args := parts[1:]
+//
+//    // Reassemble command for IPC
+//    fullCmd := verb
+//    if len(args) > 0 {
+//      fullCmd += " " + strings.Join(args, " ")
+//    }
+//
+//    // Send to daemon via ipcHandler directly
+//    responses := ipcHandler(fullCmd) // returns []string
+//
+//    // Write all lines back to TCP client
+//    for _, l := range responses {
+//      fmt.Fprintln(conn, l)
+//    }
+//
+//    log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
+//  }
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("TCP client %s scanner error: %v", conn.RemoteAddr(), err)
+//  }
+//} // func handleTCP
 
-      if !allowed[verb] {
-        fmt.Fprintf(conn, "Unknown command: %s\n", verb)
-        log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), verb)
-        continue
-      }
 
-      switch verb {
-      case "status":
-        sendStatus(conn)
-
-      default:
-        // Reassemble command with args for IPC
-        fullCmd := verb
-        if len(args) > 0 {
-          fullCmd += " " + strings.Join(args, " ")
-        }
-
-        if err := sendIPCCommand(fullCmd); err != nil {
-          fmt.Fprintf(conn, "Error executing command: %v\n", err)
-          log.Printf("IPC command error for '%s' from %s: %v", fullCmd, conn.RemoteAddr(), err)
-        } else {
-          fmt.Fprintln(conn, "OK")
-          log.Printf("Executed command '%s' from %s", fullCmd, conn.RemoteAddr())
-        }
-      }
-    }
-  }
-
-  if err := scanner.Err(); err != nil {
-    log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
-  }
-} // func handleTCP(conn net.Conn) {
-
-
-// handleClient handles a single client connection, validating and forwarding commands
-func handleClient(conn net.Conn) {
-  defer conn.Close()
-  scanner := bufio.NewScanner(conn)
-  if scanner.Scan() {
-    cmd := strings.TrimSpace(scanner.Text())
-    log.Printf("Received command from %s: %s", conn.RemoteAddr(), cmd)
-
-    if !allowed[cmd] {
-      fmt.Fprintf(conn, "[handleClient] Unknown command: %s\n", cmd)
-      log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), cmd)
-      return
-    }
-
-    switch cmd {
-    case "status":
-      sendStatus(conn)
-      return
-
-    default:
-      if err := sendIPCCommand(cmd); err != nil {
-        fmt.Fprintf(conn, "Error executing command: %v\n", err)
-        log.Printf("IPC command error for '%s' from %s: %v", cmd, conn.RemoteAddr(), err)
-      } else {
-        fmt.Fprintln(conn, "The OK actually came from handleClient!")
-        log.Printf("Executed command '%s' from %s", cmd, conn.RemoteAddr())
-      }
-    }
-  }
-
-  if err := scanner.Err(); err != nil {
-    log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
-  }
-} // handleClient(conn net.Conn)
+//// handleClient handles a single client connection, validating and forwarding commands
+//func handleClient(conn net.Conn) {
+//  defer conn.Close()
+//  scanner := bufio.NewScanner(conn)
+//  if scanner.Scan() {
+//    cmd := strings.TrimSpace(scanner.Text())
+//    log.Printf("Received command from %s: %s", conn.RemoteAddr(), cmd)
+//
+//    if !allowed[cmd] {
+//      fmt.Fprintf(conn, "[handleClient] Unknown command: %s\n", cmd)
+//      log.Printf("Unknown command from %s: %s", conn.RemoteAddr(), cmd)
+//      return
+//    }
+//
+//    switch cmd {
+//    case "status":
+//      sendStatus(conn)
+//      return
+//
+//    default:
+//      if err := sendIPCCommand(cmd); err != nil {
+//        fmt.Fprintf(conn, "Error executing command: %v\n", err)
+//        log.Printf("IPC command error for '%s' from %s: %v", cmd, conn.RemoteAddr(), err)
+//      } else {
+//        fmt.Fprintln(conn, "The OK actually came from handleClient!")
+//        log.Printf("Executed command '%s' from %s", cmd, conn.RemoteAddr())
+//      }
+//    }
+//  }
+//
+//  if err := scanner.Err(); err != nil {
+//    log.Printf("Connection error from %s: %v", conn.RemoteAddr(), err)
+//  }
+//} // handleClient(conn net.Conn)
 
 
 // btoi converts a bool to int (true=1, false=0)

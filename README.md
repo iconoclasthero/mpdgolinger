@@ -48,16 +48,21 @@ strip mpdgolinger
 
 An example systemd unit file is included for reference.
 
-Optional flags:
+Optional flags/config file options:
 
 ```
-  --mpdsocket=<path>  : MPD server socket, (e.g., `/run/mpd/socket`)
-  --mpdhost=<host>    : MPD server host (default localhost)
-  --mpdport=<port>    : MPD server TCP port (default 6600)
-  --state=<path>      : Optional path for persistent state file
+  --config=<path>     : Path to config file; values overridden by flags  
+  --daemon            : Launch mpdgolinger in daemon mode                [daemon only]
+  --mpdsocket=<path>  : MPD server socket, (e.g., `/run/mpd/socket`)     [daemon only]
+  --mpdhost=<host>    : MPD server host (default localhost)              [daemon only]
+  --mpdport=<port>    : MPD server TCP port (default 6600)               [daemon only]
+  --listenip=<host>   : IPC listen address                               [daemon only]
+  --listenport=<port> : IPC listen port                                  [daemon only]
   --socket=<path>     : IPC socket path
-  --listen=<host>     : IPC listen address
-  --listenport=<port> : IPC listen port
+  --state=<path>      : Optional path for persistent state file
+  --daemonip=<host>   : Connect to daemon listening at address           [client only]
+  --daemonport=<port> : Connect to daemon listening on port              [client only]
+  --execpost=<path>   : File/commandto execute after client              [client only]
   --version           : Prints version and mpd protocol/binary versions
   --help              : Prints help
 ```
@@ -77,6 +82,7 @@ Run commands against the running daemon:
 ./mpdgolinger block[limit]     # turns off the block limit override (as does 0)
 ./mpdgolinger next             # skips to the next song and block
 ./mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
+./mpdgolinger verbose on       # turns daemon verbose logging on
 ./mpdgolinger quit             # exits daemon
 ```
 
