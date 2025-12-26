@@ -62,9 +62,15 @@ type derivedState struct {
 
 const (
   defaultMPDhost = "localhost"
-  defaultMPDpost = 6600
+  defaultMPDport = 6600
   defaultMPDsocket = "/run/mpd/socket"
-  stateDefault = "/var/lib/mpd/mpdlinger/mpdgolinger.state"
+  defaultState = "/var/lib/mpd/mpdlinger/mpdgolinger.state"
+  defaultListenIP = "0.0.0.0"
+  defaultListenPort = 6599
+  defaultSocketPath = "/var/lib/mpd/mpdlinger/mpdgolinger.sock"
+  defaultDaemonIP = "localhost"
+  defaultDaemonPort = 6559
+  defaultMPDpath = "/usr/bin/mpd"
 ) // const
 
 
@@ -85,15 +91,24 @@ var (
   stateEnabled bool
 
   // MPD connection parameteres
-  mpdHost string = "localhost"
-  mpdPort int    = 6600
-  mpdSocket string = "/run/mpd/socket"
+  mpdHost string = ""
+  mpdPort int    = 0
+  mpdSocket string = ""
+  mpdPath = defaultMPDpath
+//  mpdHost string = "localhost"
+//  mpdPort int    = 6600
+//  mpdSocket string = "/run/mpd/socket"
   // IPC socket
-  socketPath = "/var/lib/mpd/mpdlinger/mpdgolinger.sock"
+  socketPath = defaultSocketPath
 
-  // TCP listener for remote client connections (placeholders)
-  listenIP string
+  // TCP listener for TCP client connections
+  listenIP   string
   listenPort int
+  // Client flags for TCP client connections
+  daemonIP   string
+  daemonPort int
+
+  execPost   string
 
   daemonMode bool
 
@@ -183,69 +198,243 @@ func parseConfig(data string) map[string]string {
 
 // mpdDo runs a function with a short-lived MPD client and logs errors
 func mpdDo(fn func(*mpd.Client) error, ctx string) error {
-  var client *mpd.Client
-  var err error
+    var client *mpd.Client
+    var err error
 
-  useSocket := false
-  useTCP := false
+    useSocket := false
+    useTCP := false
 
-  // 1. User defined both TCP and socket
-  if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
-    if _, err = os.Stat(mpdSocket); err == nil {
-      useSocket = true
-    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
-      useTCP = true
+    // 1. User defined TCP + socket → prefer socket, fallback TCP
+    if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
+        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+            conn.Close()
+            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+            useSocket = true
+        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+            useTCP = true
+        } else {
+            log.Printf("[mpdDo] neither user socket nor tcp usable")
+        }
     }
-  }
 
-  // 2. Only socket defined
-  if !useTCP && !useSocket && mpdSocket != "" {
-    if _, err = os.Stat(mpdSocket); err == nil {
-      useSocket = true
+    // 2. Only socket defined
+    if !useSocket || !useTCP && mpdSocket != "" {
+        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+            conn.Close()
+            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+            useSocket = true
+        } else {
+            log.Printf("[mpdDo] socket unusable: %v", err)
+        }
     }
-  }
 
-  // 3. Only TCP defined
-  if !useTCP && !useSocket && mpdHost != "" && mpdPort != 0 {
-    if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
-      useTCP = true
+    // 3. Only TCP defined
+    if !useSocket || !useTCP && mpdHost != "" && mpdPort != 0 {
+        if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+            useTCP = true
+        } else {
+            log.Printf("[mpdDo] tcp unusable: %v", err)
+        }
     }
-  }
 
-  // 4. Fallback to defaults
-  if !useTCP && !useSocket {
-    if _, err = os.Stat(defaultMPDsocket); err == nil {
-      useSocket = true
-    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDpost)); err == nil {
-      useTCP = true
-    } else {
-      return fmt.Errorf("mpd: no connection available")
+    // 4. Fallback defaults
+    if !useSocket && !useTCP {
+        if conn, err := net.DialTimeout("unix", defaultMPDsocket, 500*time.Millisecond); err == nil {
+            conn.Close()
+            log.Printf("[mpdDo] default socket usable: %s", defaultMPDsocket)
+            mpdSocket = defaultMPDsocket
+            useSocket = true
+        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDport)); err == nil {
+            log.Printf("[mpdDo] default tcp usable: %s:%d", defaultMPDhost, defaultMPDport)
+            useTCP = true
+        } else {
+            return fmt.Errorf("mpdDo: no usable MPD connection")
+        }
     }
-  }
 
-  // Connect via socket if flagged
-  if useSocket {
-    client, err = mpd.Dial("unix", mpdSocket)
-    if err != nil {
-      return fmt.Errorf("mpd: failed to connect via socket: %v", err)
+    // Final connect (socket happens here once)
+    if useSocket {
+        client, err = mpd.Dial("unix", mpdSocket)
+        if err != nil {
+            return fmt.Errorf("mpdDo: socket connect failed: %v", err)
+        }
     }
-  }
 
-  // Wrap execution in a timeout
-  done := make(chan error, 1)
-  go func() {
-    done <- fn(client)
-  }()
+    // Timeout-wrapped execution
+    done := make(chan error, 1)
+    go func() {
+        done <- fn(client)
+    }()
 
-  select {
-  case err := <-done:
-    client.Close()
-    return err
-  case <-time.After(3 * time.Second):
-    client.Close()
-    return fmt.Errorf("mpd: command timed out in context %s", ctx)
-  }
-} // func mpdDo(fn func(*mpd.Client) error, ctx string) error
+    select {
+    case err := <-done:
+        client.Close()
+        return err
+    case <-time.After(3 * time.Second):
+        client.Close()
+        return fmt.Errorf("mpdDo: timeout (%s)", ctx)
+    }
+}
+
+
+//// mpdDo runs a function with a short-lived MPD client and logs errors
+//func mpdDo(fn func(*mpd.Client) error, ctx string) error {
+//    var client *mpd.Client
+//    var err error
+//
+//    useSocket := false
+//    useTCP := false
+//
+//    // 1. User defined TCP + socket → prefer socket, fallback TCP
+//    if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
+////        if _, err = dialUnix(mpdSocket); err == nil {
+//  if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+//          log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+//            useSocket = true
+//        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+//            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+//            useTCP = true
+//        } else {
+//            log.Printf("[mpdDo] neither user socket nor tcp usable")
+//        }
+//    }
+//
+//    // 2. Only socket defined
+//    if !useSocket && !useTCP && mpdSocket != "" {
+//if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+////        if _, err = dialUnix(mpdSocket); err == nil {
+//            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+//            useSocket = true
+//        } else {
+//            log.Printf("[mpdDo] socket unusable: %v", err)
+//        }
+//    }
+//
+//    // 3. Only TCP defined
+//    if !useSocket && !useTCP && mpdHost != "" && mpdPort != 0 {
+//        if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+//            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+//            useTCP = true
+//        } else {
+//            log.Printf("[mpdDo] tcp unusable: %v", err)
+//        }
+//    }
+//
+//    // 4. Fallback defaults
+//    if !useSocket && !useTCP {
+//  if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+////      if _, err = dialUnix(defaultMPDsocket); err == nil {
+//            log.Printf("[mpdDo] default socket usable: %s", defaultMPDsocket)
+//            mpdSocket = defaultMPDsocket
+//            useSocket = true
+//        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDport)); err == nil {
+//            log.Printf("[mpdDo] default tcp usable: %s:%d", defaultMPDhost, defaultMPDport)
+//            useTCP = true
+//        } else {
+//            return fmt.Errorf("mpdDo: no usable MPD connection")
+//        }
+//    }
+//
+//    // Final connect (socket happens here, once)
+//    if useSocket {
+//        client, err = mpd.Dial("unix", mpdSocket)
+//        if err != nil {
+//            return fmt.Errorf("mpdDo: socket connect failed: %v", err)
+//        }
+//    }
+//
+//    // Timeout-wrapped execution
+//    done := make(chan error, 1)
+//    go func() {
+//        done <- fn(client)
+//    }()
+//
+//    select {
+//    case err := <-done:
+//        client.Close()
+//        return err
+//    case <-time.After(3 * time.Second):
+//        client.Close()
+//        return fmt.Errorf("mpdDo: timeout (%s)", ctx)
+//    }
+//}
+//
+
+// mpdDo runs a function with a short-lived MPD client and logs errors
+//func mpdDo(fn func(*mpd.Client) error, ctx string) error {
+//  var client *mpd.Client
+//  var err error
+//
+//  useSocket := false
+//  useTCP := false
+//
+//  // 1. User defined both TCP and socket
+//  if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
+//    if client, err := mpd.Dial(socketPath); err == nil {
+////    if _, err = os.Stat(mpdSocket); err == nil {
+//      log.Printf("[mpdDo] Connected via socket %s", mpdSocket)
+//      useSocket = true
+//    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+//      log.Printf("[mpdDo] Connected via tcp: %s:%d", mpdSocket, mpdPort)
+//      useTCP = true
+//    }
+//  }
+//
+//  // 2. Only socket defined
+//  if !useTCP && !useSocket && mpdSocket != "" {
+//    if client, err := mpd.Dial(socketPath); err == nil {
+////        return conn
+//      useSocket = true
+//    }
+//    // socket exists but unusable → fall through
+////    if _, err = os.Stat(mpdSocket); err == nil {
+////      useSocket = true
+////    }
+//  }
+//
+//  // 3. Only TCP defined
+//  if !useTCP && !useSocket && mpdHost != "" && mpdPort != 0 {
+//    if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+//      useTCP = true
+//    }
+//  }
+//
+//  // 4. Fallback to defaults
+//  if !useTCP && !useSocket {
+//    if _, err = os.Stat(defaultMPDsocket); err == nil {
+//      useSocket = true
+//    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDpost)); err == nil {
+//      useTCP = true
+//    } else {
+//      return fmt.Errorf("mpd: no connection available")
+//    }
+//  }
+//
+////  // Connect via socket if flagged
+////  if useSocket {
+////    client, err = mpd.Dial("unix", mpdSocket)
+////    if err != nil {
+////      return fmt.Errorf("mpd: failed to connect via socket: %v", err)
+////    }
+////  }
+//
+//  // Wrap execution in a timeout
+//  done := make(chan error, 1)-
+//  go func() {
+//    done <- fn(client)
+//  }()
+//
+//  select {
+//  case err := <-done:
+//    client.Close()
+//    return err
+//  case <-time.After(3 * time.Second):
+//    client.Close()
+//    return fmt.Errorf("mpd: command timed out in context %s", ctx)
+//  }
+//} // func mpdDo(fn func(*mpd.Client) error, ctx string) error
 
 
 //// mpdDo runs a function with a short-lived MPD client and logs errors
@@ -261,27 +450,27 @@ func mpdDo(fn func(*mpd.Client) error, ctx string) error {
 //} // func mpdDo(fn func(c *mpd.Client) error, src string) error
 
 
-// mpdProtocolVersion returns the protocol version of the running MPD instance
-func mpdProtocolVersion() string {
-  var (
-    c   *mpd.Client
-    err error
-  )
-
-  if mpdSocket != "" {
-  c, err = mpd.Dial("unix", mpdSocket)
-  } else {
-    addr := fmt.Sprintf("%s:%d", mpdHost, mpdPort)
-    c, err = mpd.Dial("tcp", addr)
-  }
-
-  if err != nil {
-    return "unavailable"
-  }
-  defer c.Close()
-
-  return c.Version()
-} // func mpdProtocolVersion() string {
+//// mpdProtocolVersion returns the protocol version of the running MPD instance
+//func mpdProtocolVersion() string {
+//  var (
+//    c   *mpd.Client
+//    err error
+//  )
+//
+//  if mpdSocket != "" {
+//  c, err = mpd.Dial("unix", mpdSocket)
+//  } else {
+//    addr := fmt.Sprintf("%s:%d", mpdHost, mpdPort)
+//    c, err = mpd.Dial("tcp", addr)
+//  }
+//
+//  if err != nil {
+//    return "unavailable"
+//  }
+//  defer c.Close()
+//
+//  return c.Version()
+//} // func mpdProtocolVersion() string {
 
 
 // mpdBinaryVersion returns the binary version of MPD from the executable path
@@ -317,7 +506,7 @@ func setRandom(on bool, src string) {
     return c.Random(on)
   }, src)
   log.Printf("STATE CHANGE: [%s] mpd random=%v", src, on)
-} // } // func mpdBinaryVersion(path string) string
+} // func setRandom(on bool, src string)
 
 
 // mpdNext skips to the next track in MPD and logs the action
@@ -905,6 +1094,60 @@ func ipcHandler(conn net.Conn) {
       log.Printf("[IPC] Verbose mode turned %s", val)
       fmt.Fprintln(conn, "Verbose mode "+val)
 
+    case "version":
+      // helper: writes to log and client if clientConn is non-nil
+      writeOut := func(msg string) {
+        fmt.Println(msg) // always log
+        fmt.Fprintln(conn, msg)
+//        if clientConn != nil { // replace with actual client connection if available
+//          fmt.Fprintln(clientConn, msg)
+//        }
+      }
+
+      writeOut(fmt.Sprintf("mpdgolinger daemon   %s", version))
+
+      err := mpdDo(func(c *mpd.Client) error {
+        proto := c.Version()
+        writeOut(fmt.Sprintf("mpd protocol version %s", proto))
+        return nil
+      }, "version")
+
+      if err != nil {
+        writeOut("mpd protocol version unavailable")
+      }
+
+      // local mpd binary version
+      cmd := exec.Command(mpdPath, "--version")
+      stdout, err := cmd.StdoutPipe()
+      if err != nil {
+        writeOut(fmt.Sprintf("failed to get %s version: %v", mpdPath, err))
+        break
+      }
+
+      if err = cmd.Start(); err != nil {
+        writeOut(fmt.Sprintf("failed to start %s: %v", mpdPath, err))
+        break
+      }
+
+      scanner := bufio.NewScanner(stdout)
+      if scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+
+        // regex match Music Player Daemon X.Y.Z (vX.Y.Z)
+        re := regexp.MustCompile(`^Music Player Daemon .* \(v([0-9]+\.[0-9]+\.[0-9]+)\)$`)
+        matches := re.FindStringSubmatch(line)
+        verStr := line
+        if len(matches) == 2 {
+          verStr = matches[1]
+        }
+
+        writeOut(fmt.Sprintf("%s version %s", mpdPath, verStr))
+      }
+
+      _ = cmd.Wait()
+
+      return
+
     case "exit", "quit":
       log.Printf("IPC: received %s, shutting down", cmd)
       fmt.Fprintln(conn, "OK")
@@ -1087,8 +1330,15 @@ func clientCommandHandler(args []string) error {
            "toggle",
            "quit",
            "exit":
-          batch = append(batch, tok)
-          i++
+        batch = append(batch, tok)
+        i++
+
+
+      case "version":
+        batch = append(batch, tok)
+        i++
+        fmt.Printf("\nmpdgolinger client   %s\n", version)
+
 
       case "limit", "blocklimit", "block":
         if tok == "block" {
@@ -1129,67 +1379,201 @@ func clientCommandHandler(args []string) error {
     // ---- phase 3: send ----
     cmd := strings.Join(batch, ", ")
     if verbose { log.Printf("[client] final send string: %q", cmd) }
-    return sendClientCommand(cmd)
+//    return sendClientCommand(cmd)
+
+
+	// send the command first
+	err := sendClientCommand(cmd)
+	if err != nil {
+    return err
+	}
+
+	// post-exec action (exec replaces the current process)
+	if execPost != "" {
+    log.Printf("[execPost] executing %s", execPost)
+    syscall.Exec(execPost, []string{execPost}, os.Environ())
+	}
+
+	return nil
+
 } // func clientCommandHandler(args []string)
 
 
-// sendClientCommand sends a string command to daemon via IPC or TCP
+//// sendClientCommand sends a string command to daemon via IPC or TCP
+//func sendClientCommand(cmd string) error {
+//    // prefer IPC socket if set
+//    if verbose {
+//      log.Printf("[sendClientCommand] Connecting to daemon via socket at %s", socketPath)
+//    }
+//
+//    if socketPath != "" && socketPath != "none" {
+//        log.Printf("Using IPC socket %s", socketPath)
+//        return sendIPCCommand(cmd)
+//    }
+//
+//
+//    // fall back to TCP if listenIP/Port are configured
+//    if verbose {
+//      log.Printf("[sendClientCommand] listenIP:listenPort %s:%d", listenIP, listenPort)
+//    }
+//
+//    if listenIP != "" && listenPort != 0 {
+//      addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
+//      log.Printf("Connecting to daemon via TCP at %s", addr)
+//
+//      conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+//      if err != nil {
+//        log.Printf("TCP connect failed: %v", err)
+//        return fmt.Errorf("failed to connect to daemon at %s: %w", addr, err)
+//      }
+//      defer conn.Close()
+//
+//      _ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+//
+//      log.Printf("Sending command: %s", cmd)
+//      _, err = fmt.Fprintf(conn, "%s\n", cmd)
+//      if err != nil {
+//        log.Printf("Failed to send command: %v", err)
+//        return fmt.Errorf("failed to send command: %w", err)
+//      }
+//
+//      scanner := bufio.NewScanner(conn)
+//      for scanner.Scan() {
+//        line := scanner.Text()
+//        if verbose {
+//          log.Printf("Received response line: %s", line)
+//        }
+//        fmt.Println(line)
+//      }
+//      if err := scanner.Err(); err != nil {
+//        log.Printf("Failed to read response: %v", err)
+//        return fmt.Errorf("failed to read response: %w", err)
+//      }
+//
+//
+//      return nil
+//    }
+//
+//    return fmt.Errorf("no IPC socket or TCP listener configured")
+//} // func sendClientCommand(cmd string) error
+
+
 func sendClientCommand(cmd string) error {
-    // prefer IPC socket if set
-    if verbose {
-      log.Printf("[sendClientCommand] Connecting to daemon via socket at %s", socketPath)
+  var (
+    conn net.Conn
+    err  error
+  )
+
+  useSocket := false
+  useTCP := false
+
+  // 1. User defined socket + daemon TCP → prefer socket, fallback TCP
+  if socketPath != "" && daemonIP != "" && daemonPort != 0 {
+    if c, err := net.DialTimeout("unix", socketPath, 500*time.Millisecond); err == nil {
+      c.Close()
+      if verbose { log.Printf("[clientDo] socket usable: %s", socketPath); }
+      useSocket = true
+    } else if c, err := net.DialTimeout(
+      "tcp",
+      fmt.Sprintf("%s:%d", daemonIP, daemonPort),
+      500*time.Millisecond,
+    ); err == nil {
+      c.Close()
+      log.Printf("[clientDo] tcp usable: %s:%d", daemonIP, daemonPort)
+      useTCP = true
+    } else {
+      log.Printf("[clientDo] neither user socket nor tcp usable")
     }
+  }
 
-    if socketPath != "" && socketPath != "none" {
-        log.Printf("Using IPC socket %s", socketPath)
-        return sendIPCCommand(cmd)
+  // 2. Only socket defined
+  if !useSocket && socketPath != "" {
+    if c, err := net.DialTimeout("unix", socketPath, 500*time.Millisecond); err == nil {
+      c.Close()
+      log.Printf("[clientDo] socket usable: %s", socketPath)
+      useSocket = true
+    } else {
+      log.Printf("[clientDo] socket unusable: %v", err)
     }
+  }
 
-
-    // fall back to TCP if listenIP/Port are configured
-    if verbose {
-      log.Printf("[sendClientCommand] listenIP:listenPort %s:%d", listenIP, listenPort)
+  // 3. Only TCP defined
+  if !useSocket && !useTCP && daemonIP != "" && daemonPort != 0 {
+    if c, err := net.DialTimeout(
+      "tcp",
+      fmt.Sprintf("%s:%d", daemonIP, daemonPort),
+      500*time.Millisecond,
+    ); err == nil {
+      c.Close()
+      log.Printf("[clientDo] tcp usable: %s:%d", daemonIP, daemonPort)
+      useTCP = true
+    } else {
+      log.Printf("[clientDo] tcp unusable: %v", err)
     }
+  }
 
-    if listenIP != "" && listenPort != 0 {
-      addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
-      log.Printf("Connecting to daemon via TCP at %s", addr)
-
-      conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-      if err != nil {
-        log.Printf("TCP connect failed: %v", err)
-        return fmt.Errorf("failed to connect to daemon at %s: %w", addr, err)
-      }
-      defer conn.Close()
-
-      _ = conn.SetDeadline(time.Now().Add(3 * time.Second))
-
-      log.Printf("Sending command: %s", cmd)
-      _, err = fmt.Fprintf(conn, "%s\n", cmd)
-      if err != nil {
-        log.Printf("Failed to send command: %v", err)
-        return fmt.Errorf("failed to send command: %w", err)
-      }
-
-      scanner := bufio.NewScanner(conn)
-      for scanner.Scan() {
-        line := scanner.Text()
-        if verbose {
-          log.Printf("Received response line: %s", line)
-        }
-        fmt.Println(line)
-      }
-      if err := scanner.Err(); err != nil {
-        log.Printf("Failed to read response: %v", err)
-        return fmt.Errorf("failed to read response: %w", err)
-      }
-
-
-      return nil
+  // 4. Fallback defaults
+  if !useSocket && !useTCP {
+    if c, err := net.DialTimeout("unix", defaultSocketPath, 500*time.Millisecond); err == nil {
+      c.Close()
+      socketPath = defaultSocketPath
+      log.Printf("[clientDo] default socket usable: %s", defaultSocketPath)
+      useSocket = true
+    } else if c, err := net.DialTimeout(
+      "tcp",
+      fmt.Sprintf("%s:%d", defaultDaemonIP, defaultDaemonPort),
+      500*time.Millisecond,
+    ); err == nil {
+      c.Close()
+      daemonIP = defaultDaemonIP
+      daemonPort = defaultDaemonPort
+      log.Printf("[clientDo] default tcp usable: %s:%d", daemonIP, daemonPort)
+      useTCP = true
+    } else {
+      return fmt.Errorf("sendClientCommand: no usable daemon connection")
     }
+  }
 
-    return fmt.Errorf("no IPC socket or TCP listener configured")
-} // func sendClientCommand(cmd string) error
+  // ---- final connect ----
+  if useSocket {
+    conn, err = net.Dial("unix", socketPath)
+    if err != nil {
+      return fmt.Errorf("sendClientCommand: socket connect failed: %v", err)
+    }
+  } else {
+    conn, err = net.Dial(
+      "tcp",
+      fmt.Sprintf("%s:%d", daemonIP, daemonPort),
+    )
+    if err != nil {
+      return fmt.Errorf("sendClientCommand: tcp connect failed: %v", err)
+    }
+  }
+  defer conn.Close()
+
+  _ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+  // ---- send ----
+  if verbose {
+    log.Printf("[clientDo] sending: %q", cmd)
+  }
+
+  if _, err := fmt.Fprintf(conn, "%s\n", cmd); err != nil {
+    return fmt.Errorf("sendClientCommand: write failed: %v", err)
+  }
+
+  // ---- receive ----
+  scanner := bufio.NewScanner(conn)
+  for scanner.Scan() {
+    fmt.Println(scanner.Text())
+  }
+
+  if err := scanner.Err(); err != nil {
+    return fmt.Errorf("sendClientCommand: read failed: %v", err)
+  }
+
+  return nil
+}
 
 
 // handleTCP handles incoming TCP connections, validating and forwarding commands
@@ -1331,7 +1715,9 @@ func main() {
       logPath      string
   )
 
-
+  flag.StringVar(&daemonIP, "daemonip", "", "client: daemon IP to connect to")
+  flag.IntVar(&daemonPort, "daemonport", 0, "client: daemon port to connect to")
+  flag.StringVar(&execPost, "execpost", "", "post-execution action")
   flag.StringVar(&logPath, "log", "", "write logs to file instead of stderr")
   flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
   flag.StringVar(&configFlag, "config", "", "path to config file")
@@ -1343,7 +1729,7 @@ func main() {
   flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
   flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
   flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
-  flag.StringVar(&listenIP, "listen", "", "Daemon listen IP")
+  flag.StringVar(&listenIP, "listenip", "", "Daemon listen IP")
   flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port")
   flag.Func("state", "Write state file to <path>", func(v string) error {
        stateEnabled = true
@@ -1392,10 +1778,10 @@ func main() {
   }
 
   if listenIP == "" {
-    if v, ok := kv["listen"]; ok && v != "" {
+    if v, ok := kv["listenip"]; ok && v != "" {
       listenIP = v
     } else {
-      listenIP = "0.0.0.0"
+      listenIP = defaultListenIP
     }
   }
 
@@ -1405,9 +1791,29 @@ func main() {
         listenPort = n
       }
     } else {
-      listenPort = 6599
+      listenPort = defaultListenPort
     }
   }
+
+
+  if daemonIP == "" {
+    if v, ok := kv["daemonip"]; ok && v != "" {
+      daemonIP = v
+    } else {
+      daemonIP = defaultDaemonIP
+    }
+ }
+
+  if daemonPort == 0 {
+    if v, ok := kv["daemonport"]; ok && v != "" {
+      if n, err := strconv.Atoi(v); err == nil {
+        daemonPort = n
+      }
+    } else {
+      daemonPort = defaultDaemonPort
+    }
+  }
+
 
   if v, ok := kv["state"]; ok && v != "" && statePath == "" {
     stateEnabled = true
@@ -1420,6 +1826,12 @@ func main() {
       state.baseLimit = n
       defaultLimit = n
     }
+  }
+
+  if v, ok := kv["execPost"]; ok && v != "" && execPost == "" {
+    execPost = v
+  } else if v, ok := kv["execpost"]; ok && v != "" && execPost == "" {
+    execPost = v
   }
 
   if v, ok := kv["log"]; ok && v != "" && logPath == "" {
@@ -1458,23 +1870,29 @@ func main() {
   // ------------------------------------------------------------------
   // Version / help
   // ------------------------------------------------------------------
+//  if showVersion {
+//    fmt.Println()
+//    fmt.Println(" mpdgolinger version:", version)
+//    fmt.Println("mpd protocol version:", mpdProtocolVersion())
+//    mpdPath := "/usr/bin/mpd"
+//    fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+//    fmt.Println()
+//    return
+//  }
   if showVersion {
-    fmt.Println()
-    fmt.Println(" mpdgolinger version:", version)
-    fmt.Println("mpd protocol version:", mpdProtocolVersion())
-    mpdPath := "/usr/bin/mpd"
-    fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
-    fmt.Println()
-    return
+    fmt.Printf("\nmpdgolinger binary version %s\n\n", version)
+    os.Exit(0)
   }
 
+
   if showHelp {
-    fmt.Println()
-    fmt.Println(" mpdgolinger version:", version)
-    fmt.Println("mpd protocol version:", mpdProtocolVersion())
-    mpdPath := "/usr/bin/mpd"
-    fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
-    fmt.Println()
+//    fmt.Println()
+//    fmt.Println(" mpdgolinger version:", version)
+//    fmt.Println("mpd protocol version:", mpdProtocolVersion())
+//    mpdPath := "/usr/bin/mpd"
+//    fmt.Println(mpdPath, "version:", mpdBinaryVersion(mpdPath))
+//    fmt.Println()
+    fmt.Printf("\nmpdgolinger binary version %s\n\n", version)
     fmt.Println("Usage: mpdgolinger --daemon [flags] or client subcommands")
     flag.PrintDefaults()
     return
