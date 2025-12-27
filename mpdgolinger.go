@@ -763,112 +763,93 @@ func verbProcessor(csv string) []string {
         fmt.Sprintf("lingerpid=%d", ds.PID),
       )
 
-case "mpc":
-  var st mpd.Attrs // declare outside so we can use it later
+    case "mpc":
+      var st mpd.Attrs // declare outside so we can use it later
 
-  log.Printf("IPC: received mpc command")
+      log.Printf("IPC: received mpc command")
 
-  // --- update persistent state ---
-  state.mu.Lock()
-  deriveStateLocked(state.lastSongID, state.baseLimit)
-  state.mu.Unlock()
+      // --- update persistent state ---
+      state.mu.Lock()
+      deriveStateLocked(state.lastSongID, state.baseLimit)
+      state.mu.Unlock()
 
-  // --- first batch: status + current song ---
-  // We batch these to save one round-trip to MPD
-  err := mpdDo(func(c *mpd.Client) error {
-    var err error
-    // --- MPD status ---
-    st, err = c.Status()
-    if err != nil {
-      return err
-    }
-    for k, v := range st {
-      responses = append(responses,
-        fmt.Sprintf("mpd.%s=%s", k, v),
-      )
-    }
+      // --- first batch: status + current song ---
+      // We batch these to save one round-trip to MPD
+      err := mpdDo(func(c *mpd.Client) error {
+        var err error
+        // --- MPD status ---
+        st, err = c.Status()
+        if err != nil {
+          return err
+        }
+        for k, v := range st {
+          responses = append(responses,
+            fmt.Sprintf("mpd.%s=%s", k, v),
+          )
+        }
 
-    // --- current song ---
-    cs, err := c.CurrentSong()
-    if err != nil {
-      return err
-    }
-    for k, v := range cs {
-      responses = append(responses,
-        fmt.Sprintf("current.%s=%s", k, v),
-      )
-    }
+        // --- current song ---
+        cs, err := c.CurrentSong()
+        if err != nil {
+          return err
+        }
+        for k, v := range cs {
+          responses = append(responses,
+            fmt.Sprintf("current.%s=%s", k, v),
+          )
+        }
 
-    return nil
-  }, "Status, CurrentSong") // <- command name for logging
+        return nil
+      }, "Status, CurrentSong") // <- command name for logging
 
-  if err != nil {
-    responses = append(responses,
-      fmt.Sprintf("ERR mpc failed: %v", err),
-    )
-  }
-
-  // --- extract next song index from MPD status ---
-  nidStr, ok := st["nextsong"]
-  if !ok {
-    // no next song available
-    log.Printf("mpc: no next song in status")
-    break
-  }
-
-  nextID, err := strconv.Atoi(nidStr)
-  if err != nil {
-    log.Printf("mpc: invalid nextsongid %q", nidStr)
-    break
-  }
-
-  // --- second call: get next song info using playlistindex (0-based) ---
-  // playlistinfo expects 0-indexed, nextID from status is 1-indexed
-  err = mpdDo(func(c *mpd.Client) error {
-    ne, err := c.PlaylistInfo(nextID, -1)
-    if err != nil {
-      return err
-    }
-    for _, song := range ne {
-      for k, v := range song {
+      if err != nil {
         responses = append(responses,
-          fmt.Sprintf("next.%s=%s", k, v),
+          fmt.Sprintf("ERR mpc failed: %v", err),
         )
       }
-    }
-    return nil
-  }, "PlaylistInfo nextID")
 
-  if err != nil {
-    responses = append(responses,
-      fmt.Sprintf("ERR mpc failed: %v", err),
-    )
-  }
+      // --- extract next song index from MPD status ---
+      nidStr, ok := st["nextsong"]
+      if !ok {
+        // no next song available
+        log.Printf("mpc: no next song in status")
+        break
+      }
 
-for i, line := range responses {
-  responses[i] = shellQuoteKV(line)
-}
+      nextID, err := strconv.Atoi(nidStr)
+      if err != nil {
+        log.Printf("mpc: invalid nextsongid %q", nidStr)
+        break
+      }
 
-responses = append(responses, verbProcessor("status")...)
+      // --- second call: get next song info using playlistindex (0-based) ---
+      // playlistinfo expects 0-indexed, nextID from status is 1-indexed
+      err = mpdDo(func(c *mpd.Client) error {
+        ne, err := c.PlaylistInfo(nextID, -1)
+        if err != nil {
+          return err
+        }
+        for _, song := range ne {
+          for k, v := range song {
+            responses = append(responses,
+              fmt.Sprintf("next.%s=%s", k, v),
+            )
+          }
+        }
+        return nil
+      }, "PlaylistInfo nextID")
 
-  // --- old version (3 separate calls) ---
-  /*
-  err := mpdDo(func(c *mpd.Client) error {
-    st, err := c.Status()
-    ...
-  }, "mpc")
-  ...
-  err = mpdDo(func(c *mpd.Client) error {
-    so, err := c.CurrentSong()
-    ...
-  }, "mpc")
-  ...
-  err = mpdDo(func(c *mpd.Client) error {
-    ne, err := c.PlaylistInfo(nextID, -1)
-    ...
-  }, "mpc")
-  */
+      if err != nil {
+        responses = append(responses,
+          fmt.Sprintf("ERR mpc failed: %v", err),
+        )
+      }
 
+      for i, line := range responses {
+        responses[i] = shellQuoteKV(line)
+      }
+
+      responses = append(responses, verbProcessor("status")...)
 
     case "pause":
       log.Printf("IPC: received pause command")
@@ -953,14 +934,25 @@ responses = append(responses, verbProcessor("status")...)
 		    return []string{"ERR invalid count"}
 		  }
 
-		  state.mu.Lock()
+      state.mu.Lock()
 		  state.count = n
-		  deriveStateLocked(state.lastSongID, state.baseLimit)
-		  state.mu.Unlock()
+
+      limit := state.baseLimit
+      if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
+        limit = state.blockLimit
+      }
+
+      state.transition = state.count >= limit
+      deriveStateLocked(state.lastSongID, limit)
+      state.mu.Unlock()
+
+      err = mpdDo(func(c *mpd.Client) error {
+        return c.Random(state.transition)
+      }, "count")
+
       log.Printf("STATE CHANGE: [IPC] count set=%d", n)
 
-//		  return formatStateSlice(ds)
-     resp = "Changed count"
+      resp = fmt.Sprintf("Count set to %d", n)
 
     case "limit":
       n := 0
@@ -1356,7 +1348,7 @@ func clientCommandHandler(args []string) error {
 	}
 
 	// post-exec action (exec replaces the current process)
-	if execPost != "" && execPost != "none" {
+	if execPost != "" && execPost != "none" && execPost != "-" {
     log.Printf("[execPost] executing %s", execPost)
     if err := syscall.Exec(execPost, []string{execPost}, os.Environ()); err != nil {
       log.Printf("[execpost] failed: %v", err)
