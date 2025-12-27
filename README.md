@@ -72,18 +72,19 @@ Optional flags/config file options:
 Run commands against the running daemon:
 
 ```sh
-./mpdgolinger status           # prints one-line status message; serves as ping
-./mpdgolinger pause            # pauses linger function; mpd playback unchanged
-./mpdgolinger resume           # resumes linger function; mpd playback restarted if paused
-./mpdgolinger toggle           # toggles linger play/pause; resumes mpd playback if paused
-./mpdgolinger limit 5          # changes the ongoing limit to e.g., 5
-./mpdgolinger limit            # resets the ongoing limit to default/startup limit (as does 0)
-./mpdgolinger block[limit] 3   # sets a limit of e.g., 3 to current block only
-./mpdgolinger block[limit]     # turns off the block limit override (as does 0)
-./mpdgolinger next             # skips to the next song and block
-./mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
-./mpdgolinger verbose on       # turns daemon verbose logging on
-./mpdgolinger quit             # exits daemon
+mpdgolinger status           # prints one-line status message; serves as ping
+mpdgolinger pause            # pauses linger function; mpd playback unchanged
+mpdgolinger resume           # resumes linger function; mpd playback restarted if paused
+mpdgolinger toggle           # toggles linger play/pause; resumes mpd playback if paused
+mpdgolinger limit 5          # changes the ongoing limit to e.g., 5
+mpdgolinger limit            # resets the ongoing limit to default/startup limit (as does 0)
+mpdgolinger block[limit] 3   # sets a limit of e.g., 3 to current block only
+mpdgolinger block[limit]     # turns off the block limit override (as does 0)
+mpdgolinger next             # skips to the next song and block
+mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
+mpdgolinger verbose on       # turns daemon verbose logging e.g., on
+mpdgolinger mpc              # queries and outputs mpd state, current/next songs, linger status
+mpdgolinger quit             # exits daemon
 ```
 
 ## Development
