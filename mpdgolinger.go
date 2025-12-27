@@ -737,6 +737,109 @@ func verbProcessor(csv string) []string {
         fmt.Sprintf("lingerpid=%d", ds.PID),
       )
 
+case "mpc":
+  var st mpd.Attrs // declare outside so we can use it later
+
+  log.Printf("IPC: received mpc command")
+
+  // --- update persistent state ---
+  state.mu.Lock()
+  deriveStateLocked(state.lastSongID, state.baseLimit)
+  state.mu.Unlock()
+
+  // --- first batch: status + current song ---
+  // We batch these to save one round-trip to MPD
+  err := mpdDo(func(c *mpd.Client) error {
+    var err error
+    // --- MPD status ---
+    st, err = c.Status()
+    if err != nil {
+      return err
+    }
+    for k, v := range st {
+      responses = append(responses,
+        fmt.Sprintf("mpd.%s=%s", k, v),
+      )
+    }
+
+    // --- current song ---
+    cs, err := c.CurrentSong()
+    if err != nil {
+      return err
+    }
+    for k, v := range cs {
+      responses = append(responses,
+        fmt.Sprintf("current.%s=%s", k, v),
+      )
+    }
+
+    return nil
+  }, "mpc") // <- command name for logging
+
+  if err != nil {
+    responses = append(responses,
+      fmt.Sprintf("ERR mpc failed: %v", err),
+    )
+  }
+
+  // --- extract next song index from MPD status ---
+  nidStr, ok := st["nextsong"]
+  if !ok {
+    // no next song available
+    log.Printf("mpc: no next song in status")
+    break
+  }
+
+  nextID, err := strconv.Atoi(nidStr)
+  if err != nil {
+    log.Printf("mpc: invalid nextsongid %q", nidStr)
+    break
+  }
+
+  // --- second call: get next song info using playlistindex (0-based) ---
+  // playlistinfo expects 0-indexed, nextID from status is 1-indexed
+  err = mpdDo(func(c *mpd.Client) error {
+    ne, err := c.PlaylistInfo(nextID, -1)
+    if err != nil {
+      return err
+    }
+    for _, song := range ne {
+      for k, v := range song {
+        responses = append(responses,
+          fmt.Sprintf("next.%s=%s", k, v),
+        )
+      }
+    }
+    return nil
+  }, "mpc")
+
+  if err != nil {
+    responses = append(responses,
+      fmt.Sprintf("ERR mpc failed: %v", err),
+    )
+  }
+
+responses = append(responses, verbProcessor("status")...)
+
+  // --- old version (3 separate calls) ---
+  /*
+  err := mpdDo(func(c *mpd.Client) error {
+    st, err := c.Status()
+    ...
+  }, "mpc")
+  ...
+  err = mpdDo(func(c *mpd.Client) error {
+    so, err := c.CurrentSong()
+    ...
+  }, "mpc")
+  ...
+  err = mpdDo(func(c *mpd.Client) error {
+    ne, err := c.PlaylistInfo(nextID, -1)
+    ...
+  }, "mpc")
+  */
+
+
     case "pause":
       log.Printf("IPC: received pause command")
       expired, limit := setPaused(true)
@@ -809,6 +912,25 @@ func verbProcessor(csv string) []string {
       )
       state.mu.Unlock()
       resp = "Skipped to next track"
+
+		case "count":
+		  if len(fields) != 2 {
+		    return []string{"ERR count requires a value"}
+		  }
+
+		  n, err := strconv.Atoi(fields[1])
+		  if err != nil || n < 0 {
+		    return []string{"ERR invalid count"}
+		  }
+
+		  state.mu.Lock()
+		  state.count = n
+		  deriveStateLocked(state.lastSongID, state.baseLimit)
+		  state.mu.Unlock()
+      log.Printf("STATE CHANGE: [IPC] count set=%d", n)
+
+//		  return formatStateSlice(ds)
+     resp = "Changed count"
 
     case "limit":
       n := 0
@@ -1139,16 +1261,21 @@ func clientCommandHandler(args []string) error {
            "skip",
            "toggle",
            "quit",
+           "mpc",
            "exit":
         batch = append(batch, tok)
         i++
-
 
       case "version":
         batch = append(batch, tok)
         i++
         fmt.Printf("\nmpdgolinger client   %s\n", version)
 
+      case "count":
+        if i+1 < len(toks) && numberRegex.MatchString(toks[i+1]) {
+          batch = append(batch, tok+" "+toks[i+1])
+          i += 2
+        }
 
       case "limit", "blocklimit", "block":
         if tok == "block" {
@@ -1163,21 +1290,21 @@ func clientCommandHandler(args []string) error {
           i++
         }
 
-        case "verbose":
-          if i+1 < len(toks) {
-            val := strings.ToLower(toks[i+1])
-            if val == "on" || val == "off" {
-              batch = append(batch, "verbose "+val)
-              i += 2
-              continue
-            }
+      case "verbose":
+        if i+1 < len(toks) {
+          val := strings.ToLower(toks[i+1])
+          if val == "on" || val == "off" {
+            batch = append(batch, "verbose "+val)
+            i += 2
+            continue
           }
-          return fmt.Errorf("verbose requires 'on' or 'off' argument")
-
-
-        default:
-            return fmt.Errorf("unknown client verb: %s", tok)
         }
+        return fmt.Errorf("verbose requires 'on' or 'off' argument")
+
+
+      default:
+          return fmt.Errorf("unknown client verb: %s", tok)
+      }
     }
 
     if verbose {
