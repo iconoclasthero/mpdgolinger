@@ -72,7 +72,7 @@ Optional flags/config file options:
 Run commands against the running daemon:
 
 ```sh
-mpdgolinger status           # prints one-line status message; serves as ping
+mpdgolinger status           # prints status message; serves as ping
 mpdgolinger pause            # pauses linger function; mpd playback unchanged
 mpdgolinger resume           # resumes linger function; mpd playback restarted if paused
 mpdgolinger toggle           # toggles linger play/pause; resumes mpd playback if paused
