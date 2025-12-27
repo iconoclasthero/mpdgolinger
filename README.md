@@ -82,6 +82,7 @@ mpdgolinger block[limit] 3   # sets a limit of e.g., 3 to current block only
 mpdgolinger block[limit]     # turns off the block limit override (as does 0)
 mpdgolinger next             # skips to the next song and block
 mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
+mpdgolinger count 3          # sets the count to e.g., 3
 mpdgolinger verbose on       # turns daemon verbose logging e.g., on
 mpdgolinger version          # prints client/daemon and mpd protocol/binary versions
 mpdgolinger mpc              # outputs mpd state, current/next songs, linger status
