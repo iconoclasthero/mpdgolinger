@@ -697,6 +697,32 @@ func setPaused(paused bool) (expired bool, limit int) {
 } // func setPaused(paused bool) (expired bool, limit int)
 
 
+// shellQuote returns a shell-escaped string
+func shellQuote(s string) string {
+  return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// shellQuoteSlice quotes an entire slice of strings
+func shellQuoteSlice(slice []string) []string {
+  out := make([]string, len(slice))
+  for i, s := range slice {
+    out[i] = shellQuote(s)
+  }
+  return out
+}
+
+// shellQuoteKV quotes only the value part of a key=value string for shell safety
+func shellQuoteKV(line string) string {
+  parts := strings.SplitN(line, "=", 2)
+  if len(parts) != 2 {
+    // not a key=value pair, just quote the whole thing
+    return shellQuote(line)
+  }
+  key, val := parts[0], parts[1]
+  return key + "=" + shellQuote(val)
+}
+
+
 func verbProcessor(csv string) []string {
   var responses []string
 
@@ -774,7 +800,7 @@ case "mpc":
     }
 
     return nil
-  }, "mpc") // <- command name for logging
+  }, "Status, CurrentSong") // <- command name for logging
 
   if err != nil {
     responses = append(responses,
@@ -811,13 +837,17 @@ case "mpc":
       }
     }
     return nil
-  }, "mpc")
+  }, "PlaylistInfo nextID")
 
   if err != nil {
     responses = append(responses,
       fmt.Sprintf("ERR mpc failed: %v", err),
     )
   }
+
+for i, line := range responses {
+  responses[i] = shellQuoteKV(line)
+}
 
 responses = append(responses, verbProcessor("status")...)
 
