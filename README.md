@@ -63,7 +63,7 @@ Optional flags/config file options:
   --daemonip=<host>   : Connect to daemon listening at address           [client only]
   --daemonport=<port> : Connect to daemon listening on port              [client only]
   --execpost=<path>   : File/commandto execute after client              [client only]
-  --version           : Prints version and mpd protocol/binary versions
+  --version           : Prints mpdgolinger binary version
   --help              : Prints help
 ```
 
@@ -83,7 +83,8 @@ mpdgolinger block[limit]     # turns off the block limit override (as does 0)
 mpdgolinger next             # skips to the next song and block
 mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
 mpdgolinger verbose on       # turns daemon verbose logging e.g., on
-mpdgolinger mpc              # queries and outputs mpd state, current/next songs, linger status
+mpdgolinger version          # prints client/daemon and mpd protocol/binary versions
+mpdgolinger mpc              # outputs mpd state, current/next songs, linger status
 mpdgolinger quit             # exits daemon
 ```
 
