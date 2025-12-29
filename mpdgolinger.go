@@ -40,6 +40,12 @@ type State struct {
   blockOn      bool
 } // type State struct
 
+type mpdEnv struct {
+  mpdHost   string
+  mpdPort   int
+  mpdSocket string
+  mpdPass   string
+}
 
 type configFile struct {
   path         string
@@ -81,6 +87,8 @@ var (
     baseLimit: defaultLimit,
   }
 
+  env mpdEnv
+
   defaultLimit = 4
 
   shutdown = make(chan struct{})
@@ -93,6 +101,7 @@ var (
   // MPD connection parameteres
   mpdHost string = ""
   mpdPort int    = 0
+  mpdPass string = ""
   mpdSocket string = ""
   mpdPath = defaultMPDpath
 
@@ -195,87 +204,270 @@ func parseConfig(data string) map[string]string {
 } // func parseConfig(data string) map[string]string
 
 
+//// mpdDo runs a function with a short-lived MPD client and logs errors
+//func mpdDo(fn func(*mpd.Client) error, ctx string) error {
+//    var client *mpd.Client
+//    var err error
+//
+//    useSocket := false
+//    useTCP := false
+//
+//    // 1. User defined TCP + socket → prefer socket, fallback TCP
+//    if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
+//        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+//            conn.Close()
+//            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+//            useSocket = true
+//        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+//            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+//            useTCP = true
+//        } else {
+//            log.Printf("[mpdDo] neither user socket nor tcp usable")
+//        }
+//    }
+//
+//    // 2. Only socket defined
+//    if !useSocket || !useTCP && mpdSocket != "" {
+//        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+//            conn.Close()
+//            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+//            useSocket = true
+//        } else {
+//            log.Printf("[mpdDo] socket unusable: %v", err)
+//        }
+//    }
+//
+//    // 3. Only TCP defined
+//    if !useSocket || !useTCP && mpdHost != "" && mpdPort != 0 {
+//        if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+//            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+//            useTCP = true
+//        } else {
+//            log.Printf("[mpdDo] tcp unusable: %v", err)
+//        }
+//    }
+//
+//    // 4. Fallback defaults
+//    if !useSocket && !useTCP {
+//        if conn, err := net.DialTimeout("unix", defaultMPDsocket, 500*time.Millisecond); err == nil {
+//            conn.Close()
+//            log.Printf("[mpdDo] default socket usable: %s", defaultMPDsocket)
+//            mpdSocket = defaultMPDsocket
+//            useSocket = true
+//        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDport)); err == nil {
+//            log.Printf("[mpdDo] default tcp usable: %s:%d", defaultMPDhost, defaultMPDport)
+//            useTCP = true
+//        } else {
+//            return fmt.Errorf("mpdDo: no usable MPD connection")
+//        }
+//    }
+//
+//    // Final connect (socket happens here once)
+//    if useSocket {
+//        client, err = mpd.Dial("unix", mpdSocket)
+//        if err != nil {
+//            return fmt.Errorf("mpdDo: socket connect failed: %v", err)
+//        }
+//    }
+//
+//    // Timeout-wrapped execution
+//    done := make(chan error, 1)
+//    go func() {
+//        done <- fn(client)
+//    }()
+//
+//    select {
+//    case err := <-done:
+//        client.Close()
+//        return err
+//    case <-time.After(3 * time.Second):
+//        client.Close()
+//        return fmt.Errorf("mpdDo: timeout (%s)", ctx)
+//    }
+//} // func mpdDo(fn func(*mpd.Client) error, ctx string) error
+
 // mpdDo runs a function with a short-lived MPD client and logs errors
 func mpdDo(fn func(*mpd.Client) error, ctx string) error {
-    var client *mpd.Client
-    var err error
+  var client *mpd.Client
+  var err error
 
-    useSocket := false
-    useTCP := false
+  useSocket := false
+  useTCP := false
 
-    // 1. User defined TCP + socket → prefer socket, fallback TCP
-    if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
-        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
-            conn.Close()
-            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
-            useSocket = true
-        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
-            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
-            useTCP = true
-        } else {
-            log.Printf("[mpdDo] neither user socket nor tcp usable")
-        }
-    }
+  // helper: dial MPD (socket or TCP) and apply password if set
+  dialMPD := func() (*mpd.Client, error) {
+    var c *mpd.Client
+    var e error
 
-    // 2. Only socket defined
-    if !useSocket || !useTCP && mpdSocket != "" {
-        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
-            conn.Close()
-            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
-            useSocket = true
-        } else {
-            log.Printf("[mpdDo] socket unusable: %v", err)
-        }
-    }
-
-    // 3. Only TCP defined
-    if !useSocket || !useTCP && mpdHost != "" && mpdPort != 0 {
-        if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
-            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
-            useTCP = true
-        } else {
-            log.Printf("[mpdDo] tcp unusable: %v", err)
-        }
-    }
-
-    // 4. Fallback defaults
-    if !useSocket && !useTCP {
-        if conn, err := net.DialTimeout("unix", defaultMPDsocket, 500*time.Millisecond); err == nil {
-            conn.Close()
-            log.Printf("[mpdDo] default socket usable: %s", defaultMPDsocket)
-            mpdSocket = defaultMPDsocket
-            useSocket = true
-        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDport)); err == nil {
-            log.Printf("[mpdDo] default tcp usable: %s:%d", defaultMPDhost, defaultMPDport)
-            useTCP = true
-        } else {
-            return fmt.Errorf("mpdDo: no usable MPD connection")
-        }
-    }
-
-    // Final connect (socket happens here once)
     if useSocket {
-        client, err = mpd.Dial("unix", mpdSocket)
-        if err != nil {
-            return fmt.Errorf("mpdDo: socket connect failed: %v", err)
-        }
+      c, e = mpd.Dial("unix", mpdSocket)
+    } else if useTCP {
+      c, e = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort))
+    } else {
+      return nil, fmt.Errorf("mpdDo: no connection method selected")
     }
 
-    // Timeout-wrapped execution
-    done := make(chan error, 1)
-    go func() {
-        done <- fn(client)
-    }()
-
-    select {
-    case err := <-done:
-        client.Close()
-        return err
-    case <-time.After(3 * time.Second):
-        client.Close()
-        return fmt.Errorf("mpdDo: timeout (%s)", ctx)
+    if e != nil {
+      return nil, e
     }
+
+    // apply password if specified
+    if mpdPass != "" {
+      if err := c.Command("password " + mpdPass).OK(); err != nil {
+        c.Close()
+        return nil, fmt.Errorf("mpdDo: password auth failed: %v", err)
+      }
+    }
+
+    return c, nil
+  }
+
+  // 1. User defined TCP + socket → prefer socket, fallback TCP
+  if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
+    if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+      conn.Close()
+      log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+      useSocket = true
+    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+      log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+      useTCP = true
+    } else {
+      log.Printf("[mpdDo] neither user socket nor tcp usable")
+    }
+  }
+
+  // 2. Only socket defined
+  if (!useSocket || !useTCP) && mpdSocket != "" {
+    if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
+      conn.Close()
+      log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+      useSocket = true
+    } else {
+      log.Printf("[mpdDo] socket unusable: %v", err)
+    }
+  }
+
+  // 3. Only TCP defined
+  if (!useSocket || !useTCP) && mpdHost != "" && mpdPort != 0 {
+    if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
+      log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
+      useTCP = true
+    } else {
+      log.Printf("[mpdDo] tcp unusable: %v", err)
+    }
+  }
+
+  // 4. Fallback defaults
+  if !useSocket && !useTCP {
+    if conn, err := net.DialTimeout("unix", defaultMPDsocket, 500*time.Millisecond); err == nil {
+      conn.Close()
+      log.Printf("[mpdDo] default socket usable: %s", defaultMPDsocket)
+      mpdSocket = defaultMPDsocket
+      useSocket = true
+    } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDport)); err == nil {
+      log.Printf("[mpdDo] default tcp usable: %s:%d", defaultMPDhost, defaultMPDport)
+      useTCP = true
+    } else {
+      return fmt.Errorf("mpdDo: no usable MPD connection")
+    }
+  }
+
+  // Final connect + auth
+  client, err = dialMPD()
+  if err != nil {
+    return fmt.Errorf("mpdDo: connect failed: %v", err)
+  }
+
+  // Timeout-wrapped execution
+  done := make(chan error, 1)
+  go func() {
+    done <- fn(client)
+  }()
+
+  select {
+  case err := <-done:
+    client.Close()
+    return err
+  case <-time.After(3 * time.Second):
+    client.Close()
+    return fmt.Errorf("mpdDo: timeout (%s)", ctx)
+  }
 } // func mpdDo(fn func(*mpd.Client) error, ctx string) error
+
+
+
+func parseMPDEnv() {
+  // MPD_HOST parsing
+  if verbose { log.Printf("[parseMPDEnv] Started.\n") }
+//  if v := os.Getenv("MPD_HOST"); v != "" {
+//    // abstract socket: password@@socket
+//    if strings.Contains(v, "@@") {
+//      parts := strings.SplitN(v, "@@", 2)
+//      env.mpdPass = parts[0]
+//      env.mpdSocket = parts[1]
+////      return
+//    }
+//
+//    // password@host OR host
+//    if strings.Contains(v, "@") {
+//      parts := strings.SplitN(v, "@", 2)
+//      env.mpdPass = parts[0]
+//      v = parts[1]
+//    }
+//
+//    // socket path
+//    if strings.HasPrefix(v, "/") {
+//      env.mpdSocket = v
+////      return
+//    }
+//
+//    // plain host
+//    env.mpdHost = v
+//  }
+  if v := os.Getenv("MPD_HOST"); v != "" {
+    // 1. abstract socket with no password
+    if strings.HasPrefix(v, "@") {
+      env.mpdSocket = v
+    } else if strings.Contains(v, "@@") { // 2. password@@abstract
+      parts := strings.SplitN(v, "@@", 2)
+      env.mpdPass = parts[0]
+      env.mpdSocket = "@" + parts[1] // preserve leading @
+    } else if strings.Contains(v, "@") { // 3. password@tcp or password@concrete socket
+      parts := strings.SplitN(v, "@", 2)
+      env.mpdPass = parts[0]
+      addr := parts[1]
+      if strings.Contains(addr, "/") {
+        env.mpdSocket = addr
+        if ! strings.HasPrefix(addr, "/") {
+          log.Printf("[parseMPDEnv] env.mpdSocket assumed to be relative path: %s\n", env.mpdSocket)
+        }
+      } else {
+        env.mpdHost = addr
+      }
+    } else { // 4. tcp host or concrete socket without password
+      if strings.Contains(v, "/") {
+        env.mpdSocket = v
+        if ! strings.HasPrefix(v, "/") {
+          log.Printf("[parseMPDEnv] env.mpdSocket assumed to be relative path: %s\n", v)
+        }
+      } else {
+        env.mpdHost = v
+      }
+    }
+  }
+
+  // MPD_PORT environment
+  if p := os.Getenv("MPD_PORT"); p != "" {
+    if verbose { log.Printf("[parseMPDEnv] MPD_PORT: %s\n", p) }
+    if n, err := strconv.Atoi(p); err == nil {
+      env.mpdPort = n
+      if verbose { log.Printf("[parseMPDEnv] env.mpdPort set to: %d\n", env.mpdPort) }
+
+    }
+  } else {
+    if verbose { log.Printf("[parseMPDEnv] MPD_PORT empty\n") }
+  }
+}
 
 
 // mpdBinaryVersion returns the binary version of MPD from the executable path
@@ -700,7 +892,8 @@ func setPaused(paused bool) (expired bool, limit int) {
 // shellQuote returns a shell-escaped string
 func shellQuote(s string) string {
   return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
+} // func shellQuote(s string) string 
+
 
 // shellQuoteSlice quotes an entire slice of strings
 func shellQuoteSlice(slice []string) []string {
@@ -709,7 +902,8 @@ func shellQuoteSlice(slice []string) []string {
     out[i] = shellQuote(s)
   }
   return out
-}
+} // func shellQuoteSlice(slice []string) []string 
+
 
 // shellQuoteKV quotes only the value part of a key=value string for shell safety
 func shellQuoteKV(line string) string {
@@ -720,9 +914,10 @@ func shellQuoteKV(line string) string {
   }
   key, val := parts[0], parts[1]
   return key + "=" + shellQuote(val)
-}
+} // func shellQuoteKV(line string) string
 
 
+// verbProcessor parses and executes IPC commands from csv, returning response lines.
 func verbProcessor(csv string) []string {
   var responses []string
 
@@ -924,18 +1119,18 @@ func verbProcessor(csv string) []string {
       state.mu.Unlock()
       resp = "Skipped to next track"
 
-		case "count":
-		  if len(fields) != 2 {
-		    return []string{"ERR count requires a value"}
-		  }
+    case "count":
+     if len(fields) != 2 {
+        return []string{"ERR count requires a value"}
+      }
 
-		  n, err := strconv.Atoi(fields[1])
-		  if err != nil || n < 0 {
-		    return []string{"ERR invalid count"}
-		  }
+      n, err := strconv.Atoi(fields[1])
+      if err != nil || n < 0 {
+        return []string{"ERR invalid count"}
+      }
 
       state.mu.Lock()
-		  state.count = n
+      state.count = n
 
       limit := state.baseLimit
       if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
@@ -976,7 +1171,7 @@ func verbProcessor(csv string) []string {
 
       log.Printf("STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
         state.baseLimit, limit)
-      resp = "Persistent limit set"
+      resp = fmt.Sprintf("Persistent limit set to %d", n)
 
     case "blocklimit":
       n := 0
@@ -1101,6 +1296,7 @@ func verbProcessor(csv string) []string {
 } // func verbProcessor(csv string) []string
 
 
+// handleTCP handles a single TCP client, reading commands and writing responses.
 func handleTCP(conn net.Conn) {
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
@@ -1121,6 +1317,8 @@ func handleTCP(conn net.Conn) {
   }
 } // func handleTCP()
 
+
+// handleUDS handles a single UDS client, reading commands and writing responses.
 func handleUDS(conn net.Conn) {
   defer conn.Close()
   scanner := bufio.NewScanner(conn)
@@ -1168,7 +1366,6 @@ func sendIPCCommand(cmd string) ([]string, error) {
 
     return lines, nil
 } // func sendIPCCommand(cmd string) ([]string, error) {
-
 
 
 // acceptClients accepts TCP client connections and delegates handling
@@ -1341,22 +1538,22 @@ func clientCommandHandler(args []string) error {
 //    return sendClientCommand(cmd)
 
 
-	// send the command first
-	err := sendClientCommand(cmd)
-	if err != nil {
+  // send the command first
+  err := sendClientCommand(cmd)
+  if err != nil {
     return err
-	}
+  }
 
-	// post-exec action (exec replaces the current process)
-	if execPost != "" && execPost != "none" && execPost != "-" {
+  // post-exec action (exec replaces the current process)
+  if execPost != "" && execPost != "none" && execPost != "-" {
     log.Printf("[execPost] executing %s", execPost)
     if err := syscall.Exec(execPost, []string{execPost}, os.Environ()); err != nil {
       log.Printf("[execpost] failed: %v", err)
       os.Exit(1)
     }
-	}
+  }
 
-	return nil
+  return nil
 
 } // func clientCommandHandler(args []string)
 
@@ -1537,6 +1734,7 @@ func main() {
   flag.StringVar(&mpdSocket, "mpdsocket", "", "MPD unix socket <path>")
   flag.StringVar(&mpdHost, "mpdhost", mpdHost, "MPD host <address>")
   flag.IntVar(&mpdPort, "mpdport", mpdPort, "MPD host <port>")
+  flag.StringVar(&mpdPass, "mpdpass", "", "MPD server password")
   flag.StringVar(&listenIP, "listenip", "", "Daemon listen IP")
   flag.IntVar(&listenPort, "listenport", 0, "Daemon listen port")
   flag.Func("state", "Write state file to <path>", func(v string) error {
@@ -1559,6 +1757,11 @@ func main() {
   // parse config key/value map
   kv := parseConfig(cfg.data)
 
+  // parse environmental variables MPD_HOST MPD_PORT
+  if daemonMode {
+    parseMPDEnv()
+  }
+
   // ------------------------------------------------------------------
   // Apply config values with precedence: CLI > config > default
   // ------------------------------------------------------------------
@@ -1573,16 +1776,9 @@ func main() {
     socketPath = ""
   }
 
-  if v, ok := kv["mpdsocket"]; ok && v != "" && mpdSocket == "" {
-    mpdSocket = v
-  }
-  if v, ok := kv["mpdhost"]; ok && v != "" && mpdHost == "" {
-    mpdHost = v
-  }
-  if v, ok := kv["mpdport"]; ok && v != "" && mpdPort == 0 {
-    if n, err := strconv.Atoi(v); err == nil {
-      mpdPort = n
-    }
+  if v, ok := kv["state"]; ok && v != "" && statePath == "" {
+    stateEnabled = true
+    statePath = v
   }
 
   if listenIP == "" {
@@ -1603,7 +1799,6 @@ func main() {
     }
   }
 
-
   if daemonIP == "" {
     if v, ok := kv["daemonip"]; ok && v != "" {
       daemonIP = v
@@ -1622,10 +1817,79 @@ func main() {
     }
   }
 
+//	if mpdSocket == "" {
+//	  if v, ok := kv["mpdsocket"]; ok && v != "" {
+//	    mpdSocket = v
+//	  }
+//	}
+//
+//	if mpdHost == "" {
+//	  if v, ok := kv["mpdhost"]; ok && v != "" {
+//	    mpdHost = v
+//	  }
+//	}
+//
+//	if mpdPort == 0 {
+//	  if v, ok := kv["mpdport"]; ok && v != "" {
+//	    if n, err := strconv.Atoi(v); err == nil {
+//	      mpdPort = n
+//	    }
+//	  }
+//	}
+//
+//	if mpdPass == "" {
+//	  if v, ok := kv["mpdpass"]; ok && v != "" {
+//	    mpdPass = v
+//	  }
+//	}
 
-  if v, ok := kv["state"]; ok && v != "" && statePath == "" {
-    stateEnabled = true
-    statePath = v
+  if mpdSocket == "" {
+    if v, ok := kv["mpdsocket"]; ok && v != "" {
+      mpdSocket = v
+      log.Printf("mpdSocket set to .conf mpdsocket: %s\n", mpdSocket)
+    } else if env.mpdSocket != "" { // final fallback
+      mpdSocket = env.mpdSocket
+      log.Printf("mpdSocket set to env.mpdSocket: %s\n", env.mpdSocket)
+    }
+  } else {
+    log.Printf("mpdSocket set to --mpdsocket: %s\n", mpdSocket)
+  }
+
+  if mpdHost == "" {
+    if v, ok := kv["mpdhost"]; ok && v != "" {
+      mpdHost = v
+      log.Printf("mpdHost set to .conf mpdhost: %s\n", mpdHost)
+    } else if env.mpdHost != "" { // final fallback
+      mpdHost = env.mpdHost
+      log.Printf("mpdHost set to env.mpdHost: %s\n", env.mpdHost)
+    }
+  } else {
+    log.Printf("mpdHost set to --mpdhost: %s\n", mpdHost)
+  }
+
+  if mpdPort == 0 {
+    if v, ok := kv["mpdport"]; ok && v != "" {
+      if n, err := strconv.Atoi(v); err == nil {
+        mpdPort = n
+        log.Printf("mpdPort set to .conf mpdport: %d\n", mpdPort)
+      }
+    } else if env.mpdPort != 0 { // final fallback
+      mpdPort = env.mpdPort
+      log.Printf("mpdPort set to env.mpdPort: %d\n", env.mpdPort)
+    }
+  } else {
+    log.Printf("mpdPort set to --mpdport: %d\n", mpdPort)
+  }
+
+  if mpdPass == "" {
+    if v, ok := kv["mpdpass"]; ok && v != "" {
+      mpdPass = v
+    } else if env.mpdPass != "" { // final fallback
+      mpdPass = env.mpdPass
+      log.Printf("mpdPass set to env.mpdPass: %s\n", env.mpdPass)
+    }
+  } else {
+    log.Printf("mpdPass set to --mpdpass: %s\n", mpdPass)
   }
 
   if v, ok := kv["limit"]; ok && v != "" && startupLimit == 0 {
