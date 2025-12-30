@@ -65,6 +65,13 @@ type derivedState struct {
   PID            int
 } // type derivedState struct
 
+type xyState struct {
+  active bool
+  start  int // songid X
+  end    int // songid Y
+}
+
+var xy xyState
 
 const (
   defaultMPDhost = "localhost"
@@ -128,6 +135,56 @@ var (
     "next": true, "skip": true, "quit": true, "exit": true,
   }
 ) // var
+
+// function to execute the steps for xy mode
+func runXYStep() {
+  mpdDo(func(c *mpd.Client) error {
+
+    // enforce consume (XY depends on it)
+    c.Command("consume", "1")
+
+    // fetch playlist
+    pl, err := c.PlaylistInfo()
+    if err != nil {
+      return err
+    }
+
+    idxX := -1
+    idxY := -1
+
+    for i, s := range pl {
+      if s.Id == xy.start {
+        idxX = i
+      }
+      if s.Id == xy.end {
+        idxY = i
+      }
+    }
+
+    // sanity
+    if idxX < 0 || idxY < 0 || idxY <= idxX {
+      log.Printf("[XY] invalid bounds: X=%d Y=%d", idxX, idxY)
+      return nil
+    }
+
+    // choose random song strictly inside (X, Y]
+    r := rand.Intn(idxY-idxX) + idxX + 1
+
+    // move chosen song to X+1
+    if err := c.Move(r, idxX+1); err != nil {
+      return err
+    }
+
+    // ensure playback starts at X
+    if err := c.PlayId(xy.start); err != nil {
+      return err
+    }
+
+    log.Printf("[XY] moved idx=%d → %d (songid=%d)", r, idxX+1, pl[r].Id)
+
+    return nil
+  })
+} // func runXYStep()
 
 
 // loadConfig loads the config file from a given path or defaults to ~/.config/mpdgolinger.conf
@@ -1520,7 +1577,29 @@ func clientCommandHandler(args []string) error {
         }
         return fmt.Errorf("verbose requires 'on' or 'off' argument")
 
+      case "xy":
+        if len(args) != 2 {
+          return fmt.Errorf("usage: xy <startSongID> <endSongID>")
+        }
 
+        x, err1 := strconv.Atoi(args[0])
+        y, err2 := strconv.Atoi(args[1])
+        if err1 != nil || err2 != nil || y <= x {
+          return fmt.Errorf("invalid xy range")
+        }
+
+        xy.start  = x
+        xy.end    = y
+        xy.active = true
+
+        log.Printf("XY mode enabled: %d → %d", x, y)
+
+      case "xyoff":
+        xy.active = false
+        log.Printf("XY mode disabled")
+
+
+/*--------------------------------------------------------------*/
       default:
           return fmt.Errorf("unknown client verb: %s", tok)
       }

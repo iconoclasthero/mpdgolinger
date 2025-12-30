@@ -56,6 +56,7 @@ Optional flags/config file options:
   --mpdsocket=<path>  : MPD server socket, (e.g., `/run/mpd/socket`)     [daemon only]
   --mpdhost=<host>    : MPD server host (default localhost)              [daemon only]
   --mpdport=<port>    : MPD server TCP port (default 6600)               [daemon only]
+  --mpdpass=<pass>    : MPD server password                              [daemon only]
   --listenip=<host>   : IPC listen address                               [daemon only]
   --listenport=<port> : IPC listen port                                  [daemon only]
   --socket=<path>     : IPC socket path
@@ -66,13 +67,14 @@ Optional flags/config file options:
   --version           : Prints mpdgolinger binary version
   --help              : Prints help
 ```
+Config file syntax is `key=value` pair.
 
 ### Client Mode
 
 Run commands against the running daemon:
 
 ```sh
-mpdgolinger status           # prints status message; serves as ping
+mpdgolinger status           # prints status message, format below; serves as ping
 mpdgolinger pause            # pauses linger function; mpd playback unchanged
 mpdgolinger resume           # resumes linger function; mpd playback restarted if paused
 mpdgolinger toggle           # toggles linger play/pause; resumes mpd playback if paused
@@ -83,7 +85,7 @@ mpdgolinger block[limit]     # turns off the block limit override (as does 0)
 mpdgolinger next             # skips to the next song and block
 mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
 mpdgolinger count 3          # sets the count to e.g., 3
-mpdgolinger verbose on       # turns daemon verbose logging e.g., on
+mpdgolinger verbose on[off]  # turns daemon verbose logging e.g., on (or off)
 mpdgolinger version          # prints client/daemon and mpd protocol/binary versions
 mpdgolinger mpc              # outputs mpd state, current/next songs, linger status
 mpdgolinger quit             # exits daemon
@@ -97,12 +99,12 @@ mpdgolinger quit             # exits daemon
 ## Notes
 
 - IPC socket must exist and be writable by clients.
-- The IPC socket is presently hard-coded to `/var/lib/mpd/mpdlinger/mpdlinger.sock`
+- The IPC socket defaults to `/var/lib/mpd/mpdlinger/mpdlinger.sock`
 - Daemon supervises both MPD idle events and the IPC socket, reconnecting if necessary.
 
 ## Statefile
 
-To create an optional state file that can be parsed/sourced for other uses, enable the `--state=<path>` when launching the daemon. The format of the state file is:
+To create an optional state file that can be parsed/sourced for other uses, enable the `--state=<path>` when launching the daemon. The format of the state file is the same as `status`:
 
 ```txt
 writetime=2025-12-20T10:35:57.330310379-05:00
