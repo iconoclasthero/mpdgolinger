@@ -74,21 +74,23 @@ Config file syntax is `key=value` pair.
 Run commands against the running daemon:
 
 ```sh
-mpdgolinger status           # prints status message, format below; serves as ping
-mpdgolinger pause            # pauses linger function; mpd playback unchanged
-mpdgolinger resume           # resumes linger function; mpd playback restarted if paused
-mpdgolinger toggle           # toggles linger play/pause; resumes mpd playback if paused
-mpdgolinger limit 5          # changes the ongoing limit to e.g., 5
-mpdgolinger limit            # resets the ongoing limit to default/startup limit (as does 0)
-mpdgolinger block[limit] 3   # sets a limit of e.g., 3 to current block only
-mpdgolinger block[limit]     # turns off the block limit override (as does 0)
-mpdgolinger next             # skips to the next song and block
-mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
-mpdgolinger count 3          # sets the count to e.g., 3
-mpdgolinger verbose on[off]  # turns daemon verbose logging e.g., on (or off)
-mpdgolinger version          # prints client/daemon and mpd protocol/binary versions
-mpdgolinger mpc              # outputs mpd state, current/next songs, linger status
-mpdgolinger quit             # exits daemon
+mpdgolinger status            # prints status message, format below; serves as ping
+mpdgolinger pause             # pauses linger function; mpd playback unchanged
+mpdgolinger resume            # resumes linger function; mpd playback restarted if paused
+mpdgolinger toggle            # toggles linger play/pause; resumes mpd playback if paused
+mpdgolinger limit <n>         # changes the ongoing limit to <n>; zero resets below
+mpdgolinger limit             # resets the ongoing limit to default/startup limit
+mpdgolinger block[limit] <n>  # sets a limit of <n> to current block only
+mpdgolinger block[limit]      # turns off the block limit override (as does 0)
+mpdgolinger next              # skips to the next song and block
+mpdgolinger skip              # skips to the next song within block (i.e., mpc next)
+mpdgolinger count <n>         # sets the count to <n>
+mpdgolinger verbose <on|off>  # turns daemon verbose logging on or off
+mpdgolinger version           # prints client/daemon and mpd protocol/binary versions
+~~mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>~~
+~~mpdgolinger xyoff             # turns XY Mode off~~
+mpdgolinger mpc               # outputs mpd state, current/next songs, linger status
+mpdgolinger quit              # exits daemon
 ```
 
 ## Development
