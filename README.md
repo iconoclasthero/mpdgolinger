@@ -68,7 +68,7 @@ Optional flags/config file options:
   --version           : Prints mpdgolinger binary version
   --help              : Prints help
 ```
-Config file syntax is `key=value` pair.
+Config file syntax is `key=value` pair; use double quotes on the RHS as necessary.
 
 ### Client Mode
 
@@ -94,12 +94,12 @@ mpdgolinger quit              # exits daemon
 
 ### XY Playback Mode
 
+XY Mode allows a randomized playback of a specified subset of a playlist **in consume mode only.** The initial bounds (X & Y) are specified via the client (the Y bound may be specified by an increment). During playback the playlist remains at position X and a random song between X+1 and Y is moved to X+1.  When X is finished and consumed, Y is decremented by one and the cycle repeats until Y=X; XY mode is disabled (via `mpdgolinger xyoff`); or a change causes the current song to chaange from X.
+
 ```sh
 mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>
 mpdgolinger xyoff             # turns XY Mode off
 ```
-
-XY Mode allows a randomized playback of a specified subset of a playlist **in consume mode only.** The initial bounds (X & Y) are specified via the client (the Y bound may be specified by an increment). During playback the playlist remains at position X and a random song between X+1 and Y is moved to X+1.  When X is finished and consumed, Y is decremented by one and the cycle repeats until Y=X; XY mode is disabled (via `mpdgolinger xyoff`); or a change causes the current song to chaange from X.
 
 ## Development
 
@@ -116,7 +116,7 @@ XY Mode allows a randomized playback of a specified subset of a playlist **in co
 
 To create an optional state file that can be parsed/sourced for other uses, enable the `--state=<path>` when launching the daemon. The format of the state file is the same as `status`:
 
-```txt
+```sh
 writetime=2025-12-20T10:35:57.330310379-05:00
 lingersongid=139234  # to verify sync with other MPD clients
 lingerpause=0
