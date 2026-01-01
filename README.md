@@ -94,7 +94,7 @@ mpdgolinger quit              # exits daemon
 
 ### XY Playback Mode
 
-```
+```sh
 mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>
 mpdgolinger xyoff             # turns XY Mode off
 ```
