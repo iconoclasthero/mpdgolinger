@@ -16,6 +16,7 @@ Classic rock stations have long had gimmicks like "Rock Blocks," "Double Shots,"
 - Optional state file for persistent tracking
 - Daemon mode with --daemon
 - Supports TCP or UNIX socket connection to MPD
+- XY playback mode
 
 ## Installation
 
@@ -87,11 +88,18 @@ mpdgolinger skip              # skips to the next song within block (i.e., mpc n
 mpdgolinger count <n>         # sets the count to <n>
 mpdgolinger verbose <on|off>  # turns daemon verbose logging on or off
 mpdgolinger version           # prints client/daemon and mpd protocol/binary versions
-~~mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>~~
-~~mpdgolinger xyoff             # turns XY Mode off~~
 mpdgolinger mpc               # outputs mpd state, current/next songs, linger status
 mpdgolinger quit              # exits daemon
 ```
+
+### XY Playback Mode
+
+```
+mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>
+mpdgolinger xyoff             # turns XY Mode off
+```
+
+XY Mode allows a randomized playback of a specified subset of a playlist **in consume mode only.** The initial bounds (X & Y) are specified via the client (the Y bound may be specified by an increment). During playback the playlist remains at position X and a random song between X+1 and Y is moved to X+1.  When X is finished and consumed, the cycle repeats until Y=X; XY mode is disabled (via `mpdgolinger xyoff`); or a change causes the current song to chaange from X.
 
 ## Development
 
