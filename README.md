@@ -82,7 +82,7 @@ mpdgolinger toggle            # toggles linger play/pause; resumes mpd playback 
 mpdgolinger limit <n>         # changes the ongoing limit to <n>; zero resets below
 mpdgolinger limit             # resets the ongoing limit to default/startup limit
 mpdgolinger block[limit] <n>  # sets a limit of <n> to current block only
-mpdgolinger block[limit]      # turns off the block limit override (as does 0)
+mpdgolinger block[limit]      # turns off the block limit override (as does _n_=0)
 mpdgolinger next              # skips to the next song and block
 mpdgolinger skip              # skips to the next song within block (i.e., mpc next)
 mpdgolinger count <n>         # sets the count to <n>
