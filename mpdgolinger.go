@@ -22,6 +22,7 @@ import (
   "sync"
   "time"
   "sync/atomic"
+  "math/rand"
 )
 
 
@@ -38,6 +39,7 @@ type State struct {
   lastSongID   string
   baseLimit    int
   blockOn      bool
+  consume      bool
 } // type State struct
 
 type mpdEnv struct {
@@ -63,8 +65,18 @@ type derivedState struct {
   Limit          int
   BlockLimit     int
   PID            int
+  LingerXY       bool
+  LingerX        int
+  LingerY        int
 } // type derivedState struct
 
+type xyState struct {
+  active bool
+  start  int // songid X
+  end    int // songid Y
+}
+
+var xy xyState
 
 const (
   defaultMPDhost = "localhost"
@@ -128,6 +140,61 @@ var (
     "next": true, "skip": true, "quit": true, "exit": true,
   }
 ) // var
+
+
+// runXYStep executes one XY shuffle step using playlist positions ("song").
+// Assumes globals: xy.start, xy.end, song, verbose
+func runXYStep(c *mpd.Client) error {
+  st, err := c.Status()
+  if err != nil {
+      return err
+  }
+  songZI, _ := strconv.Atoi(st["song"])
+  if xy.end <= xy.start+1 {
+    log.Printf("[XY] completed: x=%d y=%d", xy.start, xy.end)
+    xy.active = false
+    return nil
+  }
+
+  if songZI != xy.start {
+    log.Printf("[rXYS] song %d not %d, disabling XY", songZI, xy.start)
+    xy.active = false
+    _ = mpdDo(func(c *mpd.Client) error {
+      if err := c.Consume(state.consume); err != nil {
+        log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
+      }
+      return nil
+    }, "xy-restore-consume")
+    return nil
+  }
+
+  // Select random playlist position r ∈ [xy.start+1, xy.end]
+  r := rand.Intn(xy.end-(xy.start+1)+1) + (xy.start + 1)
+
+  if verbose {
+    log.Printf("[rXYS] debug: x=%d y=%d song=%d r=%d (range %d..%d)", xy.start, xy.end, songZI, r, xy.start+1, xy.end)
+  } else {
+    log.Printf("[XY] pick: r=%d → %d", r, xy.start+1)
+  }
+
+  // Move song at r → xy.start+1 (current+1)
+  if err := c.Move(r, -1, xy.start+1); err != nil {
+    return fmt.Errorf("xy move failed (r=%d → %d): %w", r, xy.start+1, err)
+  }
+
+  if verbose {
+    log.Printf("[rXYS] move complete: %d → %d, consume will advance", r, xy.start+1)
+  }
+
+  // Decrement upper bound
+  xy.end--
+
+  if verbose {
+    log.Printf("[rXYS] advance: new y=%d (remaining=%d)", xy.end, xy.end-xy.start)
+  }
+
+  return nil
+} // func runXYStep(c *mpd.Client) error
 
 
 // loadConfig loads the config file from a given path or defaults to ~/.config/mpdgolinger.conf
@@ -203,88 +270,6 @@ func parseConfig(data string) map[string]string {
   return cfg
 } // func parseConfig(data string) map[string]string
 
-
-//// mpdDo runs a function with a short-lived MPD client and logs errors
-//func mpdDo(fn func(*mpd.Client) error, ctx string) error {
-//    var client *mpd.Client
-//    var err error
-//
-//    useSocket := false
-//    useTCP := false
-//
-//    // 1. User defined TCP + socket → prefer socket, fallback TCP
-//    if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
-//        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
-//            conn.Close()
-//            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
-//            useSocket = true
-//        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
-//            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
-//            useTCP = true
-//        } else {
-//            log.Printf("[mpdDo] neither user socket nor tcp usable")
-//        }
-//    }
-//
-//    // 2. Only socket defined
-//    if !useSocket || !useTCP && mpdSocket != "" {
-//        if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
-//            conn.Close()
-//            log.Printf("[mpdDo] socket usable: %s", mpdSocket)
-//            useSocket = true
-//        } else {
-//            log.Printf("[mpdDo] socket unusable: %v", err)
-//        }
-//    }
-//
-//    // 3. Only TCP defined
-//    if !useSocket || !useTCP && mpdHost != "" && mpdPort != 0 {
-//        if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
-//            log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
-//            useTCP = true
-//        } else {
-//            log.Printf("[mpdDo] tcp unusable: %v", err)
-//        }
-//    }
-//
-//    // 4. Fallback defaults
-//    if !useSocket && !useTCP {
-//        if conn, err := net.DialTimeout("unix", defaultMPDsocket, 500*time.Millisecond); err == nil {
-//            conn.Close()
-//            log.Printf("[mpdDo] default socket usable: %s", defaultMPDsocket)
-//            mpdSocket = defaultMPDsocket
-//            useSocket = true
-//        } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", defaultMPDhost, defaultMPDport)); err == nil {
-//            log.Printf("[mpdDo] default tcp usable: %s:%d", defaultMPDhost, defaultMPDport)
-//            useTCP = true
-//        } else {
-//            return fmt.Errorf("mpdDo: no usable MPD connection")
-//        }
-//    }
-//
-//    // Final connect (socket happens here once)
-//    if useSocket {
-//        client, err = mpd.Dial("unix", mpdSocket)
-//        if err != nil {
-//            return fmt.Errorf("mpdDo: socket connect failed: %v", err)
-//        }
-//    }
-//
-//    // Timeout-wrapped execution
-//    done := make(chan error, 1)
-//    go func() {
-//        done <- fn(client)
-//    }()
-//
-//    select {
-//    case err := <-done:
-//        client.Close()
-//        return err
-//    case <-time.After(3 * time.Second):
-//        client.Close()
-//        return fmt.Errorf("mpdDo: timeout (%s)", ctx)
-//    }
-//} // func mpdDo(fn func(*mpd.Client) error, ctx string) error
 
 // mpdDo runs a function with a short-lived MPD client and logs errors
 func mpdDo(fn func(*mpd.Client) error, ctx string) error {
@@ -632,7 +617,7 @@ func daemonSupervisor() {
 } // func daemonSupervisor()
 
 
-// runIdleLoop runs the MPD idle loop, updating state on song changes
+// runIdleLoop [rIL()] runs the MPD idle loop, updating state on song changes
 func runIdleLoop(w *mpd.Watcher) error {
   log.Println("MPD connection established, entering idle loop")
 
@@ -702,14 +687,29 @@ func runIdleLoop(w *mpd.Watcher) error {
           return err
         }
         songID := status["songid"]
+        songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
 
         // Protect shared FSM state.
         state.mu.Lock()
-
+        defer state.mu.Unlock()
         // Compute the current limit
         limit := state.baseLimit
         if state.blockOn && state.blockLimit > 0 {
           limit = state.blockLimit
+        }
+
+        if verbose {
+          log.Printf("[rIL] limit: %d; state.transition: %t; xy.active: %t", limit, state.transition, xy.active)
+        }
+
+        // Recovery: count exceeded limit (can happen after XY abort or prior bugs)
+        if state.count > limit && ! state.transition && ! xy.active {
+          log.Printf(
+            "[rIL] Recovery: count=%d exceeded limit=%d, forcing transition",
+            state.count, limit,
+          )
+          state.transition = true
+          return nil
         }
 
         // If the user pauses the linger functionality (and state.paused is true):
@@ -723,8 +723,8 @@ func runIdleLoop(w *mpd.Watcher) error {
           }
           deriveStateLocked(songID, limit)  // <--- write after increment to update state count while paused
 
-          state.mu.Unlock()
-          return nil
+//          state.mu.Unlock()
+//          return nil
         }
 
         // If songID did not change, this idle event was caused by:
@@ -736,7 +736,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         if songID == state.lastSongID {
           // nothing changed; keep trace so we can see frequent idle hits
           log.Printf("Idle event received but songID unchanged: %s", songID)
-          state.mu.Unlock()
+//          state.mu.Unlock()
           // Log currentsong again so we can verify the *file*
           // really stayed the same across the idle break.
           logCurrentSong(c, "idle event (songID unchanged)")
@@ -750,7 +750,35 @@ func runIdleLoop(w *mpd.Watcher) error {
         prevTransition := state.transition
         state.lastSongID = songID
 
-        if state.transition {
+        // ---------- INSERTED XY HANDLER ----------
+        if xy.active {
+          if songZI != xy.start {
+            state.transition = true
+            xy.active = false
+
+            if err := c.Consume(state.consume); err != nil {
+              log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
+            }
+
+            log.Printf("[rIL] song %d not %d, disabling XY", songZI, xy.start)
+            log.Printf("[rIL] state.transtion: %t; xy.active: %t", state.transition, xy.active)
+            return nil
+          }
+          log.Printf("[rIL] Calling runXYStep, playlist postion: %d (ZI)", songZI)
+          err := runXYStep(c)
+          if err != nil {
+            log.Printf("runXYStep failed: %v", err)
+          }
+//          if err := mpdDo(func(c *mpd.Client) error {
+//            return runXYStep(c)
+//          }, "rXYS"); err != nil {
+//            log.Printf("runXYStep failed: %v", err)
+//          }
+        }
+
+        // ------------------------------------------
+
+        if state.transition && ! xy.active {
           // We were waiting for the first song *after* a random block.
           //
           // This is the moment to:
@@ -768,7 +796,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           state.transition = false
           log.Printf("Transition: random off, count reset to 1")
 
-        } else if state.count == limit-1 { // <- uses computed local limit
+        } else if ! xy.active && state.count == limit-1 { // <- uses computed local limit
           // This song completes the block.
           //
           // We:
@@ -791,7 +819,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         } else {
           // Normal in-block advance.
           state.count++
-          log.Printf("Normal increment: count=%d/%d", state.count, limit)
+          log.Printf("[rIL] Normal increment: count=%d/%d", state.count, limit)
         }
 
         // Emit a structured state-change log so we can replay FSM
@@ -815,7 +843,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 
         _ = prevCount
         _ = prevTransition
-        state.mu.Unlock()
+//        state.mu.Unlock()
 
         return nil
 
@@ -917,7 +945,7 @@ func shellQuoteKV(line string) string {
 } // func shellQuoteKV(line string) string
 
 
-// verbProcessor parses and executes IPC commands from csv, returning response lines.
+// verbProcessor [vP()] parses and executes IPC commands from csv, returning response lines.
 func verbProcessor(csv string) []string {
   var responses []string
 
@@ -957,6 +985,13 @@ func verbProcessor(csv string) []string {
         fmt.Sprintf("lingerblocklmt=%d", ds.BlockLimit),
         fmt.Sprintf("lingerpid=%d", ds.PID),
       )
+      if xy.active {
+        responses = append(responses,
+          fmt.Sprintf("lingerxy=%t", ds.LingerXY),
+          fmt.Sprintf("lingerx=%d", ds.LingerX),
+          fmt.Sprintf("lingery=%d", ds.LingerY),
+        )
+      }
 
     case "mpc":
       var st mpd.Attrs // declare outside so we can use it later
@@ -1272,16 +1307,73 @@ func verbProcessor(csv string) []string {
       _ = cmd.Wait()
 
     case "exit", "quit":
-      log.Printf("IPC: received %s, shutting down", cmd)
+      log.Printf("[IPC] Received %s, shutting down", cmd)
       requestShutdown()
       resp = "OK"
+
+    case "xy":
+
+      x, _ := strconv.Atoi(fields[1])
+      y, _ := strconv.Atoi(fields[2])
+
+      xy.start = x
+      xy.end = y
+      xy.active = true
+
+      if verbose {
+        log.Printf("[IPC] xy.active: %t\n", xy.active)
+        log.Printf("[IPC]  xy.start: %d\n", xy.start)
+        log.Printf("[IPC]    xy.end: %d\n", xy.end)
+      }
+      log.Printf("[IPC] XY mode initiated: %d → %d (ZI)", x, y)
+
+      // immediately set consume mode on
+      _ = mpdDo(func(c *mpd.Client) error {
+        st, err := c.Status()
+        if err != nil {
+          return err
+        }
+        state.mu.Lock()
+        state.consume = (st["consume"] == "1")
+        state.mu.Unlock()
+
+        if err := c.Consume(true); err != nil {
+          log.Printf("[XY] failed to enable consume: %v", err)
+        }
+        if err := c.Random(false); err != nil {
+          log.Printf("[XY] failed to disable random: %v", err)
+        }
+        // jump to playlist position corresponding to xy.start
+        songZI, _ := strconv.Atoi(st["song"])
+        if songZI != xy.start {
+          if err := c.Play(xy.start); err != nil {
+            log.Printf("[XY] failed to jump to start: %v", err)
+          }
+        }
+        return nil
+      }, "xy-init")
+
+      log.Printf("[IPC] XY mode enabled: %d → %d (ZI)", xy.start, xy.end)
+      if verbose { log.Printf("[IPC] Previous consume state: %t", state.consume) }
+      resp = fmt.Sprintf("XY mode enabled: %d → %d", x+1, y+1)
+
+    case "xyoff":
+      xy.active = false
+      _ = mpdDo(func(c *mpd.Client) error {
+        if err := c.Consume(state.consume); err != nil {
+          log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
+        }
+        return nil
+      }, "xy-restore-consume")
+      log.Printf("[IPC] XY mode turned off")
+      resp = "XY Mode turned off"
 
     default:
       resp = "Unknown command: " + cmd
     }
-
     responses = append(responses, resp)
   }
+
 
   state.mu.Lock()
   songID := state.lastSongID
@@ -1397,6 +1489,9 @@ func deriveStateLocked(songID string, limit int) *derivedState {
     Limit:      limit,
     BlockLimit: state.blockLimit,
     PID:        os.Getpid(),
+    LingerXY:   xy.active,
+    LingerX:    xy.start,
+    LingerY:    xy.end,
   }
 
   // ---- ONLY disk I/O is optional ----
@@ -1430,6 +1525,11 @@ func formatState(w io.Writer, ds *derivedState) {
   fmt.Fprintf(w, "lingerlimit=%d\n", ds.Limit)
   fmt.Fprintf(w, "lingerblocklmt=%d\n", ds.BlockLimit)
   fmt.Fprintf(w, "lingerpid=%d\n", ds.PID)
+  if xy.active {
+    fmt.Fprintf(w, "lingerxy=%t\n", ds.LingerXY)
+    fmt.Fprintf(w, "lingerx=%d\n", ds.LingerX)
+    fmt.Fprintf(w, "lingery=%d\n", ds.LingerY)
+  }
 } // func formatState(w io.Writer, ds *derivedState)
 
 
@@ -1449,7 +1549,7 @@ func sendStatus(w io.Writer) {
 } // func sendStatus(w io.Writer)
 
 
-// clientCommandHandler parses client command-line args and sends them to the daemon
+// clientCommandHandler [cCH()] parses client command-line args and sends them to the daemon
 func clientCommandHandler(args []string) error {
     if len(args) == 0 {
         return fmt.Errorf("No client commands provided")
@@ -1481,6 +1581,7 @@ func clientCommandHandler(args []string) error {
            "toggle",
            "quit",
            "mpc",
+           "xyoff",
            "exit":
         batch = append(batch, tok)
         i++
@@ -1520,7 +1621,45 @@ func clientCommandHandler(args []string) error {
         }
         return fmt.Errorf("verbose requires 'on' or 'off' argument")
 
+case "xy":
+  if i+2 < len(toks) {
+    x, err1 := strconv.Atoi(toks[i+1])
+    if err1 != nil || x < 1 {
+      return fmt.Errorf("invalid xy range")
+    }
 
+    ytok := toks[i+2]
+    var y int
+
+    if strings.HasPrefix(ytok, "+") || strings.HasPrefix(ytok, "-") {
+      delta, err := strconv.Atoi(ytok)
+      if err != nil {
+        return fmt.Errorf("invalid xy delta")
+      }
+      y = x + delta
+    } else {
+      var err error
+      y, err = strconv.Atoi(ytok)
+      if err != nil {
+        return fmt.Errorf("invalid xy range")
+      }
+    }
+
+    if y < 1 {
+      return fmt.Errorf("invalid xy range")
+    }
+
+    if y < x {
+      x, y = y, x
+    }
+
+    batch = append(batch, fmt.Sprintf("xy %d %d", x-1, y-1))
+    i += 3
+    continue
+  }
+  return fmt.Errorf("usage: xy <startSongID> <endSongID|+N|-N>")
+
+/*--------------------------------------------------------------*/
       default:
           return fmt.Errorf("unknown client verb: %s", tok)
       }
@@ -1817,31 +1956,31 @@ func main() {
     }
   }
 
-//	if mpdSocket == "" {
-//	  if v, ok := kv["mpdsocket"]; ok && v != "" {
-//	    mpdSocket = v
-//	  }
-//	}
+//  if mpdSocket == "" {
+//    if v, ok := kv["mpdsocket"]; ok && v != "" {
+//      mpdSocket = v
+//    }
+//  }
 //
-//	if mpdHost == "" {
-//	  if v, ok := kv["mpdhost"]; ok && v != "" {
-//	    mpdHost = v
-//	  }
-//	}
+//  if mpdHost == "" {
+//    if v, ok := kv["mpdhost"]; ok && v != "" {
+//      mpdHost = v
+//    }
+//  }
 //
-//	if mpdPort == 0 {
-//	  if v, ok := kv["mpdport"]; ok && v != "" {
-//	    if n, err := strconv.Atoi(v); err == nil {
-//	      mpdPort = n
-//	    }
-//	  }
-//	}
+//  if mpdPort == 0 {
+//    if v, ok := kv["mpdport"]; ok && v != "" {
+//      if n, err := strconv.Atoi(v); err == nil {
+//        mpdPort = n
+//      }
+//    }
+//  }
 //
-//	if mpdPass == "" {
-//	  if v, ok := kv["mpdpass"]; ok && v != "" {
-//	    mpdPass = v
-//	  }
-//	}
+//  if mpdPass == "" {
+//    if v, ok := kv["mpdpass"]; ok && v != "" {
+//      mpdPass = v
+//    }
+//  }
 
   if mpdSocket == "" {
     if v, ok := kv["mpdsocket"]; ok && v != "" {
@@ -2071,4 +2210,5 @@ func main() {
   }
 } // func main()
 // End of mpdgolinger
+
 

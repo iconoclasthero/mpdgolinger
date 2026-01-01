@@ -16,6 +16,7 @@ Classic rock stations have long had gimmicks like "Rock Blocks," "Double Shots,"
 - Optional state file for persistent tracking
 - Daemon mode with --daemon
 - Supports TCP or UNIX socket connection to MPD
+- XY playback mode
 
 ## Installation
 
@@ -56,6 +57,7 @@ Optional flags/config file options:
   --mpdsocket=<path>  : MPD server socket, (e.g., `/run/mpd/socket`)     [daemon only]
   --mpdhost=<host>    : MPD server host (default localhost)              [daemon only]
   --mpdport=<port>    : MPD server TCP port (default 6600)               [daemon only]
+  --mpdpass=<pass>    : MPD server password                              [daemon only]
   --listenip=<host>   : IPC listen address                               [daemon only]
   --listenport=<port> : IPC listen port                                  [daemon only]
   --socket=<path>     : IPC socket path
@@ -66,28 +68,38 @@ Optional flags/config file options:
   --version           : Prints mpdgolinger binary version
   --help              : Prints help
 ```
+Config file syntax is `key=value` pair.
 
 ### Client Mode
 
 Run commands against the running daemon:
 
 ```sh
-mpdgolinger status           # prints status message; serves as ping
-mpdgolinger pause            # pauses linger function; mpd playback unchanged
-mpdgolinger resume           # resumes linger function; mpd playback restarted if paused
-mpdgolinger toggle           # toggles linger play/pause; resumes mpd playback if paused
-mpdgolinger limit 5          # changes the ongoing limit to e.g., 5
-mpdgolinger limit            # resets the ongoing limit to default/startup limit (as does 0)
-mpdgolinger block[limit] 3   # sets a limit of e.g., 3 to current block only
-mpdgolinger block[limit]     # turns off the block limit override (as does 0)
-mpdgolinger next             # skips to the next song and block
-mpdgolinger skip             # skips to the next song within block (i.e., mpc next)
-mpdgolinger count 3          # sets the count to e.g., 3
-mpdgolinger verbose on       # turns daemon verbose logging e.g., on
-mpdgolinger version          # prints client/daemon and mpd protocol/binary versions
-mpdgolinger mpc              # outputs mpd state, current/next songs, linger status
-mpdgolinger quit             # exits daemon
+mpdgolinger status            # prints status message, format below; serves as ping
+mpdgolinger pause             # pauses linger function; mpd playback unchanged
+mpdgolinger resume            # resumes linger function; mpd playback restarted if paused
+mpdgolinger toggle            # toggles linger play/pause; resumes mpd playback if paused
+mpdgolinger limit <n>         # changes the ongoing limit to <n>; zero resets below
+mpdgolinger limit             # resets the ongoing limit to default/startup limit
+mpdgolinger block[limit] <n>  # sets a limit of <n> to current block only
+mpdgolinger block[limit]      # turns off the block limit override (as does 0)
+mpdgolinger next              # skips to the next song and block
+mpdgolinger skip              # skips to the next song within block (i.e., mpc next)
+mpdgolinger count <n>         # sets the count to <n>
+mpdgolinger verbose <on|off>  # turns daemon verbose logging on or off
+mpdgolinger version           # prints client/daemon and mpd protocol/binary versions
+mpdgolinger mpc               # outputs mpd state, current/next songs, linger status
+mpdgolinger quit              # exits daemon
 ```
+
+### XY Playback Mode
+
+```sh
+mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>
+mpdgolinger xyoff             # turns XY Mode off
+```
+
+XY Mode allows a randomized playback of a specified subset of a playlist **in consume mode only.** The initial bounds (X & Y) are specified via the client (the Y bound may be specified by an increment). During playback the playlist remains at position X and a random song between X+1 and Y is moved to X+1.  When X is finished and consumed, Y is decremented by one and the cycle repeats until Y=X; XY mode is disabled (via `mpdgolinger xyoff`); or a change causes the current song to chaange from X.
 
 ## Development
 
@@ -97,12 +109,12 @@ mpdgolinger quit             # exits daemon
 ## Notes
 
 - IPC socket must exist and be writable by clients.
-- The IPC socket is presently hard-coded to `/var/lib/mpd/mpdlinger/mpdlinger.sock`
+- The IPC socket defaults to `/var/lib/mpd/mpdlinger/mpdlinger.sock`
 - Daemon supervises both MPD idle events and the IPC socket, reconnecting if necessary.
 
 ## Statefile
 
-To create an optional state file that can be parsed/sourced for other uses, enable the `--state=<path>` when launching the daemon. The format of the state file is:
+To create an optional state file that can be parsed/sourced for other uses, enable the `--state=<path>` when launching the daemon. The format of the state file is the same as `status`:
 
 ```txt
 writetime=2025-12-20T10:35:57.330310379-05:00
@@ -113,4 +125,10 @@ lingerbase=4
 lingerlimit=4
 lingerblocklmt=5     # 0 if blocklimit is not set
 lingerpid=4042418
+```
+In XY Mode, the following additional fields will be diplayed
+```
+lingerxy=true
+lingerx=624
+lingery=644
 ```
