@@ -126,7 +126,7 @@ lingerlimit=4
 lingerblocklmt=5     # 0 if blocklimit is not set
 lingerpid=4042418
 ```
-In XY Mode, the following additional fields will be diplayed
+In XY Mode, the following additional fields will be diplayed:
 ```
 lingerxy=true
 lingerx=624
