@@ -37,6 +37,7 @@ type State struct {
   blockLimit   int    // temporary override (later)
   transition   bool   // true between last-song-start and next-song-start
   lastSongID   string
+  lastSongZI   int
   baseLimit    int
   blockOn      bool
   consume      bool
@@ -58,6 +59,7 @@ type configFile struct {
 
 type derivedState struct {
   WriteTime      string
+  SongZI         int
   SongID         string
   Paused         int
   Count          int
@@ -65,7 +67,7 @@ type derivedState struct {
   Limit          int
   BlockLimit     int
   PID            int
-  LingerXY       bool
+  LingerXY       int
   LingerX        int
   LingerY        int
 } // type derivedState struct
@@ -79,6 +81,7 @@ type xyState struct {
 var xy xyState
 
 const (
+  defaultSkipList = .mpdskip
   defaultMPDhost = "localhost"
   defaultMPDport = 6600
   defaultMPDsocket = "/run/mpd/socket"
@@ -116,6 +119,8 @@ var (
   mpdPass string = ""
   mpdSocket string = ""
   mpdPath = defaultMPDpath
+
+  skipPlaylist = defaultSkipList
 
   // IPC socket
   socketPath = defaultSocketPath
@@ -721,7 +726,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           } else {
             log.Printf("Paused: idle event, song unchanged")
           }
-          deriveStateLocked(songID, limit)  // <--- write after increment to update state count while paused
+          deriveStateLocked(songZI, songID, limit)  // <--- write after increment to update state count while paused
 
 //          state.mu.Unlock()
 //          return nil
@@ -834,7 +839,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         )
 
         // Write out to the statefile
-        deriveStateLocked(songID, limit)
+        deriveStateLocked(songZI, songID, limit)
 
         // Log the song again *after* state changes and random toggles.
         // This lets us confirm whether MPD advanced tracks as expected.
@@ -971,12 +976,13 @@ func verbProcessor(csv string) []string {
       if state.blockOn && state.blockLimit > 0 {
         limit = state.blockLimit
       }
-      ds := deriveStateLocked(state.lastSongID, limit)
+      ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
       state.mu.Unlock()
 
       // append lines to responses slice
       responses = append(responses,
         fmt.Sprintf("writetime=%s", ds.WriteTime),
+        fmt.Sprintf("lingersong=%d", ds.SongZI+1),
         fmt.Sprintf("lingersongid=%s", ds.SongID),
         fmt.Sprintf("lingerpause=%d", ds.Paused),
         fmt.Sprintf("lingercount=%d", ds.Count),
@@ -987,9 +993,9 @@ func verbProcessor(csv string) []string {
       )
       if xy.active {
         responses = append(responses,
-          fmt.Sprintf("lingerxy=%t", ds.LingerXY),
-          fmt.Sprintf("lingerx=%d", ds.LingerX),
-          fmt.Sprintf("lingery=%d", ds.LingerY),
+          fmt.Sprintf("lingerxy=%d", ds.LingerXY),
+          fmt.Sprintf("lingerx=%d", ds.LingerX+1),
+          fmt.Sprintf("lingery=%d", ds.LingerY+1),
         )
       }
 
@@ -1000,7 +1006,7 @@ func verbProcessor(csv string) []string {
 
       // --- update persistent state ---
       state.mu.Lock()
-      deriveStateLocked(state.lastSongID, state.baseLimit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.baseLimit)
       state.mu.Unlock()
 
       // --- first batch: status + current song ---
@@ -1088,7 +1094,7 @@ func verbProcessor(csv string) []string {
         state.paused, expired, state.count, limit, state.transition)
       state.mu.Lock()
       state.paused = true
-      deriveStateLocked(state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
       state.mu.Unlock()
       resp = "Paused"
 
@@ -1117,42 +1123,98 @@ func verbProcessor(csv string) []string {
         state.paused, expired, state.count, limit, state.transition)
       resp = map[bool]string{true: "Paused", false: "Resumed"}[paused]
 
-    case "next":
-      log.Printf("IPC: received next command")
-      state.mu.Lock()
-      state.transition = true
-      state.paused = false
-      state.mu.Unlock()
+//    case "next":
+//      log.Printf("IPC: received next command")
+//      state.mu.Lock()
+//      state.transition = true
+//      state.paused = false
+//      state.mu.Unlock()
+//
+//      _ = mpdDo(func(c *mpd.Client) error {
+//        cs, err := c.CurrentSong()
+//        if err != nil {
+//          return err
+//        }
+//        if err := c.PlaylistAdd(skipPlaylist, cs["file"]); err != nil {
+//          return err
+//        }
+//        if err := c.Random(true); err != nil {
+//          return err
+//        }
+//        if err := c.Next(); err != nil {
+//          return err
+//        }
+//        return c.Play(-1)
+//      }, "IPC-nextBlock")
+//
+//      log.Printf("STATE CHANGE: [IPC-nextBlock] forced block advance, count reset")
+//      resp = "Advanced to next block"
+//
+//    case "skip":
+//      log.Printf("IPC: received skip command")
+//      _ = mpdDo(func(c *mpd.Client) error {
+//        cs, err := c.CurrentSong()
+//        if err != nil {
+//          return err
+//        }
+//        if err := c.PlaylistAdd(skipPlaylist, cs["file"]); err != nil {
+//          return err
+//        }
+//        if err := c.Next(); err != nil {
+//          return err
+//        }
+//        return c.Play(-1)
+//      }, "IPC-skip")
+//
+//      state.mu.Lock()
+//      log.Printf(
+//        "STATE CHANGE: [IPC-skip] count=%d baseLimit=%d blockLimit=%d transition=%v paused=%v",
+//        state.count, state.baseLimit, state.blockLimit, state.transition, state.paused,
+//      )
+//      state.mu.Unlock()
+//      resp = "Skipped to next track"
+
+    case "next", "skip":
+      log.Printf("IPC: received %s command", cmd)
+      isNext := (cmd == "next")
+
+      if isNext {
+        state.mu.Lock()
+        state.transition = true
+        state.paused = false
+        state.mu.Unlock()
+      }
 
       _ = mpdDo(func(c *mpd.Client) error {
-        if err := c.Random(true); err != nil {
+        cs, err := c.CurrentSong()
+        if err != nil {
           return err
+        }
+        csfile := cs["file"]
+        if csfile != "" {
+          if err := c.PlaylistAdd(skipPlaylist, csfile); err != nil {
+            return err
+          }
+        }
+        if isNext {
+          if err := c.Random(true); err != nil {
+            return err
+          }
         }
         if err := c.Next(); err != nil {
           return err
         }
         return c.Play(-1)
-      }, "IPC-nextBlock")
+      }, "IPC-"+cmd)
 
-      log.Printf("STATE CHANGE: [IPC-nextBlock] forced block advance, count reset")
-      resp = "Advanced to next block"
-
-    case "skip":
-      log.Printf("IPC: received skip command")
-      _ = mpdDo(func(c *mpd.Client) error {
-        if err := c.Next(); err != nil {
-          return err
-        }
-        return c.Play(-1)
-      }, "IPC-skip")
-
-      state.mu.Lock()
       log.Printf(
-        "STATE CHANGE: [IPC-skip] count=%d baseLimit=%d blockLimit=%d transition=%v paused=%v",
-        state.count, state.baseLimit, state.blockLimit, state.transition, state.paused,
+        "STATE CHANGE: [IPC-%s] count=%d baseLimit=%d blockLimit=%d transition=%v paused=%v",
+        cmd, state.count, state.baseLimit, state.blockLimit, state.transition, state.paused,
       )
-      state.mu.Unlock()
-      resp = "Skipped to next track"
+      resp = map[bool]string{
+        true:  "Advanced to next block",
+        false: "Skipped to next track",
+      }[isNext]
 
     case "count":
      if len(fields) != 2 {
@@ -1173,7 +1235,7 @@ func verbProcessor(csv string) []string {
       }
 
       state.transition = state.count >= limit
-      deriveStateLocked(state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
       state.mu.Unlock()
 
       err = mpdDo(func(c *mpd.Client) error {
@@ -1201,7 +1263,7 @@ func verbProcessor(csv string) []string {
       if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
         limit = state.blockLimit
       }
-      deriveStateLocked(state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
       state.mu.Unlock()
 
       log.Printf("STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
@@ -1237,7 +1299,7 @@ func verbProcessor(csv string) []string {
         limit = state.blockLimit
       }
 
-      deriveStateLocked(state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
       state.mu.Unlock()
 
       err := mpdDo(func(c *mpd.Client) error {
@@ -1261,6 +1323,30 @@ func verbProcessor(csv string) []string {
       state.mu.Unlock()
       log.Printf("[IPC] Verbose mode turned %s", val)
       resp = "Verbose mode " + val
+
+    case "state":
+      if len(fields) < 2 {
+        resp = "State requires a path argument"
+        continue
+      }
+
+      path := filepath.Clean(fields[1])
+
+      f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0644)
+      if err != nil {
+        resp = "State path not writable: " + err.Error()
+        log.Printf("State path not writable: %v", err)
+        continue
+      }
+      f.Close()
+
+      state.mu.Lock()
+      statePath = path
+      stateEnabled = true
+      state.mu.Unlock()
+
+      log.Printf("[IPC] State file enabled at %q", path)
+      resp = "State file enabled at " + path
 
     case "version":
       writeOut := func(msg string) {
@@ -1312,9 +1398,9 @@ func verbProcessor(csv string) []string {
       resp = "OK"
 
     case "xy":
-
       x, _ := strconv.Atoi(fields[1])
       y, _ := strconv.Atoi(fields[2])
+      inc, _ := strconv.Atoi(fields[3])
 
       xy.start = x
       xy.end = y
@@ -1324,17 +1410,17 @@ func verbProcessor(csv string) []string {
         log.Printf("[IPC] xy.active: %t\n", xy.active)
         log.Printf("[IPC]  xy.start: %d\n", xy.start)
         log.Printf("[IPC]    xy.end: %d\n", xy.end)
+        log.Printf("[IPC]       inc: %d\n", inc)
+        log.Printf("[IPC] XY mode initiated: %d → %d (ZI)", x, y)
       }
-      log.Printf("[IPC] XY mode initiated: %d → %d (ZI)", x, y)
 
-      // immediately set consume mode on
       _ = mpdDo(func(c *mpd.Client) error {
         st, err := c.Status()
         if err != nil {
           return err
         }
         state.mu.Lock()
-        state.consume = (st["consume"] == "1")
+        state.consume = (st["consume"] == "1")  // immediately set consume mode on
         state.mu.Unlock()
 
         if err := c.Consume(true); err != nil {
@@ -1345,6 +1431,21 @@ func verbProcessor(csv string) []string {
         }
         // jump to playlist position corresponding to xy.start
         songZI, _ := strconv.Atoi(st["song"])
+        pllength, _ := strconv.Atoi(st["playlistlength"])
+
+        if xy.start == -1 {
+          xy.start = songZI
+//        } else {
+//        inc = 0
+        }
+        if inc == 1 {
+          xy.end = xy.end + xy.start + 1
+          if xy.start > xy.end {
+            xy.start, xy.end = xy.end, xy.start // fix it if the increment was negative
+          }
+        }
+        if xy.end == -1 { xy.end = pllength }
+
         if songZI != xy.start {
           if err := c.Play(xy.start); err != nil {
             log.Printf("[XY] failed to jump to start: %v", err)
@@ -1377,11 +1478,12 @@ func verbProcessor(csv string) []string {
 
   state.mu.Lock()
   songID := state.lastSongID
+  songZI := state.lastSongZI
   limit := state.baseLimit
   if state.blockOn && state.blockLimit > 0 {
     limit = state.blockLimit
   }
-  deriveStateLocked(songID, limit)
+  deriveStateLocked(songZI, songID, limit)
   state.mu.Unlock()
 
   return responses
@@ -1476,12 +1578,13 @@ func acceptClients(ln net.Listener) {
 
 
 // deriveStateLocked writes the current state to disk (state.mu must be held)
-func deriveStateLocked(songID string, limit int) *derivedState {
+func deriveStateLocked(songZI int, songID string, limit int) *derivedState {
   // state.mu MUST already be held
   now := time.Now().Format(time.RFC3339Nano)
 
   ds := &derivedState{
     WriteTime:  now,
+    SongZI:     songZI,
     SongID:     songID,
     Paused:     btoi(state.paused),
     Count:      state.count,
@@ -1489,10 +1592,14 @@ func deriveStateLocked(songID string, limit int) *derivedState {
     Limit:      limit,
     BlockLimit: state.blockLimit,
     PID:        os.Getpid(),
-    LingerXY:   xy.active,
-    LingerX:    xy.start,
-    LingerY:    xy.end,
   }
+
+  if xy.active {
+    ds.LingerXY = 1
+    ds.LingerX = xy.start
+    ds.LingerY = xy.end
+  }
+
 
   // ---- ONLY disk I/O is optional ----
   if !stateEnabled {
@@ -1518,6 +1625,7 @@ func deriveStateLocked(songID string, limit int) *derivedState {
 // formatState formats a derivedState struct into key=value lines
 func formatState(w io.Writer, ds *derivedState) {
   fmt.Fprintf(w, "writetime=%s\n", ds.WriteTime)
+  fmt.Fprintf(w, "lingersong=%d\n", ds.SongZI+1)
   fmt.Fprintf(w, "lingersongid=%s\n", ds.SongID)
   fmt.Fprintf(w, "lingerpause=%d\n", ds.Paused)
   fmt.Fprintf(w, "lingercount=%d\n", ds.Count)
@@ -1526,7 +1634,7 @@ func formatState(w io.Writer, ds *derivedState) {
   fmt.Fprintf(w, "lingerblocklmt=%d\n", ds.BlockLimit)
   fmt.Fprintf(w, "lingerpid=%d\n", ds.PID)
   if xy.active {
-    fmt.Fprintf(w, "lingerxy=%t\n", ds.LingerXY)
+    fmt.Fprintf(w, "lingerxy=%d\n", ds.LingerXY)
     fmt.Fprintf(w, "lingerx=%d\n", ds.LingerX)
     fmt.Fprintf(w, "lingery=%d\n", ds.LingerY)
   }
@@ -1542,7 +1650,7 @@ func sendStatus(w io.Writer) {
     limit = state.blockLimit
   }
 
-  ds := deriveStateLocked(state.lastSongID, limit)
+  ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
   state.mu.Unlock()
 
   formatState(w, ds)
@@ -1576,9 +1684,9 @@ func clientCommandHandler(args []string) error {
       case "status",
            "pause",
            "resume",
+           "toggle",
            "next",
            "skip",
-           "toggle",
            "quit",
            "mpc",
            "xyoff",
@@ -1621,43 +1729,59 @@ func clientCommandHandler(args []string) error {
         }
         return fmt.Errorf("verbose requires 'on' or 'off' argument")
 
-case "xy":
-  if i+2 < len(toks) {
-    x, err1 := strconv.Atoi(toks[i+1])
-    if err1 != nil || x < 1 {
-      return fmt.Errorf("invalid xy range")
-    }
+      case "state":
+        if i+1 < len(toks) {
+          // path-like check
+          val := toks[i+1]
+          if !filepath.IsAbs(val) {
+            return fmt.Errorf("state requires a valid, absolute daemon path as argument")
+          }
+          batch = append(batch, "state "+val)
+          i += 2
+          continue
+        }
+        return fmt.Errorf("state requires a valid, absolute daemon path as argument")
 
-    ytok := toks[i+2]
-    var y int
+      case "xy":
+        if i+2 < len(toks) {
+          inc := 0
+          x, err1 := strconv.Atoi(toks[i+1])
+          if err1 != nil || x < 0 {
+            return fmt.Errorf("invalid xy range")
+          }
 
-    if strings.HasPrefix(ytok, "+") || strings.HasPrefix(ytok, "-") {
-      delta, err := strconv.Atoi(ytok)
-      if err != nil {
-        return fmt.Errorf("invalid xy delta")
-      }
-      y = x + delta
-    } else {
-      var err error
-      y, err = strconv.Atoi(ytok)
-      if err != nil {
-        return fmt.Errorf("invalid xy range")
-      }
-    }
+          ytok := toks[i+2]
+          var y int
+          var err error
 
-    if y < 1 {
-      return fmt.Errorf("invalid xy range")
-    }
+          if strings.HasPrefix(ytok, "+") || strings.HasPrefix(ytok, "-") {
+            inc = 1
+            y, err = strconv.Atoi(ytok)
+//            delta, err := strconv.Atoi(ytok)
+            if err != nil {
+              return fmt.Errorf("invalid xy delta")
+            }
+//            y = x + delta
+          } else {
+            y, err = strconv.Atoi(ytok)
+            if err != nil {
+              return fmt.Errorf("invalid xy range")
+            }
+          }
 
-    if y < x {
-      x, y = y, x
-    }
+          if y < 0 && inc == 0 {
+            return fmt.Errorf("invalid xy range")
+          }
 
-    batch = append(batch, fmt.Sprintf("xy %d %d", x-1, y-1))
-    i += 3
-    continue
-  }
-  return fmt.Errorf("usage: xy <startSongID> <endSongID|+N|-N>")
+          if y < x && inc == 0 {
+            x, y = y, x
+          }
+
+          batch = append(batch, fmt.Sprintf("xy %d %d %d", x-1, y-1, inc))
+          i += 3
+          continue
+        }
+        return fmt.Errorf("usage: xy <startSongID> <endSongID|+N|-N>")
 
 /*--------------------------------------------------------------*/
       default:
@@ -2128,14 +2252,18 @@ func main() {
     log.Printf("Failed to connect to MPD at startup: %v", err)
     state.count = 0
     state.lastSongID = ""
+    state.lastSongZI = 0
   } else {
     status, err := client.Status()
     if err != nil {
       log.Printf("Status error at startup: %v", err)
       state.count = 0
       state.lastSongID = ""
+      state.lastSongZI = 0
     } else {
       state.lastSongID = status["songid"]
+      state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
+
       switch status["state"] {
       case "paused", "stop":
         state.count = 0
@@ -2147,8 +2275,9 @@ func main() {
   }
 
   log.Printf(
-      "Starting block count=%d, lastSongID=%s, baseLimit=%d, blockLimit=%d",
+      "Starting block count=%d, lastSongZI=%d; lastSongID=%s, baseLimit=%d, blockLimit=%d",
       state.count,
+      state.lastSongZI,
       state.lastSongID,
       state.baseLimit,
       state.blockLimit,
@@ -2160,7 +2289,7 @@ func main() {
 
   if stateEnabled {
     state.mu.Lock()
-    deriveStateLocked(state.lastSongID, state.baseLimit)
+    deriveStateLocked(state.lastSongZI, state.lastSongID, state.baseLimit)
     state.mu.Unlock()
   }
 
