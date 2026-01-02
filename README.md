@@ -49,6 +49,8 @@ strip mpdgolinger
 
 An example systemd unit file is included for reference.
 
+### Flags/.conf file options
+
 Optional flags/config file options:
 
 ```
@@ -73,6 +75,12 @@ Optional flags/config file options:
   --help              : Prints help
 ```
 Config file syntax is `key=value` pair; use double quotes on the RHS as necessary.
+
+#### Daemon .conf-only options:
+```
+  skiplist=<MPDplaylist>           # record skipped songs in this playlist; `.m3u` added by MPD
+  mpdpath=</absolute/path/to/mpd>  # defaults to `/usr/bin/mpd`; 'none' disables verstion check
+```
 
 ### Client Mode
 

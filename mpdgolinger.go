@@ -85,13 +85,13 @@ const (
   defaultMPDhost = "localhost"
   defaultMPDport = 6600
   defaultMPDsocket = "/run/mpd/socket"
+  defaultMPDpath = "/usr/bin/mpd"
   defaultState = "/var/lib/mpd/mpdlinger/mpdgolinger.state"
   defaultListenIP = "0.0.0.0"
   defaultListenPort = 6599
   defaultSocketPath = "/var/lib/mpd/mpdlinger/mpdgolinger.sock"
   defaultDaemonIP = "localhost"
   defaultDaemonPort = 6559
-  defaultMPDpath = "/usr/bin/mpd"
 ) // const
 
 
@@ -118,9 +118,10 @@ var (
   mpdPort int    = 0
   mpdPass string = ""
   mpdSocket string = ""
-  mpdPath = defaultMPDpath
+//  mpdPath = defaultMPDpath
+  mpdPath string = ""
 
-  skipPlaylist = defaultSkipList
+  skippedList string = ""  // no flag implemented
 
   // IPC socket
   socketPath = defaultSocketPath
@@ -1135,7 +1136,7 @@ func verbProcessor(csv string) []string {
 //        if err != nil {
 //          return err
 //        }
-//        if err := c.PlaylistAdd(skipPlaylist, cs["file"]); err != nil {
+//        if err := c.PlaylistAdd(skippedList, cs["file"]); err != nil {
 //          return err
 //        }
 //        if err := c.Random(true); err != nil {
@@ -1157,7 +1158,7 @@ func verbProcessor(csv string) []string {
 //        if err != nil {
 //          return err
 //        }
-//        if err := c.PlaylistAdd(skipPlaylist, cs["file"]); err != nil {
+//        if err := c.PlaylistAdd(skippedList, cs["file"]); err != nil {
 //          return err
 //        }
 //        if err := c.Next(); err != nil {
@@ -1191,8 +1192,8 @@ func verbProcessor(csv string) []string {
           return err
         }
         csfile := cs["file"]
-        if csfile != "" {
-          if err := c.PlaylistAdd(skipPlaylist, csfile); err != nil {
+        if csfile != "" && skippedList != "" {
+          if err := c.PlaylistAdd(skippedList, csfile); err != nil {
             return err
           }
         }
@@ -1366,31 +1367,35 @@ func verbProcessor(csv string) []string {
         writeOut("mpd protocol version unavailable\n")
       }
 
-      cmd := exec.Command(mpdPath, "--version")
-      stdout, err := cmd.StdoutPipe()
-      if err != nil {
-        writeOut(fmt.Sprintf("failed to get %s version: %v", mpdPath, err))
-        break
-      }
-
-      if err = cmd.Start(); err != nil {
-        writeOut(fmt.Sprintf("failed to start %s: %v", mpdPath, err))
-        break
-      }
-
-      scanner := bufio.NewScanner(stdout)
-      if scanner.Scan() {
-        line := strings.TrimSpace(scanner.Text())
-        re := regexp.MustCompile(`^Music Player Daemon .* \(v([0-9]+\.[0-9]+\.[0-9]+)\)$`)
-        matches := re.FindStringSubmatch(line)
-        verStr := line
-        if len(matches) == 2 {
-          verStr = matches[1]
+      if mpdPath != "" {
+        cmd := exec.Command(mpdPath, "--version")
+        stdout, err := cmd.StdoutPipe()
+        if err != nil {
+          writeOut(fmt.Sprintf("failed to get %s version: %v", mpdPath, err))
+          break
         }
-        writeOut(fmt.Sprintf("%s version %s", mpdPath, verStr))
+
+        if err = cmd.Start(); err != nil {
+          writeOut(fmt.Sprintf("failed to start %s: %v", mpdPath, err))
+          break
+        }
+
+        scanner := bufio.NewScanner(stdout)
+        if scanner.Scan() {
+          line := strings.TrimSpace(scanner.Text())
+          re := regexp.MustCompile(`^Music Player Daemon .* \(v([0-9]+\.[0-9]+\.[0-9]+)\)$`)
+          matches := re.FindStringSubmatch(line)
+          verStr := line
+          if len(matches) == 2 {
+            verStr = matches[1]
+          }
+          writeOut(fmt.Sprintf("%s version %s", mpdPath, verStr))
+        }
+        _ = cmd.Wait()
+      } else {
+        writeOut(fmt.Sprintf("No path available for mpd binary"))
       }
 
-      _ = cmd.Wait()
 
     case "exit", "quit":
       log.Printf("[IPC] Received %s, shutting down", cmd)
@@ -2169,8 +2174,24 @@ func main() {
     execPost = v
   }
 
+  // no flag implemented for skippedList; assignment defaults to ""
+  // this sets up recording of skipped files in a designated mpd playlist.m3u
+  // to allow for further processing
+  if v, ok := kv["skiplist"]; ok && v != "" && skippedList == "" {
+    skippedList = v
+  }
+
   if v, ok := kv["log"]; ok && v != "" && logPath == "" {
     logPath = v
+  }
+
+  // no flag implemented for mpdpath; will default to /usr/bin/mpd if unset
+  // `mpdpath=none` in daemon .conf disables mpd binary checking
+  mpdPath = kv["mpdpath"]
+  if mpdPath == "" {
+    mpdPath = defaultMPDpath
+  } else if mpdPath == "none" {
+    mpdPath = ""
   }
 
   // ------------------------------------------------------------------
