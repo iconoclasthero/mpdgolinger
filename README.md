@@ -41,10 +41,10 @@ strip mpdgolinger
 ## Usage
 
 ### Daemon Mode
-
+Examples:
 ```sh
-./mpdgolinger --daemon --limit=3 --mpdhost=localhost --mpdport=6600   # to specify via cli flags
-./mpdgolinger --daemon --config=./mpdgolinger.conf                    # to use a config file
+mpdgolinger --daemon --limit=3 --mpdhost=localhost --mpdport=6600  # specify via cli flags
+mpdgolinger --daemon --config=./mpdgolinger.conf                   # specify via config file
 ```
 
 An example systemd unit file is included for reference.
