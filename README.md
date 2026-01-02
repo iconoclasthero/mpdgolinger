@@ -60,11 +60,15 @@ Optional flags/config file options:
   --mpdpass=<pass>    : MPD server password                              [daemon only]
   --listenip=<host>   : IPC listen address                               [daemon only]
   --listenport=<port> : IPC listen port                                  [daemon only]
+  --limit=<n>         : Sets baselimit to n                              [daemon only]
+  --log=<path>        : Daemon logging path (default is stdout/fd1)      [daemon only]
+  --state=<path>      : Optional path for persistent state file          [daemon only]
   --socket=<path>     : IPC socket path
-  --state=<path>      : Optional path for persistent state file
+  --config=<path>     : Path for config file defaults
   --daemonip=<host>   : Connect to daemon listening at address           [client only]
   --daemonport=<port> : Connect to daemon listening on port              [client only]
   --execpost=<path>   : File/commandto execute after client              [client only]
+  --verbose           : Verbose output
   --version           : Prints mpdgolinger binary version
   --help              : Prints help
 ```
@@ -79,17 +83,18 @@ mpdgolinger status            # prints status message, format below; serves as p
 mpdgolinger pause             # pauses linger function; mpd playback unchanged
 mpdgolinger resume            # resumes linger function; mpd playback restarted if paused
 mpdgolinger toggle            # toggles linger play/pause; resumes mpd playback if paused
-mpdgolinger limit <n>         # changes the ongoing limit to <n>; zero resets below
-mpdgolinger limit             # resets the ongoing limit to default/startup limit
+mpdgolinger limit <n>         # changes the base limit to <n>; zero resets below
+mpdgolinger limit             # resets the base limit to the base limit at startup
 mpdgolinger block[limit] <n>  # sets a limit of <n> to current block only
 mpdgolinger block[limit]      # turns off the block limit override (as does n=0)
-mpdgolinger next              # skips to the next song and block
+mpdgolinger next              # skips to the next song and block; mpd playback restarted
 mpdgolinger skip              # skips to the next song within block (i.e., mpc next)
 mpdgolinger count <n>         # sets the count to <n>
-mpdgolinger verbose <on|off>  # turns daemon verbose logging on or off
-mpdgolinger version           # prints client/daemon and mpd protocol/binary versions
+mpdgolinger verbose <on|off>  # turns the running daemon verbose logging on or off
+mpdgolinger state <path>      # enables/changes state file path daemon writes to
+mpdgolinger version           # prints client/daemon, mpd protocol & /usr/bin/mpd versions
 mpdgolinger mpc               # outputs mpd state, current/next songs, linger status
-mpdgolinger quit              # exits daemon
+mpdgolinger quit|exit         # exits daemon
 ```
 
 ### XY Playback Mode
@@ -117,8 +122,9 @@ mpdgolinger xyoff             # turns XY Mode off
 To create an optional state file that can be parsed/sourced for other uses, enable the `--state=<path>` when launching the daemon. The format of the state file is the same as `status`:
 
 ```sh
-writetime=2025-12-20T10:35:57.330310379-05:00
-lingersongid=139234  # to verify sync with other MPD clients
+writetime=2025-12-20T07:35:57.330310379-05:00
+lingersong=41333     # 1-indexed song position to verify sync with other MPD clients
+lingersongid=139234  # mpd songid to verify sync with other MPD clients
 lingerpause=0
 lingercount=1
 lingerbase=4
