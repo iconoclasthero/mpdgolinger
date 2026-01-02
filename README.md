@@ -78,8 +78,8 @@ Config file syntax is `key=value` pair; use double quotes on the RHS as necessar
 
 #### Daemon .conf-only options:
 ```
-  skiplist=<MPDplaylist>           # record skipped songs in this playlist; `.m3u` added by MPD
-  mpdpath=</absolute/path/to/mpd>  # defaults to `/usr/bin/mpd`; 'none' disables verstion check
+skiplist=<MPDplaylist name>  # record skipped songs in this playlist; `.m3u` added by MPD
+mpdpath=</absolute/path/mpd> # defaults to `/usr/bin/mpd`; 'none' disables verstion check
 ```
 
 ### Client Mode
