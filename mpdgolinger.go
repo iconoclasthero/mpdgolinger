@@ -81,7 +81,7 @@ type xyState struct {
 var xy xyState
 
 const (
-  defaultSkipList = .mpdskip
+  defaultSkipList = ".mpdskip"
   defaultMPDhost = "localhost"
   defaultMPDport = 6600
   defaultMPDsocket = "/run/mpd/socket"
