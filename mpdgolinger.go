@@ -1449,7 +1449,7 @@ func verbProcessor(csv string) []string {
             xy.start, xy.end = xy.end, xy.start // fix it if the increment was negative
           }
         }
-        if xy.end == -1 { xy.end = pllength }
+        if xy.end == -1 { xy.end = pllength - 1 } // pllength is not zero-indexed!
 
         if songZI != xy.start {
           if err := c.Play(xy.start); err != nil {
@@ -1461,7 +1461,7 @@ func verbProcessor(csv string) []string {
 
       log.Printf("[IPC] XY mode enabled: %d → %d (ZI)", xy.start, xy.end)
       if verbose { log.Printf("[IPC] Previous consume state: %t", state.consume) }
-      resp = fmt.Sprintf("XY mode enabled: %d → %d", x+1, y+1)
+      resp = fmt.Sprintf("XY mode enabled: %d → %d", xy.start+1, xy.end+1)
 
     case "xyoff":
       xy.active = false
@@ -1640,8 +1640,8 @@ func formatState(w io.Writer, ds *derivedState) {
   fmt.Fprintf(w, "lingerpid=%d\n", ds.PID)
   if xy.active {
     fmt.Fprintf(w, "lingerxy=%d\n", ds.LingerXY)
-    fmt.Fprintf(w, "lingerx=%d\n", ds.LingerX)
-    fmt.Fprintf(w, "lingery=%d\n", ds.LingerY)
+    fmt.Fprintf(w, "lingerx=%d\n", ds.LingerX+1)
+    fmt.Fprintf(w, "lingery=%d\n", ds.LingerY+1)
   }
 } // func formatState(w io.Writer, ds *derivedState)
 
@@ -1778,7 +1778,7 @@ func clientCommandHandler(args []string) error {
             return fmt.Errorf("invalid xy range")
           }
 
-          if y < x && inc == 0 {
+          if y < x && inc == 0 && y != 0 {
             x, y = y, x
           }
 
