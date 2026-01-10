@@ -758,6 +758,20 @@ func runIdleLoop(w *mpd.Watcher) error {
 
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
+          // addresses https://github.com/iconoclasthero/mpdgolinger/issues/19
+          plLen, err := strconv.Atoi(status["playlistlength"])
+          if err != nil {
+            log.Printf("[XY] invalid playlistlength: %v", err)
+            return nil
+          }
+          max := plLen - 1
+          if xy.end > max {
+            log.Printf(
+              "[XY] clamping Y from %d to %d (playlist shrank)",
+              xy.end, max,
+            )
+            xy.end = max
+          }
           if songZI != xy.start {
             state.transition = true
             xy.active = false
@@ -771,7 +785,7 @@ func runIdleLoop(w *mpd.Watcher) error {
             return nil
           }
           log.Printf("[rIL] Calling runXYStep, playlist postion: %d (ZI)", songZI)
-          err := runXYStep(c)
+          err = runXYStep(c)
           if err != nil {
             log.Printf("runXYStep failed: %v", err)
           }
