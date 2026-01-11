@@ -116,6 +116,7 @@ XY Mode allows a randomized playback of a specified subset of a playlist **in co
 mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>
 mpdgolinger xyoff             # turns XY Mode off
 ```
+* Modifying the playlist during XY playback mode may have unexpected and/or unintended results due to limitations of the mpd protocol: this will be especially problematic if Y < `playlistlength` and music is removed from the XY range (resulting in playlist entries > Y being shifted into the XY range).  Removing music from before the XY range should result in XY mode being turned off as the playlist number will change; removing music after XY will have no consequences.
 
 ## Development
 
