@@ -5,12 +5,14 @@ import (
 //  "flag"
    flag "github.com/spf13/pflag"
   "github.com/fhs/gompd/v2/mpd"
+  "github.com/coder/websocket"
   "regexp"
   "bufio"
   "bytes"
   "fmt"
   "log"
   "net"
+  "net/http"
   "io"
   "os"
   "os/signal"
@@ -130,6 +132,9 @@ var (
   listenIP   string
   listenPort int
 
+  defWSport int = 8008
+
+
   // Client flags for TCP client connections
   daemonIP   string
   daemonPort int
@@ -146,6 +151,131 @@ var (
     "next": true, "skip": true, "quit": true, "exit": true,
   }
 ) // var
+
+/* Here begins the great websock experiement */
+
+//func wsHandler(w http.ResponseWriter, r *http.Request) {
+//    conn, err := websocket.Accept(w, r, nil)
+////    conn, err := websocket.Upgrade(w, r, nil)
+//    if err != nil {
+//        log.Printf("ws upgrade failed: %v", err)
+//        return
+//    }
+//    defer conn.Close()
+//
+//    msg := "Ahoy matey!\n"
+//
+//    if err := conn.Write([]byte(msg)); err != nil {
+//        log.Printf("ws write failed: %v", err)
+//        return
+//    }
+//} // cnuf wsHandler
+
+
+//func wsHandler(w http.ResponseWriter, r *http.Request) {
+//  conn, err := websocket.Accept(w, r, nil)
+//  if err != nil {
+//    log.Printf("ws accept failed: %v", err)
+//    return
+//  }
+//  defer conn.Close(websocket.StatusNormalClosure, "bye")
+//
+//  msg := "Ahoy matey!\n"
+//  if err := conn.Write(r.Context(), websocket.MessageText, []byte(msg)); err != nil {
+//    log.Printf("ws write failed: %v", err)
+//  }
+//}
+
+//func wsHandler(w http.ResponseWriter, r *http.Request) {
+//  conn, err := websocket.Accept(w, r, nil)
+//  if err != nil {
+//    log.Printf("ws accept failed: %v", err)
+//    return
+//  }
+//  defer conn.Close(websocket.StatusNormalClosure, "bye")
+//
+//  // Call verbProcessor with "status"
+//  responses := verbProcessor("status")
+//  msg := strings.Join(responses, "\n") + "\n"
+//
+//  // Send the message over WS
+//  err = conn.Write(r.Context(), websocket.MessageText, []byte(msg))
+//  if err != nil {
+//    log.Printf("ws write failed: %v", err)
+//  }
+//}
+
+//func wsHandler(w http.ResponseWriter, r *http.Request) {
+//  conn, err := websocket.Accept(w, r, nil)
+//  if err != nil {
+//    log.Printf("ws accept failed: %v", err)
+//    return
+//  }
+//  defer conn.Close(websocket.StatusNormalClosure, "bye")
+//
+//  responses := verbProcessor("status")
+//
+//  // Send each line separately
+//  for _, line := range responses {
+//    if err := conn.Write(r.Context(), websocket.MessageText, []byte(line+"\n")); err != nil {
+//      log.Printf("ws write failed: %v", err)
+//      return
+//    }
+//  }
+//  conn.Close(websocket.StatusNormalClosure, "done")
+//}
+
+
+func wsHandler(w http.ResponseWriter, r *http.Request) {
+  conn, err := websocket.Accept(w, r, nil)
+  if err != nil {
+    log.Printf("ws accept failed: %v", err)
+    return
+  }
+  defer conn.Close(websocket.StatusNormalClosure, "done")
+
+  // read messages until client closes
+  for {
+    _, msgBytes, err := conn.Read(r.Context())
+    if err != nil {
+      if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+        break
+      }
+      log.Printf("ws read error: %v", err)
+      break
+    }
+    msg := string(msgBytes)
+
+    // call verb processor with whatever verbs came in
+    responses := verbProcessor(msg)
+
+    // send back each line separately
+    for _, line := range responses {
+      if err := conn.Write(r.Context(), websocket.MessageText, []byte(line)); err != nil {
+        log.Printf("ws write failed: %v", err)
+        break
+      }
+    }
+
+    // optional: send a final "done" line or just close connection
+    break // remove this if you want persistent multi-command sessions
+  }
+}
+
+
+
+func startWS(port int) {
+  http.HandleFunc("/ws", wsHandler)
+
+  go func() {
+    addr := fmt.Sprintf(":%d", port)
+    log.Printf("WS listening on :%s (/ws)", addr)
+    if err := http.ListenAndServe(addr, nil); err != nil {
+      log.Fatalf("ws server failed: %v", err)
+    }
+  }()
+} // cnuf startWS
+
 
 
 // runXYStep executes one XY shuffle step using playlist positions ("song").
@@ -968,6 +1098,9 @@ func shellQuoteKV(line string) string {
 // verbProcessor [vP()] parses and executes IPC commands from csv, returning response lines.
 func verbProcessor(csv string) []string {
   var responses []string
+  var green = "\033[32m"
+  var tput0 = "\033[0m"    // name derrived from `tput[ sgr]0`
+  var red = "\033[31m"
 
   parts := strings.Split(csv, ",")
   for _, part := range parts {
@@ -1034,8 +1167,9 @@ func verbProcessor(csv string) []string {
           return err
         }
         for k, v := range st {
+          k = strings.ToLower(k)
           responses = append(responses,
-            fmt.Sprintf("mpd.%s=%s", k, v),
+            fmt.Sprintf("%s=%s", k, v),
           )
         }
 
@@ -1045,8 +1179,9 @@ func verbProcessor(csv string) []string {
           return err
         }
         for k, v := range cs {
+          k = strings.ToLower(k)
           responses = append(responses,
-            fmt.Sprintf("current.%s=%s", k, v),
+            fmt.Sprintf("%s=%s", k, v),
           )
         }
 
@@ -1082,8 +1217,10 @@ func verbProcessor(csv string) []string {
         }
         for _, song := range ne {
           for k, v := range song {
+            kv := ("next_"+strings.ToLower(k)+"="+v)
             responses = append(responses,
-              fmt.Sprintf("next.%s=%s", k, v),
+//              fmt.Sprintf("next_%s=%s", k, v),
+              fmt.Sprintf("%s", kv),
             )
           }
         }
@@ -1101,6 +1238,259 @@ func verbProcessor(csv string) []string {
       }
 
       responses = append(responses, verbProcessor("status")...)
+
+    case "mpd-current":
+      var st mpd.Attrs // keep status around for next-song lookup
+
+      log.Printf("IPC: received mpd-current command")
+
+      // --- update persistent mpdlinger state ---
+      state.mu.Lock()
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.baseLimit)
+      state.mu.Unlock()
+
+      // --- first batch: status + current song ---
+      // Same batching pattern as mpc to avoid extra MPD round trips
+      err := mpdDo(func(c *mpd.Client) error {
+        var err error
+
+        // --- MPD status ---
+        st, err = c.Status()
+        if err != nil {
+          return err
+        }
+
+        for k, v := range st {
+          k = strings.ToLower(k)
+
+          switch k {
+          case "state":
+            // keep raw for logic
+            u_state := v
+
+            // normalize for display
+            switch v {
+            case "play":
+              v = green + "playing" + tput0
+            case "pause":
+              v = red + "paused" + tput0
+            case "stop":
+              v = red + "stopped" + tput0
+            }
+
+            // emit both
+            responses = append(responses,
+              fmt.Sprintf("%s=%s", k, v),         // normalized display
+              fmt.Sprintf("u_%s=%s", k, u_state), // raw
+            )
+            continue
+
+          case "time":
+            // mpd format: elapsed:duration (both already rounded by mpd)
+            // mpd-current uses THIS for percent
+            parts := strings.SplitN(v, ":", 2)
+            if len(parts) == 2 {
+              elap, e1 := strconv.Atoi(parts[0])
+              dur,  e2 := strconv.Atoi(parts[1])
+              if e1 == nil && e2 == nil && dur > 0 {
+                pct := (100 * elap) / dur
+
+//                // mpd-current emits empty percent_time first
+//                responses = append(responses, "percent_time=")
+
+                responses = append(responses,
+                  fmt.Sprintf("percent=%d%%", pct),
+                  fmt.Sprintf("percent_time=%d", pct),
+                )
+              }
+            }
+            continue
+
+          case "duration":
+//             responses = append(responses,
+//                 fmt.Sprintf("total_time=%s", v),
+//             )
+             continue
+
+          case "song":
+            songpos, err := strconv.Atoi(v) // convert string to int
+            if err != nil {
+              songpos = 0 // fallback if conversion fails
+            }
+            songpos++ // add 1, like in bash
+            responses = append(responses,
+              fmt.Sprintf("song_position=%d", songpos),
+              fmt.Sprintf("songpos=%d", songpos),
+            )
+            continue
+
+          case "playlistlength":
+            responses = append(responses,
+              fmt.Sprintf("pllength=%s", v),
+              fmt.Sprintf("song_length=%s", v),
+              fmt.Sprintf("%s=%s", k, v),
+            )
+            continue
+
+          case "repeat":
+            u_repeat := v
+            if v == "1" {
+              v = green + "⟳" + tput0
+            } else {
+              v = "⟳"
+            }
+            responses = append(responses,
+              fmt.Sprintf("%s=%s", k, v),
+              fmt.Sprintf("u_%s=%s", k, u_repeat),
+            )
+            continue
+
+          case "consume":
+            u_consume := v
+            if v == "1" {
+              v = "✅"
+            } else {
+              v = "❌"
+            }
+            responses = append(responses,
+              fmt.Sprintf("%s=%s", k, v),
+              fmt.Sprintf("u_%s=%s", k, u_consume),
+            )
+            continue
+
+          case "random":
+            u_random := v
+            if v == "1" {
+              v = "✅"
+            } else {
+              v = "❌"
+            }
+            responses = append(responses,
+              fmt.Sprintf("%s=%s", k, v),
+              fmt.Sprintf("u_%s=%s", k, u_random),
+            )
+            continue
+          }
+
+          // generic append for everything else
+          responses = append(responses,
+            fmt.Sprintf("%s=%s", k, v),
+          )
+        }
+
+        // --- current song ---
+        cs, err := c.CurrentSong()
+        if err != nil {
+          return err
+        }
+        for k, v := range cs {
+          k = strings.ToLower(k)
+
+          if strings.HasPrefix(k, "musicbrainz_") {
+            if k == "musicbrainz_releasetrackid" {
+              k = "musicbrainz_reltrackid"
+            }
+            nk := "mb" + k[len("musicbrainz_"):]
+            responses = append(responses, fmt.Sprintf("%s=%s", nk, v))
+            continue
+          }
+
+          // mpd-current emits filepath, not file
+          if k == "file" {
+            responses = append(responses,
+              fmt.Sprintf("filepath=%s", v),
+            )
+            continue
+          }
+
+          if k == "duration" {
+              responses = append(responses,
+                  fmt.Sprintf("duration=%s", v),
+                  fmt.Sprintf("total_time=%s", v),  //legacy support value
+              )
+          }
+
+          // remove next_last-modified
+          if k == "last-modified" {
+            continue
+          }
+
+          responses = append(responses,
+            fmt.Sprintf("%s=%s", k, v),
+          )
+        }
+
+        return nil
+      }, "Status, CurrentSong (mpd-current)")
+
+      if err != nil {
+        responses = append(responses,
+          fmt.Sprintf("ERR mpd-current failed: %v", err),
+        )
+        break
+      }
+
+      // --- next song ---
+      nidStr, ok := st["nextsong"]
+      if ok {
+        nextID, err := strconv.Atoi(nidStr)
+        if err == nil {
+          err = mpdDo(func(c *mpd.Client) error {
+            ne, err := c.PlaylistInfo(nextID, -1)
+            if err != nil {
+              return err
+            }
+            for _, song := range ne {
+              for k, v := range song {
+                k = strings.ToLower(k)
+
+                if strings.HasPrefix(k, "musicbrainz_") {
+                  if k == "musicbrainz_releasetrackid" {
+                    k = "musicbrainz_reltrackid"
+                  }
+                  nk := "next_mb" + k[len("musicbrainz_"):]
+                  responses = append(responses, fmt.Sprintf("%s=%s", nk, v))
+                  continue
+                }
+
+                // filepath, not file
+                if k == "file" {
+                  responses = append(responses,
+                    fmt.Sprintf("next_filepath=%s", v),
+                  )
+                  continue
+                }
+
+                // remove next_last-modified
+                if k == "last-modified" {
+                  continue
+                }
+
+                responses = append(responses,
+                  fmt.Sprintf("next_%s=%s", k, v),
+                )
+              }
+            }
+            return nil
+          }, "PlaylistInfo nextID (mpd-current)")
+        }
+      }
+
+      if err != nil {
+        responses = append(responses,
+          fmt.Sprintf("ERR mpd-current failed: %v", err),
+        )
+      }
+
+      // --- shell-quote everything once, at the end ---
+      for i, line := range responses {
+        responses[i] = shellQuoteKV(line)
+      }
+
+      // --- append mpdlinger status (same as mpc) ---
+      responses = append(responses, verbProcessor("status")...)
+
+    // esac "mpd-current"
 
     case "pause":
       log.Printf("IPC: received pause command")
@@ -2000,6 +2390,7 @@ func main() {
       showHelp     bool
       socketFlag   string
       logPath      string
+      WSport       int = 0
   )
 
   flag.StringVar(&daemonIP, "daemonip", "", "client: daemon IP to connect to")
@@ -2327,6 +2718,14 @@ func main() {
     deriveStateLocked(state.lastSongZI, state.lastSongID, state.baseLimit)
     state.mu.Unlock()
   }
+
+  // ------------------------------------------------------------------
+  // Start daemon WS listener for remote clients
+  // ------------------------------------------------------------------
+   if WSport <= 0 {
+     WSport = defWSport
+   }
+   startWS(WSport)
 
   // ------------------------------------------------------------------
   // Start daemon TCP listener for remote clients
