@@ -150,3 +150,10 @@ lingerxy=true
 lingerx=624
 lingery=644
 ```
+## Log parsing
+
+- mpdLogParse reads the MPD log newest-first.
+- It scans mpd.log and, if necessary and present, mpd.log.1.
+- This matches the default Linux logrotate behavior used by MPD.
+- Additional rotated or compressed logs (.2.gz, etc.) are intentionally ignored.
+

@@ -25,8 +25,9 @@ import (
   "time"
   "sync/atomic"
   "math/rand"
+  "encoding/json"
+  "net/url"
 )
-
 
 //const version = "0.03.0"
 
@@ -50,6 +51,7 @@ type mpdEnv struct {
   mpdPort   int
   mpdSocket string
   mpdPass   string
+  mpdLog    string
 }
 
 type configFile struct {
@@ -58,6 +60,139 @@ type configFile struct {
   exists       bool
 } // type configFile struct
 
+type LogLine   struct {
+     Timestamp string // exactly as in mpd.log
+     Action    string // played / skipped / ignored
+     Path      string // decoded filesystem path
+     Notes     string
+}
+
+
+
+
+//type LogEntryV1 struct {
+//    Timestamp string `json:"timestamp"`
+//    Action    string `json:"action"`
+//    File      string `json:"file"`
+//
+//    Title  string `json:"title"`
+//    Artist string `json:"artist"`
+//    Album  string `json:"album"`
+//    Year   string `json:"year"`
+//
+//    Duration string `json:"duration"`
+//    Disc     string `json:"disc"`
+//    Track    string `json:"track"`
+//
+//    MBAlbumID        string `json:"musicbrainz_albumid"`
+//    MBReleaseTrackID string `json:"musicbrainz_releasetrackid"`
+//    MBArtistID       string `json:"musicbrainz_artistid"`
+//}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+//type LogEntryV1 struct {
+//    Timestamp TimestampV1 `json:"timestamp"`
+//    Action    string      `json:"action"`
+//    Error     string      `json:"error,omitempty"`
+//
+//    File  string  `json:"file"`
+//    Audio AudioV1 `json:"audio"`
+//
+//    Track TrackV1 `json:"track"`
+//}
+//
+//type TimestampV1 struct {
+//    Epoch   int64  `json:"epoch"`
+//    Display string `json:"display"`
+//}
+//
+//type AudioV1 struct {
+//    Path    string `json:"path"`
+//    Encoded string `json:"encoded"`
+//}
+//
+//type TrackV1 struct {
+//    Disc     string `json:"disc"`
+//    Track    string `json:"track"`
+//    Title    string `json:"title"`
+//    Duration string `json:"duration"` // sexagesimal, zero-padded
+//    Year     string `json:"year"`
+//
+//    MBID   string     `json:"mbid"` // release-track MBID
+//    Artist ArtistV1   `json:"artist"`
+//    Album  AlbumV1    `json:"album"`
+//}
+//
+//type ArtistV1 struct {
+//    Name string `json:"name"`
+//    MBID string `json:"mbid"`
+//}
+//
+//type AlbumV1 struct {
+//    Title string `json:"title"`
+//    Year  string `json:"year"`
+//    MBID  string `json:"mbid"`
+//}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+type AudioV1 struct {
+    Title  string `json:"title"`
+    Artist string `json:"artist"`
+    Album  string `json:"album"`
+    Year   string `json:"year"`
+    Duration string `json:"duration"`
+    Time     string `json:"time"`
+    Disc     string `json:"disc"`
+    Track    string `json:"track"`
+    MBAlbumID        string `json:"musicbrainz_albumid"`
+    MBReleaseTrackID string `json:"musicbrainz_releasetrackid"`
+    MBArtistID       string `json:"musicbrainz_artistid"`
+}
+
+type PlayerV1 struct {
+  State     string `json:"state"`
+  Volume    int    `json:"volume"`
+  Elapsed   float64    `json:"elapsed"`
+  Duration  float64    `json:"duration"`
+  Percent   float64    `json:"percent"`
+  Random    bool   `json:"random"`
+  Consume  bool   `json:"consume"`
+}
+
+type LingerV1 struct {
+  Song       int `json:"song"`
+  SongID     string `json:"songid"`
+  Count      int `json:"count"`
+  BaseLimit  int `json:"baselimit"`
+  Limit      int `json:"limit"`
+  BlockLimit int `json:"blocklimit"`
+  Paused     bool `json:"paused"`
+}
+
+type TimestampV1 struct {
+    Epoch   int64  `json:"epoch"`
+    Log     string `json:"log"`
+    Display string `json:"display"`
+}
+
+type LogEntryV1 struct {
+    Timestamps TimestampV1 `json:"timestamps"`
+    Action     string      `json:"action"`
+    Notes      string      `json:"notes,omitempty"`
+
+    File       string      `json:"file"`
+    URL        string      `json:"url"`
+    Audio      AudioV1     `json:"audio"`
+}
+
+type StatusV1 struct {
+  Player  PlayerV1  `json:"player"`
+  Current AudioV1   `json:"current"`
+  Next    AudioV1   `json:"next"`
+  Linger  LingerV1  `json:"linger"`
+}
 
 type derivedState struct {
   WriteTime      string
@@ -92,6 +227,7 @@ const (
   defaultListenIP = "0.0.0.0"
   defaultListenPort = 6599
   defaultSocketPath = "/var/lib/mpd/mpdlinger/mpdgolinger.sock"
+  defaultMPDlog = "/var/log/mpd/mpd.log"
   defaultDaemonIP = "localhost"
   defaultDaemonPort = 6559
 ) // const
@@ -116,12 +252,12 @@ var (
   stateEnabled bool
 
   // MPD connection parameteres
-  mpdHost string = ""
-  mpdPort int    = 0
-  mpdPass string = ""
-  mpdSocket string = ""
-//  mpdPath = defaultMPDpath
-  mpdPath string = ""
+  mpdHost     string = ""
+  mpdPort     int    = 0
+  mpdPass     string = ""
+  mpdSocket   string = ""
+  mpdLog      string = ""
+  mpdPath     string = ""
 
   skippedList string = ""  // no flag implemented
 
@@ -152,78 +288,904 @@ var (
   }
 ) // var
 
-/* Here begins the great websock experiement */
 
-//func wsHandler(w http.ResponseWriter, r *http.Request) {
-//    conn, err := websocket.Accept(w, r, nil)
-////    conn, err := websocket.Upgrade(w, r, nil)
+/* ---------------- mpdtags -------------- */
+var (
+  defaultLibPrefix = "/library/music"
+  musicLibPrefix = defaultLibPrefix
+  debug     bool   = false // manual toggle
+  tryParsed bool
+  rawTags   bool
+)
+
+var (
+  reAlbumDir  = regexp.MustCompile(`([^/]+) -- ([^/]+) \(\d{4}\)$`)
+  reAlbumFile = regexp.MustCompile(`^([^/]+) -- \d{2}-\d{2} - (.+)\.[^.]+$`)
+  reFlatFile  = regexp.MustCompile(`^\d{2}-\d{2} - ([^/]+) -- (.+)\.[^.]+$`)
+)
+
+/* func testMPDtags() {
+  debug = true
+    // connect to MPD (socket only, ignore host/port)
+    c, err := dialMPD()
+    if err != nil {
+        fmt.Printf("MPD connect failed: %v\n", err)
+        return
+    }
+    defer c.Close()
+//bookmark
+    // call your MPDtags function
+//    tags, notes, err := MPDtags(c, "hardcode in MPDtags()")
+//    tags, notes, err := MPDtags(c, "Grateful Dead/Grateful Dead -- Without a Net (1990)/Grateful Dead -- 02-01 - China Cat Sunflower > I Know You Rider.flac")
+//    tags, notes, err := MPDtags(c, "/library/music/Grateful Dead/Grateful Dead -- Without a Net (1990)/Grateful Dead -- 01-01 - Feel Like a Stranger.flac")
+//      tags, notes, err := MPDtags(c, "Bob Dylan/Bob Dylan -- The Times They Are A-Changin' (1964)/Bob Dylan -- 01-01 - The Times They Are A-Changin'.flac")
+//    tags, notes, err := MPDtags(c, "/library/music/Bob Dylan/Bob Dylan -- The Bootleg Series, Volume 16: Springtime in New York, 1980-1985 (2021)/Bob Dylan -- 02-04 - Let It Be Me (international 7\" single B-side).flac")
+    tags, notes, err := MPDtags(c, "status")
+
+    if err != nil {
+        fmt.Printf("MPDtags error: %v\n", err)
+    }
+
+    fmt.Println("=== TAGS ===")
+    for k, v := range tags {
+        fmt.Printf("%s=%s\n", k, v)
+    }
+
+    fmt.Println("=== NOTES ===")
+    for _, n := range notes {
+        fmt.Println(n)
+    }
+    fmt.Println("=== END TEST ===")
+} // func testMPDtags() */
+//
+//func testMPDtags() {
+//  debug = true
+//
+//  // connect to MPD (socket only, ignore host/port)
+//  c, err := dialMPD()
+//  if err != nil {
+//    fmt.Printf("MPD connect failed: %v\n", err)
+//    return
+//  }
+//  defer c.Close()
+//
+//  // call MPDtags
+////  tags, notes, err := MPDtags(c, "status", "status")
+//    tags, notes, err := MPDtags(c, "Grateful Dead/Grateful Dead -- Without a Net (1990)/Grateful Dead -- 01-01 - Feel Like a Stranger.flac", "played")
+//  if err != nil {
+//    fmt.Printf("MPDtags error: %v\n", err)
+//  }
+//
+//  fmt.Println("=== TAGS ===")
+//  for k, v := range tags {
+//    fmt.Printf("%s=%s\n", k, v)
+//  }
+//
+//  fmt.Println("=== NOTES ===")
+//  for _, n := range notes {
+//    fmt.Println(n)
+//  }
+//
+//  // ---- NEW PART ----
+//
+//  js, err := convert2json(tags)
+//  if err != nil {
+//    fmt.Printf("convert2json error: %v\n", err)
+//    return
+//  }
+//
+//  b, err := json.MarshalIndent(js, "", "  ")
+//  if err != nil {
+//    fmt.Printf("json marshal error: %v\n", err)
+//    return
+//  }
+//
+//  fmt.Println("=== JSON ===")
+//  fmt.Println(string(b))
+//  fmt.Println("=== END TEST ===")
+//} // func testMPDtags
+
+
+func audioFromRaw(raw map[string]string, p string) AudioV1 {
+  return AudioV1{
+    Title:            raw[p+"title"],
+    Artist:           raw[p+"artist"],
+    Album:            raw[p+"album"],
+    Year:             raw[p+"date"],
+    Duration:         raw[p+"duration"],
+    Disc:             raw[p+"disc"],
+    Track:            raw[p+"track"],
+    MBAlbumID:        raw[p+"musicbrainz_albumid"],
+    MBReleaseTrackID: raw[p+"musicbrainz_releasetrackid"],
+    MBArtistID:       raw[p+"musicbrainz_artistid"],
+  }
+} // func audioFromRaw()
+
+
+//func convert2json(raw map[string]string) (*StatusV1, error) {
+//  st := &StatusV1{}
+//
+//  // --- player ---
+//  st.Player.State = raw["state"]
+//
+//  st.Player.Volume = atoi(raw["volume"])
+//
+//  elapsed := atoi(raw["elapsed"])
+//  duration := atoi(raw["duration"])
+//
+//  st.Player.Elapsed = elapsed
+//  st.Player.Duration = duration
+//
+//  if duration > 0 {
+//    st.Player.Percent = (elapsed * 100) / duration
+//  }
+//
+//  st.Player.Random = raw["random"] == "1"
+//  st.Player.Consume = raw["consume"] == "1"
+//
+//  // --- current ---
+//  st.Current = audioFromRaw(raw, "")
+//
+//  // --- next ---
+//  st.Next = audioFromRaw(raw, "next_")
+//
+//  // --- linger ---
+//  st.Linger.Song = atoi(raw["lingersong"])
+//  st.Linger.SongID = raw["lingersongid"]
+//  st.Linger.Count = atoi(raw["lingercount"])
+//  st.Linger.BaseLimit = atoi(raw["lingerbase"])
+//  st.Linger.Limit = atoi(raw["lingerlimit"])
+//  st.Linger.BlockLimit = atoi(raw["lingerblocklmt"])
+//  st.Linger.Paused = raw["lingerpause"] == "1"
+//
+//  return st, nil
+//} // func convert2json()
+
+//func convert2json(raw map[string]string) (*StatusV1, error) {
+//  st := &StatusV1{}
+//
+//  // --- player ---
+//  st.Player.State = raw["state"]
+//  st.Player.Volume = atoi(raw["volume"])
+//
+//  elapsed, _ := strconv.ParseFloat(raw["elapsed"], 64)
+//  duration, _ := strconv.ParseFloat(raw["duration"], 64)
+//
+//  st.Player.Elapsed = elapsed
+//  st.Player.Duration = duration
+//
+//  if duration > 0 {
+//    st.Player.Percent = (elapsed * 100) / duration
+//  }
+//
+//  st.Player.Random = raw["random"] == "1"
+//  st.Player.Consume = raw["consume"] == "1"
+//
+//  // --- current song ---
+//  st.Current = audioFromRaw(raw, "")
+//  // Include elapsed/duration for current only
+////  st.Current.Elapsed = elapsed
+////  st.Current.Duration = duration
+////  st.Current.Duration = fmt.Sprintf("%.3f", duration)
+//  st.Current.Duration = (raw["duration"]) // fmt.Sprintf("%.3f", duration)
+//  st.Current.Time = (raw["time"])
+////bookmark2
+//
+//  // --- next song ---
+//  st.Next = audioFromRaw(raw, "next_")
+//  // next elapsed is always zero; duration comes from raw
+////  st.Next.Elapsed = 0
+//  st.Next.Duration = (raw["next_duration"])
+//  st.Next.Time = (raw["next_time"])
+//  // --- linger info ---
+//  st.Linger.Song = atoi(raw["lingersong"])
+//  st.Linger.SongID = raw["lingersongid"]
+//  st.Linger.Count = atoi(raw["lingercount"])
+//  st.Linger.BaseLimit = atoi(raw["lingerbase"])
+//  st.Linger.Limit = atoi(raw["lingerlimit"])
+//  st.Linger.BlockLimit = atoi(raw["lingerblocklmt"])
+//  st.Linger.Paused = raw["lingerpause"] == "1"
+//
+//  return st, nil
+//} // func convert2json
+
+func convert2json(raw map[string]string, out interface{}, extra ...interface{}) error {
+  switch dst := out.(type) {
+
+  // ---------------- StatusV1 ----------------
+  case *StatusV1:
+    // --- player ---
+    dst.Player.State = raw["state"]
+    dst.Player.Volume = atoi(raw["volume"])
+    elapsed, _ := strconv.ParseFloat(raw["elapsed"], 64)
+    duration, _ := strconv.ParseFloat(raw["duration"], 64)
+    dst.Player.Elapsed = elapsed
+    dst.Player.Duration = duration
+    if duration > 0 {
+      dst.Player.Percent = (elapsed * 100) / duration
+    }
+    dst.Player.Random = raw["random"] == "1"
+    dst.Player.Consume = raw["consume"] == "1"
+
+    // --- current song ---
+    dst.Current = audioFromRaw(raw, "")
+    dst.Current.Duration = raw["duration"]
+    dst.Current.Time = raw["time"]
+
+    // --- next song ---
+    dst.Next = audioFromRaw(raw, "next_")
+    dst.Next.Duration = raw["next_duration"]
+    dst.Next.Time = raw["next_time"]
+
+    // --- linger ---
+    dst.Linger.Song = atoi(raw["lingersong"])
+    dst.Linger.SongID = raw["lingersongid"]
+    dst.Linger.Count = atoi(raw["lingercount"])
+    dst.Linger.BaseLimit = atoi(raw["lingerbase"])
+    dst.Linger.Limit = atoi(raw["lingerlimit"])
+    dst.Linger.BlockLimit = atoi(raw["lingerblocklmt"])
+    dst.Linger.Paused = raw["lingerpause"] == "1"
+
+    return nil
+
+  // ---------------- LogEntryV1 ----------------
+  case *LogEntryV1:
+    if len(extra) < 4 {
+      return fmt.Errorf("convert2json: not enough extra arguments for LogEntryV1")
+    }
+    tsRaw, ok1 := extra[0].(string)
+    action, ok2 := extra[1].(string)
+    notesSlice, ok3 := extra[2].([]string)
+    filePath, ok4 := extra[3].(string)
+    if !ok1 || !ok2 || !ok3 || !ok4 {
+      return fmt.Errorf("convert2json: invalid extra argument types for LogEntryV1")
+    }
+
+    // --- timestamps ---
+    epoch := isoLocalEpoch(tsRaw)
+    dst.Timestamps = TimestampV1{
+      Epoch:   epoch,
+      Log:     tsRaw,
+      Display: formatDisplayTime(tsRaw),
+    }
+
+    // --- action/notes/file/url ---
+    dst.Action = action
+    dst.Notes = strings.Join(notesSlice, "; ")
+    dst.File = filePath
+    dst.URL = url.PathEscape(filePath)
+
+    // --- audio ---
+    dst.Audio = audioFromRaw(raw, "")
+    dst.Audio.Duration = raw["duration"]
+    dst.Audio.Time = raw["time"]
+
+    return nil
+
+  default:
+    return fmt.Errorf("convert2json: unsupported output type %T", out)
+  }
+} // func convert2json
+
+
+
+
+/* ---------------- utils ---------------- */
+
+func isoLocalEpoch(iso string) int64 {
+    // Parse ISO 8601 string
+    t, err := time.Parse("2006-01-02T15:04:05", iso)
+    if err != nil {
+        return 0
+    }
+    // Convert to local epoch
+    return t.Unix()
+}
+
+func formatDisplayTime(iso string) string {
+    t, err := time.Parse("2006-01-02T15:04:05", iso)
+    if err != nil {
+        return iso
+    }
+    return t.Format("Jan 02 3:04 pm")
+}
+
+func atoi(s string) int {
+  i, _ := strconv.Atoi(s)
+  return i
+}
+
+func dbg(f string, a ...any) {
+  if debug {
+    fmt.Fprintf(os.Stderr, "DEBUG: "+f+"\n", a...)
+  }
+} // cnuf dbg
+
+func emitError(msg string) {
+  fmt.Printf("error=%q\n", msg)
+} // cnuf emitError
+
+
+func printSong(song map[string]string) {
+  for k, v := range song {
+    outk := k
+    if !rawTags {
+      outk = strings.ToLower(k)
+      if outk == "last-modified" {
+        outk = "lastmodified"
+      }
+    }
+    fmt.Printf("%s=%q\n", outk, v)
+  }
+} // cnuf printSong
+
+
+/* ---------------- tryparsed ---------------- */
+
+func tryParsedLookup(c *mpd.Client, path string) (map[string]string, error) {
+  dir  := filepath.Base(filepath.Dir(path))
+  base := filepath.Base(path)
+
+  var album  string
+  var artist string
+  var track  string
+
+  // Case 1: album directory + album-style filename
+  if dm := reAlbumDir.FindStringSubmatch(dir); dm != nil {
+    album = dm[2] // album only; artist is ignored here by design
+
+    if fm := reAlbumFile.FindStringSubmatch(base); fm != nil {
+      artist = fm[1]
+      track  = fm[2]
+    }
+  }
+
+  // Case 2: flat filename (no album info available)
+  if artist == "" || track == "" {
+    if fm := reFlatFile.FindStringSubmatch(base); fm != nil {
+      artist = fm[1]
+      track  = fm[2]
+      album  = ""
+    }
+  }
+
+  if artist == "" || track == "" {
+    return nil, fmt.Errorf("filename not parseable")
+  }
+
+  dbg("tryparsed album=%q artist=%q track=%q", album, artist, track)
+
+  var res []mpd.Attrs
+  var err error
+
+  // Prefer album-qualified search when available
+  if album != "" {
+    res, err = c.Search(
+      "album",  album,
+      "artist", artist,
+      "title",  track,
+    )
+    if err == nil && len(res) > 0 {
+      return map[string]string(res[0]), fmt.Errorf("recovered via tryparsed")
+    }
+  }
+
+  // Fallback: artist + title only
+  res, err = c.Search(
+    "artist", artist,
+    "title",  track,
+  )
+  if err != nil || len(res) == 0 {
+    return nil, fmt.Errorf("tryparsed search failed")
+  }
+
+  return map[string]string(res[0]), fmt.Errorf("recovered via tryparsed")
+} // func tryParsedLookup
+
+
+
+//func MPDtags(c *mpd.Client, target string) (map[string]string, []string, error) {
+//	var notes []string
+//  fmt.Fprintf(os.Stderr, "DBG mpdtags target=%q\n", target)
+//
+//if target == "status" {
+//  m := make(map[string]string)
+//
+//  // --- fetch MPD status + current song in one batch ---
+//  err := mpdDo(func(c *mpd.Client) error {
+//    st, err := c.Status()
 //    if err != nil {
-//        log.Printf("ws upgrade failed: %v", err)
-//        return
+//      return err
 //    }
-//    defer conn.Close()
-//
-//    msg := "Ahoy matey!\n"
-//
-//    if err := conn.Write([]byte(msg)); err != nil {
-//        log.Printf("ws write failed: %v", err)
-//        return
+//    for k, v := range st {
+//      m[strings.ToLower(k)] = v
 //    }
-//} // cnuf wsHandler
-
-
-//func wsHandler(w http.ResponseWriter, r *http.Request) {
-//  conn, err := websocket.Accept(w, r, nil)
-//  if err != nil {
-//    log.Printf("ws accept failed: %v", err)
-//    return
-//  }
-//  defer conn.Close(websocket.StatusNormalClosure, "bye")
 //
-//  msg := "Ahoy matey!\n"
-//  if err := conn.Write(r.Context(), websocket.MessageText, []byte(msg)); err != nil {
-//    log.Printf("ws write failed: %v", err)
-//  }
-//}
-
-//func wsHandler(w http.ResponseWriter, r *http.Request) {
-//  conn, err := websocket.Accept(w, r, nil)
-//  if err != nil {
-//    log.Printf("ws accept failed: %v", err)
-//    return
-//  }
-//  defer conn.Close(websocket.StatusNormalClosure, "bye")
-//
-//  // Call verbProcessor with "status"
-//  responses := verbProcessor("status")
-//  msg := strings.Join(responses, "\n") + "\n"
-//
-//  // Send the message over WS
-//  err = conn.Write(r.Context(), websocket.MessageText, []byte(msg))
-//  if err != nil {
-//    log.Printf("ws write failed: %v", err)
-//  }
-//}
-
-//func wsHandler(w http.ResponseWriter, r *http.Request) {
-//  conn, err := websocket.Accept(w, r, nil)
-//  if err != nil {
-//    log.Printf("ws accept failed: %v", err)
-//    return
-//  }
-//  defer conn.Close(websocket.StatusNormalClosure, "bye")
-//
-//  responses := verbProcessor("status")
-//
-//  // Send each line separately
-//  for _, line := range responses {
-//    if err := conn.Write(r.Context(), websocket.MessageText, []byte(line+"\n")); err != nil {
-//      log.Printf("ws write failed: %v", err)
-//      return
+//    cs, err := c.CurrentSong()
+//    if err != nil {
+//      return err
 //    }
+//    for k, v := range cs {
+//      m[strings.ToLower(k)] = v
+//    }
+//
+//    // --- fetch next song info if available ---
+//    if nidStr, ok := st["nextsong"]; ok {
+//      nextID, err := strconv.Atoi(nidStr)
+//      if err == nil {
+//        ne, err := c.PlaylistInfo(nextID, -1)
+//        if err == nil && len(ne) > 0 {
+//          for k, v := range ne[0] {
+//            m["next_"+strings.ToLower(k)] = v
+//          }
+//        }
+//      }
+//    }
+//
+//    return nil
+//  }, "Status, CurrentSong, NextSong")
+//
+//  if err != nil {
+//    notes = append(notes, fmt.Sprintf("ERR fetching status: %v", err))
 //  }
-//  conn.Close(websocket.StatusNormalClosure, "done")
+//
+//
+//  // --- linger status ---
+//  state.mu.Lock()
+//  limit := state.baseLimit
+//  if state.blockOn && state.blockLimit > 0 {
+//    limit = state.blockLimit
+//  }
+//  ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+//  state.mu.Unlock()
+//
+//  m["writetime"] = ds.WriteTime
+//  m["lingersong"] = strconv.Itoa(ds.SongZI + 1)
+//  m["lingersongid"] = ds.SongID
+//  m["lingerpause"] = strconv.Itoa(ds.Paused)
+//  m["lingercount"] = strconv.Itoa(ds.Count)
+//  m["lingerbase"] = strconv.Itoa(ds.BaseLimit)
+//  m["lingerlimit"] = strconv.Itoa(ds.Limit)
+//  m["lingerblocklmt"] = strconv.Itoa(ds.BlockLimit)
+//  m["lingerpid"] = strconv.Itoa(ds.PID)
+//
+//  if xy.active {
+//    m["lingerxy"] = strconv.Itoa(ds.LingerXY)
+//    m["lingerx"] = strconv.Itoa(ds.LingerX + 1)
+//    m["lingery"] = strconv.Itoa(ds.LingerY + 1)
+//  }
+//
+//
+//  return m, notes, nil
 //}
+//
+//
+//
+//	/* ---------- current ---------- */
+//
+//	if target == "current" {
+//		s, err := c.CurrentSong()
+//		if err != nil || s == nil {
+//			return nil, nil, fmt.Errorf("no current song")
+//		}
+//		return map[string]string(s), nil, nil
+//	}
+//
+//	/* ---------- next ---------- */
+//
+//	if target == "next" {
+//		st, err := c.Status()
+//		if err != nil {
+//			return nil, nil, err
+//		}
+//
+//		i, ok := st["nextsong"]
+//		if !ok {
+//			return nil, nil, fmt.Errorf("no next song")
+//		}
+//
+//		idx, err := strconv.Atoi(i)
+//		if err != nil {
+//			return nil, nil, err
+//		}
+//
+//		s, err := c.PlaylistInfo(idx, -1)
+//		if err != nil || len(s) == 0 || s[0]["file"] == "" {
+//			return nil, nil, fmt.Errorf("no next song")
+//		}
+//
+//		return map[string]string(s[0]), nil, nil
+//	}
+//
+//	/* ---------- path ---------- */
+////bookmark
+//	path := target
+////  path = "Bob Dylan -- The Times They Are A-Changin' (1964)/Bob Dylan -- 01-01 - The Times They Are A-Changin'.flac"
+////  path := "Grateful Dead/Grateful Dead -- Without a Net (1990)/Grateful Dead -- 02-01 - China Cat Sunflower > I Know You Rider.flac"
+//  fmt.Fprintf(os.Stderr, "DBG mpdtags path=%q\n", path)
+//  dbg("stat(%q)", path)
+//  if _, err := os.Stat(path); err != nil {
+//    dbg("filesystem path does not exist: %v", err)
+//    dbg("stat(%q)", "/library/music" + path)
+//    if _, err := os.Stat("/library/music/" + path); err != nil {
+//      dbg("filesystem path does not exist: %v", err)
+//    } else {
+//      dbg("filesystem path does exist")
+//    }
+//  } else {
+//    dbg("filesystem path does exist")
+//  }
+//
+//	// Absolute path
+//	if filepath.IsAbs(path) {
+//    // Try absolute path first (requires socket)
+//    dbg("if filepath.IsABS(path) ListAllInfo called with path=%q", path)
+//		songs, err := c.ListInfo(path)
+//		if err != nil || len(songs) == 0 || songs[0]["file"] == "" {
+//			return nil, nil, fmt.Errorf("absolute path not resolvable")
+//		}
+//		return map[string]string(songs[0]), nil, nil
+//	}
+//
+//	// Relative path
+//  dbg("Otherwise relative path ListAllInfo called with path=%q", path)
+//	songs, err := c.ListAllInfo(path)
+//	if err == nil && len(songs) > 0 && songs[0]["file"] != "" {
+//		return map[string]string(songs[0]), nil, nil
+//	}
+//
+//	// tryparsed fallback
+//	ps, perr := tryParsedLookup(c, path)
+//	if ps != nil {
+//		if perr != nil {
+//			notes = append(notes, perr.Error())
+//		} else {
+//			notes = append(notes, "recovered via tryparsed")
+//		}
+//		return ps, notes, nil
+//	}
+//
+//	return nil, nil, fmt.Errorf("file not found")
+//} // func MPDtags()
+
+func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []string, error) {
+	var notes []string
+	dbg("mpdtags target=%q action=%q\n", target, action)
+
+	// --- Status fetch ---
+	if target == "status" {
+		m := make(map[string]string)
+		err := mpdDo(func(c *mpd.Client) error {
+			st, err := c.Status()
+			if err != nil {
+				return err
+			}
+			for k, v := range st {
+				m[strings.ToLower(k)] = v
+			}
+
+			cs, err := c.CurrentSong()
+			if err != nil {
+				return err
+			}
+			for k, v := range cs {
+				m[strings.ToLower(k)] = v
+			}
+
+			// Next song info
+			if nidStr, ok := st["nextsong"]; ok {
+				if nextID, err := strconv.Atoi(nidStr); err == nil {
+					ne, err := c.PlaylistInfo(nextID, -1)
+					if err == nil && len(ne) > 0 {
+						for k, v := range ne[0] {
+							m["next_"+strings.ToLower(k)] = v
+						}
+					}
+				}
+			}
+			return nil
+		}, "Status, CurrentSong, NextSong")
+
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("ERR fetching status: %v", err))
+		}
+
+		// --- Linger info ---
+		state.mu.Lock()
+		limit := state.baseLimit
+		if state.blockOn && state.blockLimit > 0 {
+			limit = state.blockLimit
+		}
+		ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+		state.mu.Unlock()
+
+		m["writetime"] = ds.WriteTime
+		m["lingersong"] = strconv.Itoa(ds.SongZI + 1)
+		m["lingersongid"] = ds.SongID
+		m["lingerpause"] = strconv.Itoa(ds.Paused)
+		m["lingercount"] = strconv.Itoa(ds.Count)
+		m["lingerbase"] = strconv.Itoa(ds.BaseLimit)
+		m["lingerlimit"] = strconv.Itoa(ds.Limit)
+		m["lingerblocklmt"] = strconv.Itoa(ds.BlockLimit)
+		m["lingerpid"] = strconv.Itoa(ds.PID)
+
+		if xy.active {
+			m["lingerxy"] = strconv.Itoa(ds.LingerXY)
+			m["lingerx"] = strconv.Itoa(ds.LingerX + 1)
+			m["lingery"] = strconv.Itoa(ds.LingerY + 1)
+		}
+
+		return m, notes, nil
+	}
+
+	// --- Current song ---
+	if target == "current" {
+		s, err := c.CurrentSong()
+		if err != nil || s == nil {
+			return nil, nil, fmt.Errorf("no current song")
+		}
+		return map[string]string(s), nil, nil
+	}
+
+	// --- Next song ---
+	if target == "next" {
+		st, err := c.Status()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		i, ok := st["nextsong"]
+		if !ok {
+			return nil, nil, fmt.Errorf("no next song")
+		}
+
+		idx, err := strconv.Atoi(i)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		s, err := c.PlaylistInfo(idx, -1)
+		if err != nil || len(s) == 0 || s[0]["file"] == "" {
+			return nil, nil, fmt.Errorf("no next song")
+		}
+
+		return map[string]string(s[0]), nil, nil
+	}
+
+	// --- Path-based song lookup ---
+	path := target
+  dbg("DBG mpdtags path=%q\n", path)
+
+	var song map[string]string
+	var err error
+
+  // --- 1. Relative path lookup ---
+  songs, err := c.ListAllInfo(path)
+
+  dbg("MPDTAGS REL: path=%q err=%v songs_len=%d", path, err, len(songs))
+
+  if err == nil && len(songs) > 0 && songs[0]["file"] != "" {
+    notes = append(notes, "Found via relative path lookup.")
+    m := make(map[string]string)
+    for k, v := range songs[0] {
+    	m[strings.ToLower(k)] = v
+    }
+    return m, notes, nil
+
+  }
+
+  // --- 2. Absolute path lookup ---
+  absPath := "/library/music/" + path
+  songs, err = c.ListInfo(absPath)
+  dbg("Absolute path songs: %v", songs)
+  if err != nil || len(songs) == 0 || songs[0]["file"] == "" {
+    // Absolute path failed
+    if action == "played" || action == "skipped" {
+      // --- 3. Parsed lookup fallback ---
+      ps, perr := tryParsedLookup(c, path)
+      if ps != nil {
+        if perr != nil {
+          notes = append(notes, perr.Error())
+        } else {
+          notes = append(notes, "Found via parsed lookup.")
+        }
+
+        m := make(map[string]string)
+        for k, v := range ps {
+        	m[strings.ToLower(k)] = v
+        }
+        return m, notes, nil
+
+      } else {
+        notes = append(notes, "File not found")
+      }
+    } else if action == "ignored" {
+      notes = append(notes, "File not found")
+    }
+  } else {
+    // Absolute path succeeded
+    notes = append(notes, "Found via absolute path lookup.")
+
+    m := make(map[string]string)
+    for k, v := range songs[0] {
+    	m[strings.ToLower(k)] = v
+    }
+    return m, notes, nil
+
+  }
+
+  // --- fallback if nothing worked ---
+  return nil, notes, fmt.Errorf("file not found")
+
+
+	if song != nil {
+		return song, notes, nil
+	}
+
+	// --- Nothing found ---
+	return nil, notes, fmt.Errorf("file not found for %q", path)
+} // func MPDtags()
+
+
+
+func mpdLogParse(numEntries int) []LogLine {
+  // mpdLogParse reads the MPD log newest-first.
+  // It scans mpd.log and, if necessary and present, mpd.log.1.
+  // This matches the default Linux logrotate behavior used by MPD.
+  // Additional rotated or compressed logs (.2.gz, etc.) are intentionally ignored.
+  var results []LogLine
+  paths := []string{mpdLog}
+
+  // check if .1 exists
+  if info, err := os.Stat(mpdLog + ".1"); err == nil && !info.IsDir() {
+    paths = append(paths, mpdLog+".1")
+  }
+
+  limit := numEntries
+
+  for _, path := range paths {
+    f, err := os.Open(path)
+    if err != nil {
+      continue
+    }
+    defer f.Close()
+
+    stat, err := f.Stat()
+    if err != nil {
+      continue
+    }
+
+    const chunkSize = 8192
+    var (
+      offset = stat.Size()
+      buf    []byte
+    )
+
+    for offset > 0 && len(results) < limit {
+      readSize := chunkSize
+      if offset < int64(readSize) {
+        readSize = int(offset)
+      }
+      offset -= int64(readSize)
+
+      tmp := make([]byte, readSize)
+      if _, err := f.ReadAt(tmp, offset); err != nil && err != io.EOF {
+        break
+      }
+
+      buf = append(tmp, buf...)
+
+      for {
+        i := bytes.LastIndexByte(buf, '\n')
+        if i == -1 {
+          break
+        }
+
+
+        line := string(buf[i+1:])
+        buf = buf[:i]
+
+        // parse line in-place
+        if !strings.Contains(line, " player: ") {
+          continue
+        }
+
+        parts := strings.SplitN(line, " ", 3)
+        if len(parts) < 3 {
+          continue
+        }
+
+        ts := parts[0]
+        rest := parts[2]
+
+        actionEnd := strings.IndexByte(rest, ' ')
+        if actionEnd == -1 {
+          continue
+        }
+
+        action := rest[:actionEnd]
+        path := rest[actionEnd+1:]
+        path = strings.Trim(path, "\"")
+
+        // unescape MPD path
+        path = strings.ReplaceAll(path, `\"`, `"`)
+        path = strings.ReplaceAll(path, `\\`, `\`)
+
+        ll := LogLine{
+          Timestamp: ts,
+          Action:    action,
+          Path:      path,
+        }
+
+        results = append(results, ll)
+        if len(results) >= limit {
+          break
+        }
+      }
+    }
+    if len(results) >= limit {
+      break
+    }
+  }
+
+  if verbose {
+    for _, r := range results {
+      fmt.Printf("%s | %-7s | %s\n", r.Timestamp, r.Action, r.Path)
+    }
+  }
+
+  return results
+
+} // func mpdLogParse(numEntries int)
+
+
+func getLogEntriesJSON(num int) []string {
+    logs := mpdLogParse(num)
+    var out []string
+    for _, ll := range logs {
+        j, _ := json.Marshal(ll)
+        out = append(out, string(j))
+    }
+    return out
+} // func getLogEntriesJSON
+
+
+func JSONLog(numEntries int) ([]LogEntryV1, error) {
+	var entries []LogEntryV1
+	lines := mpdLogParse(numEntries)
+
+	for _, ll := range lines {
+		audioMap, notes, _ := MPDtags(nil, ll.Path, ll.Action) // pass nil client if MPDtags handles it internally
+
+		audio := AudioV1{}
+		if audioMap != nil {
+			audio.Title = audioMap["title"]
+			audio.Artist = audioMap["artist"]
+			audio.Album = audioMap["album"]
+			audio.Year = audioMap["year"]
+			audio.Duration = audioMap["duration"]
+			audio.Time = audioMap["time"]
+			audio.Disc = audioMap["disc"]
+			audio.Track = audioMap["track"]
+			audio.MBAlbumID = audioMap["musicbrainz_albumid"]
+			audio.MBReleaseTrackID = audioMap["musicbrainz_releasetrackid"]
+			audio.MBArtistID = audioMap["musicbrainz_artistid"]
+		}
+
+		entry := LogEntryV1{
+  Timestamps: TimestampV1{
+    Log: ll.Timestamp,
+  },
+			Action:    ll.Action,
+			Notes:     strings.Join(notes, " "),
+			File:      ll.Path,
+			Audio:     audio,
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+} // JSONLog
 
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -260,7 +1222,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     // optional: send a final "done" line or just close connection
     break // remove this if you want persistent multi-command sessions
   }
-}
+} // func wsHandler
 
 
 
@@ -274,7 +1236,7 @@ func startWS(port int) {
       log.Fatalf("ws server failed: %v", err)
     }
   }()
-} // cnuf startWS
+} // func startWS
 
 
 
@@ -520,31 +1482,6 @@ func mpdDo(fn func(*mpd.Client) error, ctx string) error {
 func parseMPDEnv() {
   // MPD_HOST parsing
   if verbose { log.Printf("[parseMPDEnv] Started.\n") }
-//  if v := os.Getenv("MPD_HOST"); v != "" {
-//    // abstract socket: password@@socket
-//    if strings.Contains(v, "@@") {
-//      parts := strings.SplitN(v, "@@", 2)
-//      env.mpdPass = parts[0]
-//      env.mpdSocket = parts[1]
-////      return
-//    }
-//
-//    // password@host OR host
-//    if strings.Contains(v, "@") {
-//      parts := strings.SplitN(v, "@", 2)
-//      env.mpdPass = parts[0]
-//      v = parts[1]
-//    }
-//
-//    // socket path
-//    if strings.HasPrefix(v, "/") {
-//      env.mpdSocket = v
-////      return
-//    }
-//
-//    // plain host
-//    env.mpdHost = v
-//  }
   if v := os.Getenv("MPD_HOST"); v != "" {
     // 1. abstract socket with no password
     if strings.HasPrefix(v, "@") {
@@ -588,6 +1525,19 @@ func parseMPDEnv() {
   } else {
     if verbose { log.Printf("[parseMPDEnv] MPD_PORT empty\n") }
   }
+
+
+  // MPD_LOG environment
+  if l := os.Getenv("MPD_LOG"); l != "" {
+    if verbose { log.Printf("[parseMPDEnv] MPD_LOG: %s\n", l) }
+
+    if info, err := os.Stat(l); err == nil && !info.IsDir() {
+      mpdLog = l
+    }
+  } else {
+    if verbose { log.Printf("[parseMPDEnv] MPD_LOG empty\n") }
+  }
+
 }
 
 
@@ -1118,6 +2068,137 @@ func verbProcessor(csv string) []string {
     var resp string
 
     switch cmd {
+//    case "test":
+//      testMPDtags()
+//      continue
+
+    case "json-log":
+      log.Printf("IPC: received json-log command")
+
+      lines := mpdLogParse(24)
+      responses = responses[:0]
+
+      err := mpdDo(func(c *mpd.Client) error {
+        for _, ll := range lines {
+          tags, notes, err := MPDtags(c, ll.Path, ll.Action)
+          if err != nil {
+            return err
+          }
+
+     dbg("DBG json-log tags=%+v", tags)
+     dbg("DBG json-log notes=%v", notes)
+
+ /*     // --- convert map to AudioV1 using convert2json() ---
+      js, err := convert2json(tags)
+      if err != nil {
+        return fmt.Errorf("convert2json failed: %v", err)
+      }
+
+          epoch := isoLocalEpoch(ll.Timestamp)
+          ts := TimestampV1{
+            Epoch: epoch,
+            Log: ll.Timestamp,
+            Display: formatDisplayTime(ll.Timestamp),
+          }
+
+          entry := LogEntryV1{
+            Timestamps: ts,
+            Action:     ll.Action,
+            Notes:      strings.Join(notes, "; "),
+            File:       ll.Path,
+            URL:        url.PathEscape(ll.Path),
+            Audio:      js.AudioV1,
+          }
+
+          // append as JSON string
+          b, _ := json.Marshal(entry)
+          responses = append(responses, string(b))
+        }
+        return nil
+      }, "JSONLog")
+
+      if err != nil {
+        responses = append(responses, fmt.Sprintf("error=%v", err))
+      }
+*/
+      // --- convert map to LogEntryV1 using convert2json() ---
+      entry := &LogEntryV1{}
+
+      err = convert2json(
+        tags,
+        entry,
+        ll.Timestamp,
+        ll.Action,
+        notes,
+        ll.Path,
+      )
+      if err != nil {
+        return fmt.Errorf("convert2json failed: %v", err)
+      }
+
+      // append as JSON string
+      b, _ := json.Marshal(entry)
+      responses = append(responses, string(b))
+    }
+
+    return nil
+  }, "JSONLog")
+
+  if err != nil {
+    responses = append(responses, fmt.Sprintf("error=%v", err))
+  }
+//#2163
+
+    case "json-status":
+      log.Printf("IPC: received json-status command")
+
+      // --- fetch status/current/next via MPDtags ---
+      data, notes, err := MPDtags(nil, "status", "status")
+      if err != nil {
+        responses = append(responses, fmt.Sprintf("ERR fetching status: %v", err))
+        break
+      }
+     debug=true
+     dbg("DBG json-status data=%+v", data)
+
+//      // --- convert to JSON struct ---
+//      js, err := convert2json(data)
+//      if err != nil {
+//        responses = append(responses, fmt.Sprintf("ERR JSON conversion: %v", err))
+//        break
+//      }
+      // --- convert to JSON struct ---
+      js := &StatusV1{}
+      err = convert2json(data, js)
+      if err != nil {
+        responses = append(responses, fmt.Sprintf("ERR JSON conversion: %v", err))
+        break
+      }
+
+      // --- marshal JSON struct to string ---
+      jsonBytes, err := json.Marshal(js)
+      if err != nil {
+        responses = append(responses, fmt.Sprintf("ERR JSON marshal: %v", err))
+        break
+      }
+      responses = append(responses, string(jsonBytes))
+
+      // --- optionally append notes if any ---
+      for _, note := range notes {
+        responses = append(responses, note)
+      }
+
+    case "getlog":
+      var numEntries = 24
+      log.Printf("IPC: received getlog command")
+      json := getLogEntriesJSON(numEntries)
+//      json := mpdLogParse(numEntries)
+      for _, ll := range json {
+        // simplest: format as string
+        resp := fmt.Sprintf("%s", ll)
+        responses = append(responses, resp)
+      }
+
     case "status":
       state.mu.Lock()
       limit := state.baseLimit
@@ -1238,6 +2319,7 @@ func verbProcessor(csv string) []string {
       }
 
       responses = append(responses, verbProcessor("status")...)
+    // esac "mpc"
 
     case "mpd-current":
       var st mpd.Attrs // keep status around for next-song lookup
@@ -2091,6 +3173,9 @@ func clientCommandHandler(args []string) error {
         switch tok {
 
       case "status",
+           "test",
+           "json-status",
+           "json-log",
            "pause",
            "resume",
            "toggle",
@@ -2099,6 +3184,7 @@ func clientCommandHandler(args []string) error {
            "quit",
            "mpc",
            "xyoff",
+           "getlog",
            "exit":
         batch = append(batch, tok)
         i++
@@ -2399,6 +3485,7 @@ func main() {
   flag.StringVar(&logPath, "log", "", "write logs to file instead of stderr")
   flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
   flag.StringVar(&configFlag, "config", "", "path to config file")
+  flag.StringVar(&mpdLog, "mpdlog", "", "path to MPD log")
   flag.StringVar(&socketFlag, "socket", "", "mpdgolinger IPC socket path")
   flag.BoolVar(&showVersion, "version", false, "Print version and exit")
   flag.BoolVar(&showHelp, "help", false, "Print help and exit")
@@ -2515,6 +3602,24 @@ func main() {
 //      mpdPass = v
 //    }
 //  }
+
+  if mpdLog == "" {
+    if v, ok := kv["mpdlog"]; ok && v != "" {
+      mpdLog = v
+      log.Printf("mpdLog set to .conf mpdlog: %s\n", mpdLog)
+    } else if env.mpdLog != "" {
+      mpdLog = env.mpdLog
+      log.Printf("mpdLog set to env.mpdLog: %s\n", env.mpdLog)
+    } else if defaultMPDlog != "" {
+      mpdLog = defaultMPDlog
+      log.Printf("mpdLog set to defaultMPDlog: %s\n", defaultMPDlog)
+    } else {
+      log.Printf("ERROR: mpdLog unset!\n")
+    }
+  } else {
+    log.Printf("mpdLog set to --mpdlog: %s\n", mpdLog)
+  }
+
 
   if mpdSocket == "" {
     if v, ok := kv["mpdsocket"]; ok && v != "" {
