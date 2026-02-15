@@ -31,11 +31,11 @@ import (
 
 //const version = "0.03.0"
 
-
 // State holds daemon state
 type State struct {
   mu           sync.Mutex
-  paused       bool
+  paused       bool   // mpdlinger paused?
+  MPDplaying   bool   // mpd playing?
   count        int    // current position in block
   blockLimit   int    // temporary override (later)
   transition   bool   // true between last-song-start and next-song-start
@@ -45,6 +45,30 @@ type State struct {
   blockOn      bool
   consume      bool
 } // type State struct
+
+type derivedState struct {
+  WriteTime      string
+  SongZI         int
+  SongID         string
+  Playing        int          // mpd state
+  Paused         int          // mpdlingerstate
+  Count          int
+  BaseLimit      int
+  Limit          int
+  BlockLimit     int
+  PID            int
+  LingerXY       int
+  LingerX        int
+  LingerY        int
+} // type derivedState struct
+
+type xyState struct {
+  active bool
+  start  int // songid X
+  end    int // songid Y
+}
+
+var xy xyState
 
 type mpdEnv struct {
   mpdHost   string
@@ -66,76 +90,6 @@ type LogLine   struct {
      Path      string // decoded filesystem path
      Notes     string
 }
-
-
-
-
-//type LogEntryV1 struct {
-//    Timestamp string `json:"timestamp"`
-//    Action    string `json:"action"`
-//    File      string `json:"file"`
-//
-//    Title  string `json:"title"`
-//    Artist string `json:"artist"`
-//    Album  string `json:"album"`
-//    Year   string `json:"year"`
-//
-//    Duration string `json:"duration"`
-//    Disc     string `json:"disc"`
-//    Track    string `json:"track"`
-//
-//    MBAlbumID        string `json:"musicbrainz_albumid"`
-//    MBReleaseTrackID string `json:"musicbrainz_releasetrackid"`
-//    MBArtistID       string `json:"musicbrainz_artistid"`
-//}
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-
-//type LogEntryV1 struct {
-//    Timestamp TimestampV1 `json:"timestamp"`
-//    Action    string      `json:"action"`
-//    Error     string      `json:"error,omitempty"`
-//
-//    File  string  `json:"file"`
-//    Audio AudioV1 `json:"audio"`
-//
-//    Track TrackV1 `json:"track"`
-//}
-//
-//type TimestampV1 struct {
-//    Epoch   int64  `json:"epoch"`
-//    Display string `json:"display"`
-//}
-//
-//type AudioV1 struct {
-//    Path    string `json:"path"`
-//    Encoded string `json:"encoded"`
-//}
-//
-//type TrackV1 struct {
-//    Disc     string `json:"disc"`
-//    Track    string `json:"track"`
-//    Title    string `json:"title"`
-//    Duration string `json:"duration"` // sexagesimal, zero-padded
-//    Year     string `json:"year"`
-//
-//    MBID   string     `json:"mbid"` // release-track MBID
-//    Artist ArtistV1   `json:"artist"`
-//    Album  AlbumV1    `json:"album"`
-//}
-//
-//type ArtistV1 struct {
-//    Name string `json:"name"`
-//    MBID string `json:"mbid"`
-//}
-//
-//type AlbumV1 struct {
-//    Title string `json:"title"`
-//    Year  string `json:"year"`
-//    MBID  string `json:"mbid"`
-//}
-
-///////////////////////////////////////////////////////////////////////////////////////////////
 
 type AudioV1 struct {
     Title  string `json:"title"`
@@ -194,31 +148,8 @@ type StatusV1 struct {
   Linger  LingerV1  `json:"linger"`
 }
 
-type derivedState struct {
-  WriteTime      string
-  SongZI         int
-  SongID         string
-  Paused         int
-  Count          int
-  BaseLimit      int
-  Limit          int
-  BlockLimit     int
-  PID            int
-  LingerXY       int
-  LingerX        int
-  LingerY        int
-} // type derivedState struct
-
-type xyState struct {
-  active bool
-  start  int // songid X
-  end    int // songid Y
-}
-
-var xy xyState
-
 const (
-  defaultSkipList = ".mpdskip"
+  defaultSkippedList = ".mpdskip"
   defaultMPDhost = "localhost"
   defaultMPDport = 6600
   defaultMPDsocket = "/run/mpd/socket"
@@ -230,6 +161,8 @@ const (
   defaultMPDlog = "/var/log/mpd/mpd.log"
   defaultDaemonIP = "localhost"
   defaultDaemonPort = 6559
+  defaultIgnoredList = ".mpdignore"
+
 ) // const
 
 
@@ -260,6 +193,8 @@ var (
   mpdPath     string = ""
 
   skippedList string = ""  // no flag implemented
+  ignoredList string = defaultIgnoredList
+
 
   // IPC socket
   socketPath = defaultSocketPath
@@ -304,39 +239,6 @@ var (
   reFlatFile  = regexp.MustCompile(`^\d{2}-\d{2} - ([^/]+) -- (.+)\.[^.]+$`)
 )
 
-/* func testMPDtags() {
-  debug = true
-    // connect to MPD (socket only, ignore host/port)
-    c, err := dialMPD()
-    if err != nil {
-        fmt.Printf("MPD connect failed: %v\n", err)
-        return
-    }
-    defer c.Close()
-//bookmark
-    // call your MPDtags function
-//    tags, notes, err := MPDtags(c, "hardcode in MPDtags()")
-//    tags, notes, err := MPDtags(c, "Grateful Dead/Grateful Dead -- Without a Net (1990)/Grateful Dead -- 02-01 - China Cat Sunflower > I Know You Rider.flac")
-//    tags, notes, err := MPDtags(c, "/library/music/Grateful Dead/Grateful Dead -- Without a Net (1990)/Grateful Dead -- 01-01 - Feel Like a Stranger.flac")
-//      tags, notes, err := MPDtags(c, "Bob Dylan/Bob Dylan -- The Times They Are A-Changin' (1964)/Bob Dylan -- 01-01 - The Times They Are A-Changin'.flac")
-//    tags, notes, err := MPDtags(c, "/library/music/Bob Dylan/Bob Dylan -- The Bootleg Series, Volume 16: Springtime in New York, 1980-1985 (2021)/Bob Dylan -- 02-04 - Let It Be Me (international 7\" single B-side).flac")
-    tags, notes, err := MPDtags(c, "status")
-
-    if err != nil {
-        fmt.Printf("MPDtags error: %v\n", err)
-    }
-
-    fmt.Println("=== TAGS ===")
-    for k, v := range tags {
-        fmt.Printf("%s=%s\n", k, v)
-    }
-
-    fmt.Println("=== NOTES ===")
-    for _, n := range notes {
-        fmt.Println(n)
-    }
-    fmt.Println("=== END TEST ===")
-} // func testMPDtags() */
 //
 //func testMPDtags() {
 //  debug = true
@@ -401,93 +303,6 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
   }
 } // func audioFromRaw()
 
-
-//func convert2json(raw map[string]string) (*StatusV1, error) {
-//  st := &StatusV1{}
-//
-//  // --- player ---
-//  st.Player.State = raw["state"]
-//
-//  st.Player.Volume = atoi(raw["volume"])
-//
-//  elapsed := atoi(raw["elapsed"])
-//  duration := atoi(raw["duration"])
-//
-//  st.Player.Elapsed = elapsed
-//  st.Player.Duration = duration
-//
-//  if duration > 0 {
-//    st.Player.Percent = (elapsed * 100) / duration
-//  }
-//
-//  st.Player.Random = raw["random"] == "1"
-//  st.Player.Consume = raw["consume"] == "1"
-//
-//  // --- current ---
-//  st.Current = audioFromRaw(raw, "")
-//
-//  // --- next ---
-//  st.Next = audioFromRaw(raw, "next_")
-//
-//  // --- linger ---
-//  st.Linger.Song = atoi(raw["lingersong"])
-//  st.Linger.SongID = raw["lingersongid"]
-//  st.Linger.Count = atoi(raw["lingercount"])
-//  st.Linger.BaseLimit = atoi(raw["lingerbase"])
-//  st.Linger.Limit = atoi(raw["lingerlimit"])
-//  st.Linger.BlockLimit = atoi(raw["lingerblocklmt"])
-//  st.Linger.Paused = raw["lingerpause"] == "1"
-//
-//  return st, nil
-//} // func convert2json()
-
-//func convert2json(raw map[string]string) (*StatusV1, error) {
-//  st := &StatusV1{}
-//
-//  // --- player ---
-//  st.Player.State = raw["state"]
-//  st.Player.Volume = atoi(raw["volume"])
-//
-//  elapsed, _ := strconv.ParseFloat(raw["elapsed"], 64)
-//  duration, _ := strconv.ParseFloat(raw["duration"], 64)
-//
-//  st.Player.Elapsed = elapsed
-//  st.Player.Duration = duration
-//
-//  if duration > 0 {
-//    st.Player.Percent = (elapsed * 100) / duration
-//  }
-//
-//  st.Player.Random = raw["random"] == "1"
-//  st.Player.Consume = raw["consume"] == "1"
-//
-//  // --- current song ---
-//  st.Current = audioFromRaw(raw, "")
-//  // Include elapsed/duration for current only
-////  st.Current.Elapsed = elapsed
-////  st.Current.Duration = duration
-////  st.Current.Duration = fmt.Sprintf("%.3f", duration)
-//  st.Current.Duration = (raw["duration"]) // fmt.Sprintf("%.3f", duration)
-//  st.Current.Time = (raw["time"])
-////bookmark2
-//
-//  // --- next song ---
-//  st.Next = audioFromRaw(raw, "next_")
-//  // next elapsed is always zero; duration comes from raw
-////  st.Next.Elapsed = 0
-//  st.Next.Duration = (raw["next_duration"])
-//  st.Next.Time = (raw["next_time"])
-//  // --- linger info ---
-//  st.Linger.Song = atoi(raw["lingersong"])
-//  st.Linger.SongID = raw["lingersongid"]
-//  st.Linger.Count = atoi(raw["lingercount"])
-//  st.Linger.BaseLimit = atoi(raw["lingerbase"])
-//  st.Linger.Limit = atoi(raw["lingerlimit"])
-//  st.Linger.BlockLimit = atoi(raw["lingerblocklmt"])
-//  st.Linger.Paused = raw["lingerpause"] == "1"
-//
-//  return st, nil
-//} // func convert2json
 
 func convert2json(raw map[string]string, out interface{}, extra ...interface{}) error {
   switch dst := out.(type) {
@@ -683,281 +498,116 @@ func tryParsedLookup(c *mpd.Client, path string) (map[string]string, error) {
 } // func tryParsedLookup
 
 
-
-//func MPDtags(c *mpd.Client, target string) (map[string]string, []string, error) {
-//	var notes []string
-//  fmt.Fprintf(os.Stderr, "DBG mpdtags target=%q\n", target)
-//
-//if target == "status" {
-//  m := make(map[string]string)
-//
-//  // --- fetch MPD status + current song in one batch ---
-//  err := mpdDo(func(c *mpd.Client) error {
-//    st, err := c.Status()
-//    if err != nil {
-//      return err
-//    }
-//    for k, v := range st {
-//      m[strings.ToLower(k)] = v
-//    }
-//
-//    cs, err := c.CurrentSong()
-//    if err != nil {
-//      return err
-//    }
-//    for k, v := range cs {
-//      m[strings.ToLower(k)] = v
-//    }
-//
-//    // --- fetch next song info if available ---
-//    if nidStr, ok := st["nextsong"]; ok {
-//      nextID, err := strconv.Atoi(nidStr)
-//      if err == nil {
-//        ne, err := c.PlaylistInfo(nextID, -1)
-//        if err == nil && len(ne) > 0 {
-//          for k, v := range ne[0] {
-//            m["next_"+strings.ToLower(k)] = v
-//          }
-//        }
-//      }
-//    }
-//
-//    return nil
-//  }, "Status, CurrentSong, NextSong")
-//
-//  if err != nil {
-//    notes = append(notes, fmt.Sprintf("ERR fetching status: %v", err))
-//  }
-//
-//
-//  // --- linger status ---
-//  state.mu.Lock()
-//  limit := state.baseLimit
-//  if state.blockOn && state.blockLimit > 0 {
-//    limit = state.blockLimit
-//  }
-//  ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
-//  state.mu.Unlock()
-//
-//  m["writetime"] = ds.WriteTime
-//  m["lingersong"] = strconv.Itoa(ds.SongZI + 1)
-//  m["lingersongid"] = ds.SongID
-//  m["lingerpause"] = strconv.Itoa(ds.Paused)
-//  m["lingercount"] = strconv.Itoa(ds.Count)
-//  m["lingerbase"] = strconv.Itoa(ds.BaseLimit)
-//  m["lingerlimit"] = strconv.Itoa(ds.Limit)
-//  m["lingerblocklmt"] = strconv.Itoa(ds.BlockLimit)
-//  m["lingerpid"] = strconv.Itoa(ds.PID)
-//
-//  if xy.active {
-//    m["lingerxy"] = strconv.Itoa(ds.LingerXY)
-//    m["lingerx"] = strconv.Itoa(ds.LingerX + 1)
-//    m["lingery"] = strconv.Itoa(ds.LingerY + 1)
-//  }
-//
-//
-//  return m, notes, nil
-//}
-//
-//
-//
-//	/* ---------- current ---------- */
-//
-//	if target == "current" {
-//		s, err := c.CurrentSong()
-//		if err != nil || s == nil {
-//			return nil, nil, fmt.Errorf("no current song")
-//		}
-//		return map[string]string(s), nil, nil
-//	}
-//
-//	/* ---------- next ---------- */
-//
-//	if target == "next" {
-//		st, err := c.Status()
-//		if err != nil {
-//			return nil, nil, err
-//		}
-//
-//		i, ok := st["nextsong"]
-//		if !ok {
-//			return nil, nil, fmt.Errorf("no next song")
-//		}
-//
-//		idx, err := strconv.Atoi(i)
-//		if err != nil {
-//			return nil, nil, err
-//		}
-//
-//		s, err := c.PlaylistInfo(idx, -1)
-//		if err != nil || len(s) == 0 || s[0]["file"] == "" {
-//			return nil, nil, fmt.Errorf("no next song")
-//		}
-//
-//		return map[string]string(s[0]), nil, nil
-//	}
-//
-//	/* ---------- path ---------- */
-////bookmark
-//	path := target
-////  path = "Bob Dylan -- The Times They Are A-Changin' (1964)/Bob Dylan -- 01-01 - The Times They Are A-Changin'.flac"
-////  path := "Grateful Dead/Grateful Dead -- Without a Net (1990)/Grateful Dead -- 02-01 - China Cat Sunflower > I Know You Rider.flac"
-//  fmt.Fprintf(os.Stderr, "DBG mpdtags path=%q\n", path)
-//  dbg("stat(%q)", path)
-//  if _, err := os.Stat(path); err != nil {
-//    dbg("filesystem path does not exist: %v", err)
-//    dbg("stat(%q)", "/library/music" + path)
-//    if _, err := os.Stat("/library/music/" + path); err != nil {
-//      dbg("filesystem path does not exist: %v", err)
-//    } else {
-//      dbg("filesystem path does exist")
-//    }
-//  } else {
-//    dbg("filesystem path does exist")
-//  }
-//
-//	// Absolute path
-//	if filepath.IsAbs(path) {
-//    // Try absolute path first (requires socket)
-//    dbg("if filepath.IsABS(path) ListAllInfo called with path=%q", path)
-//		songs, err := c.ListInfo(path)
-//		if err != nil || len(songs) == 0 || songs[0]["file"] == "" {
-//			return nil, nil, fmt.Errorf("absolute path not resolvable")
-//		}
-//		return map[string]string(songs[0]), nil, nil
-//	}
-//
-//	// Relative path
-//  dbg("Otherwise relative path ListAllInfo called with path=%q", path)
-//	songs, err := c.ListAllInfo(path)
-//	if err == nil && len(songs) > 0 && songs[0]["file"] != "" {
-//		return map[string]string(songs[0]), nil, nil
-//	}
-//
-//	// tryparsed fallback
-//	ps, perr := tryParsedLookup(c, path)
-//	if ps != nil {
-//		if perr != nil {
-//			notes = append(notes, perr.Error())
-//		} else {
-//			notes = append(notes, "recovered via tryparsed")
-//		}
-//		return ps, notes, nil
-//	}
-//
-//	return nil, nil, fmt.Errorf("file not found")
-//} // func MPDtags()
-
 func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []string, error) {
-	var notes []string
-	dbg("mpdtags target=%q action=%q\n", target, action)
+  var notes []string
+  dbg("mpdtags target=%q action=%q\n", target, action)
 
-	// --- Status fetch ---
-	if target == "status" {
-		m := make(map[string]string)
-		err := mpdDo(func(c *mpd.Client) error {
-			st, err := c.Status()
-			if err != nil {
-				return err
-			}
-			for k, v := range st {
-				m[strings.ToLower(k)] = v
-			}
+  // --- Status fetch ---
+  if target == "status" {
+    m := make(map[string]string)
+    err := mpdDo(func(c *mpd.Client) error {
+      st, err := c.Status()
+      if err != nil {
+        return err
+      }
+      for k, v := range st {
+        m[strings.ToLower(k)] = v
+      }
 
-			cs, err := c.CurrentSong()
-			if err != nil {
-				return err
-			}
-			for k, v := range cs {
-				m[strings.ToLower(k)] = v
-			}
+      cs, err := c.CurrentSong()
+      if err != nil {
+        return err
+      }
+      for k, v := range cs {
+        m[strings.ToLower(k)] = v
+      }
 
-			// Next song info
-			if nidStr, ok := st["nextsong"]; ok {
-				if nextID, err := strconv.Atoi(nidStr); err == nil {
-					ne, err := c.PlaylistInfo(nextID, -1)
-					if err == nil && len(ne) > 0 {
-						for k, v := range ne[0] {
-							m["next_"+strings.ToLower(k)] = v
-						}
-					}
-				}
-			}
-			return nil
-		}, "Status, CurrentSong, NextSong")
+      // Next song info
+      if nidStr, ok := st["nextsong"]; ok {
+        if nextID, err := strconv.Atoi(nidStr); err == nil {
+          ne, err := c.PlaylistInfo(nextID, -1)
+          if err == nil && len(ne) > 0 {
+            for k, v := range ne[0] {
+              m["next_"+strings.ToLower(k)] = v
+            }
+          }
+        }
+      }
+      return nil
+    }, "Status, CurrentSong, NextSong")
 
-		if err != nil {
-			notes = append(notes, fmt.Sprintf("ERR fetching status: %v", err))
-		}
+    if err != nil {
+      notes = append(notes, fmt.Sprintf("ERR fetching status: %v", err))
+    }
 
-		// --- Linger info ---
-		state.mu.Lock()
-		limit := state.baseLimit
-		if state.blockOn && state.blockLimit > 0 {
-			limit = state.blockLimit
-		}
-		ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
-		state.mu.Unlock()
+    // --- Linger info ---
+    state.mu.Lock()
+    limit := state.baseLimit
+    if state.blockOn && state.blockLimit > 0 {
+      limit = state.blockLimit
+    }
+    ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+    state.mu.Unlock()
 
-		m["writetime"] = ds.WriteTime
-		m["lingersong"] = strconv.Itoa(ds.SongZI + 1)
-		m["lingersongid"] = ds.SongID
-		m["lingerpause"] = strconv.Itoa(ds.Paused)
-		m["lingercount"] = strconv.Itoa(ds.Count)
-		m["lingerbase"] = strconv.Itoa(ds.BaseLimit)
-		m["lingerlimit"] = strconv.Itoa(ds.Limit)
-		m["lingerblocklmt"] = strconv.Itoa(ds.BlockLimit)
-		m["lingerpid"] = strconv.Itoa(ds.PID)
+    m["writetime"] = ds.WriteTime
+    m["lingersong"] = strconv.Itoa(ds.SongZI + 1)
+    m["lingersongid"] = ds.SongID
+    m["lingerpause"] = strconv.Itoa(ds.Paused)
+    m["lingercount"] = strconv.Itoa(ds.Count)
+    m["lingerbase"] = strconv.Itoa(ds.BaseLimit)
+    m["lingerlimit"] = strconv.Itoa(ds.Limit)
+    m["lingerblocklmt"] = strconv.Itoa(ds.BlockLimit)
+    m["lingerpid"] = strconv.Itoa(ds.PID)
 
-		if xy.active {
-			m["lingerxy"] = strconv.Itoa(ds.LingerXY)
-			m["lingerx"] = strconv.Itoa(ds.LingerX + 1)
-			m["lingery"] = strconv.Itoa(ds.LingerY + 1)
-		}
+    if xy.active {
+      m["lingerxy"] = strconv.Itoa(ds.LingerXY)
+      m["lingerx"] = strconv.Itoa(ds.LingerX + 1)
+      m["lingery"] = strconv.Itoa(ds.LingerY + 1)
+    }
 
-		return m, notes, nil
-	}
+    return m, notes, nil
+  }
 
-	// --- Current song ---
-	if target == "current" {
-		s, err := c.CurrentSong()
-		if err != nil || s == nil {
-			return nil, nil, fmt.Errorf("no current song")
-		}
-		return map[string]string(s), nil, nil
-	}
+  // --- Current song ---
+  if target == "current" {
+    s, err := c.CurrentSong()
+    if err != nil || s == nil {
+      return nil, nil, fmt.Errorf("no current song")
+    }
+    return map[string]string(s), nil, nil
+  }
 
-	// --- Next song ---
-	if target == "next" {
-		st, err := c.Status()
-		if err != nil {
-			return nil, nil, err
-		}
+  // --- Next song ---
+  if target == "next" {
+    st, err := c.Status()
+    if err != nil {
+      return nil, nil, err
+    }
 
-		i, ok := st["nextsong"]
-		if !ok {
-			return nil, nil, fmt.Errorf("no next song")
-		}
+    i, ok := st["nextsong"]
+    if !ok {
+      return nil, nil, fmt.Errorf("no next song")
+    }
 
-		idx, err := strconv.Atoi(i)
-		if err != nil {
-			return nil, nil, err
-		}
+    idx, err := strconv.Atoi(i)
+    if err != nil {
+      return nil, nil, err
+    }
 
-		s, err := c.PlaylistInfo(idx, -1)
-		if err != nil || len(s) == 0 || s[0]["file"] == "" {
-			return nil, nil, fmt.Errorf("no next song")
-		}
+    s, err := c.PlaylistInfo(idx, -1)
+    if err != nil || len(s) == 0 || s[0]["file"] == "" {
+      return nil, nil, fmt.Errorf("no next song")
+    }
 
-		return map[string]string(s[0]), nil, nil
-	}
+    return map[string]string(s[0]), nil, nil
+  }
 
-	// --- Path-based song lookup ---
-	path := target
+  // --- Path-based song lookup ---
+  path := target
   dbg("DBG mpdtags path=%q\n", path)
 
-	var song map[string]string
-	var err error
+  var song map[string]string
+  var err error
 
   // --- 1. Relative path lookup ---
   songs, err := c.ListAllInfo(path)
@@ -968,7 +618,7 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
     notes = append(notes, "Found via relative path lookup.")
     m := make(map[string]string)
     for k, v := range songs[0] {
-    	m[strings.ToLower(k)] = v
+      m[strings.ToLower(k)] = v
     }
     return m, notes, nil
 
@@ -977,7 +627,6 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
   // --- 2. Absolute path lookup ---
   absPath := "/library/music/" + path
   songs, err = c.ListInfo(absPath)
-  dbg("Absolute path songs: %v", songs)
   if err != nil || len(songs) == 0 || songs[0]["file"] == "" {
     // Absolute path failed
     if action == "played" || action == "skipped" {
@@ -992,7 +641,7 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
 
         m := make(map[string]string)
         for k, v := range ps {
-        	m[strings.ToLower(k)] = v
+          m[strings.ToLower(k)] = v
         }
         return m, notes, nil
 
@@ -1008,22 +657,27 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
 
     m := make(map[string]string)
     for k, v := range songs[0] {
-    	m[strings.ToLower(k)] = v
+      m[strings.ToLower(k)] = v
     }
     return m, notes, nil
 
   }
 
   // --- fallback if nothing worked ---
-  return nil, notes, fmt.Errorf("file not found")
+//  return nil, notes, fmt.Errorf("file not found")
+  // instead of returning an error, return empty song map
+  return map[string]string{}, notes, nil
 
 
-	if song != nil {
-		return song, notes, nil
-	}
+  if song != nil {
+    return song, notes, nil
+  }
 
-	// --- Nothing found ---
-	return nil, notes, fmt.Errorf("file not found for %q", path)
+  // --- Nothing found ---
+//  return nil, notes, fmt.Errorf("file not found for %q", path)
+  // instead of returning an error, return empty song map
+  return map[string]string{}, notes, nil
+
 } // func MPDtags()
 
 
@@ -1151,78 +805,826 @@ func getLogEntriesJSON(num int) []string {
 
 
 func JSONLog(numEntries int) ([]LogEntryV1, error) {
-	var entries []LogEntryV1
-	lines := mpdLogParse(numEntries)
+  var entries []LogEntryV1
+  lines := mpdLogParse(numEntries)
 
-	for _, ll := range lines {
-		audioMap, notes, _ := MPDtags(nil, ll.Path, ll.Action) // pass nil client if MPDtags handles it internally
+  for _, ll := range lines {
+    audioMap, notes, _ := MPDtags(nil, ll.Path, ll.Action) // pass nil client if MPDtags handles it internally
 
-		audio := AudioV1{}
-		if audioMap != nil {
-			audio.Title = audioMap["title"]
-			audio.Artist = audioMap["artist"]
-			audio.Album = audioMap["album"]
-			audio.Year = audioMap["year"]
-			audio.Duration = audioMap["duration"]
-			audio.Time = audioMap["time"]
-			audio.Disc = audioMap["disc"]
-			audio.Track = audioMap["track"]
-			audio.MBAlbumID = audioMap["musicbrainz_albumid"]
-			audio.MBReleaseTrackID = audioMap["musicbrainz_releasetrackid"]
-			audio.MBArtistID = audioMap["musicbrainz_artistid"]
-		}
+    audio := AudioV1{}
+    if audioMap != nil {
+      audio.Title = audioMap["title"]
+      audio.Artist = audioMap["artist"]
+      audio.Album = audioMap["album"]
+      audio.Year = audioMap["year"]
+      audio.Duration = audioMap["duration"]
+      audio.Time = audioMap["time"]
+      audio.Disc = audioMap["disc"]
+      audio.Track = audioMap["track"]
+      audio.MBAlbumID = audioMap["musicbrainz_albumid"]
+      audio.MBReleaseTrackID = audioMap["musicbrainz_releasetrackid"]
+      audio.MBArtistID = audioMap["musicbrainz_artistid"]
+    }
 
-		entry := LogEntryV1{
+    entry := LogEntryV1{
   Timestamps: TimestampV1{
     Log: ll.Timestamp,
   },
-			Action:    ll.Action,
-			Notes:     strings.Join(notes, " "),
-			File:      ll.Path,
-			Audio:     audio,
-		}
-		entries = append(entries, entry)
-	}
+      Action:    ll.Action,
+      Notes:     strings.Join(notes, " "),
+      File:      ll.Path,
+      Audio:     audio,
+    }
+    entries = append(entries, entry)
+  }
 
-	return entries, nil
+  return entries, nil
 } // JSONLog
 
 
+//func wsHandler(w http.ResponseWriter, r *http.Request) {
+//  conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+//    InsecureSkipVerify: true, // allow any origin
+//  })
+//  if err != nil {
+//    log.Printf("ws accept failed: %v", err)
+//    return
+//  }
+//  defer conn.Close(websocket.StatusNormalClosure, "done")
+//
+//  for {
+//    _, msgBytes, err := conn.Read(r.Context())
+//    if err != nil {
+//      log.Printf("ws read error: %v", err)
+//      break
+//    }
+//
+//    msg := string(msgBytes)
+//    responses := verbProcessor(msg)
+//
+//    for _, line := range responses {
+//      if line == "" {
+//        continue // skip empty strings
+//      }
+//      log.Printf("ws send frame: %q", line)
+//      conn.Write(r.Context(), websocket.MessageText, []byte(line))
+//    }
+//
+////    break
+//  }
+//} // func wsHander
+
+
 func wsHandler(w http.ResponseWriter, r *http.Request) {
-  conn, err := websocket.Accept(w, r, nil)
-  if err != nil {
-    log.Printf("ws accept failed: %v", err)
-    return
-  }
-  defer conn.Close(websocket.StatusNormalClosure, "done")
-
-  // read messages until client closes
-  for {
-    _, msgBytes, err := conn.Read(r.Context())
+    conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+        InsecureSkipVerify: true, // allow any origin
+    })
     if err != nil {
-      if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
-        break
-      }
-      log.Printf("ws read error: %v", err)
-      break
+        log.Printf("ws accept failed: %v", err)
+        return
     }
-    msg := string(msgBytes)
+    defer conn.Close(websocket.StatusNormalClosure, "done")
 
-    // call verb processor with whatever verbs came in
-    responses := verbProcessor(msg)
+    // ===== start read loop =====
+    for {
+        _, msgBytes, err := conn.Read(r.Context())
+        if err != nil {
+            log.Printf("ws read error: %v", err)
+            break
+        }
 
-    // send back each line separately
-    for _, line := range responses {
-      if err := conn.Write(r.Context(), websocket.MessageText, []byte(line)); err != nil {
-        log.Printf("ws write failed: %v", err)
-        break
-      }
+        msg := string(msgBytes)
+
+        // ===== JSON detection goes here =====
+        var js map[string]interface{}
+        if err := json.Unmarshal(msgBytes, &js); err == nil {
+          log.Printf("ws received JSON: %s", msg)
+          responses := verbProcessorJSON(js) // call your parallel JSON handler
+          for _, line := range responses {
+            if line == "" {
+              continue // skip empty strings
+            }
+            log.Printf("ws send frame: %q", line)
+            conn.Write(r.Context(), websocket.MessageText, []byte(line))
+          }
+          continue // go back to the top of the for loop
+        }
+        // ===== end JSON detection =====
+
+        // original messages go here
+        responses := verbProcessor(msg)
+        for _, line := range responses {
+          if line == "" {
+            continue // skip empty strings
+          }
+          log.Printf("ws send frame: %q", line)
+          conn.Write(r.Context(), websocket.MessageText, []byte(line))
+        }
+
+        // do not break — keep the connection alive for further messages
     }
-
-    // optional: send a final "done" line or just close connection
-    break // remove this if you want persistent multi-command sessions
-  }
+    // ===== end read loop =====
 } // func wsHandler
+
+
+
+// verbProcessorJSON handles JSON commands from the WebSocket and returns
+// JSON-formatted responses. Does NOT send over the WebSocket — wsHandler does that.
+func verbProcessorJSON(js map[string]interface{}) []string {
+
+  // --- validate cmd ---
+  cmdIface, ok := js["cmd"]
+  if !ok {
+    js["response"] = "error"
+    js["error"] = "missing cmd"
+    out, _ := json.Marshal(js)
+    return []string{string(out)}
+  }
+  cmd, ok := cmdIface.(string)
+  if !ok {
+    js["response"] = "error"
+    js["error"] = "cmd not string"
+    out, _ := json.Marshal(js)
+    return []string{string(out)}
+  }
+
+  // --- optional args ---
+  argsIface, _ := js["args"]
+
+  // --- validate system ---
+  systemIface, ok := js["system"]
+  if !ok {
+    js["response"] = "error"
+    js["error"] = "missing system"
+    out, _ := json.Marshal(js)
+    return []string{string(out)}
+  }
+  system, ok := systemIface.(string)
+  if !ok {
+    js["response"] = "error"
+    js["error"] = "system not string"
+    out, _ := json.Marshal(js)
+    return []string{string(out)}
+  }
+
+  // --- poll MPD for authoritative state ---
+  var URI, songID, playState, songZIstr, title string
+  var randomState, consumeState, repeatState, singleState string
+  var songZI int
+  var playing = true
+
+  err := mpdDo(func(c *mpd.Client) error {
+    song, err := c.CurrentSong()
+    if err != nil {
+      return err
+    }
+
+    status, err := c.Status()
+    if err != nil {
+      return err
+    }
+
+    songID    = status["songid"]
+    songZIstr = status["song"]
+    playState = status["state"]
+    title     = song["Title"]
+    URI       = song["file"]
+
+    songZI, _ = strconv.Atoi(songZIstr)
+
+    if playState != "play" {
+      playing = false
+    }
+
+    if r, ok := status["random"]; ok {
+      randomState = r
+    }
+    if r, ok := status["consume"]; ok {
+      consumeState = r
+    }
+    if r, ok := status["repeat"]; ok {
+      repeatState = r
+    }
+    if r, ok := status["single"]; ok {
+      singleState = r
+    }
+
+    return nil
+  }, "JSON-preSwitch")
+
+  if err != nil {
+    js["response"] = "error"
+    js["error"] = err.Error()
+    out, _ := json.Marshal(js)
+    return []string{string(out)}
+  }
+
+  // --- system switch ---
+  switch system {
+  case "mpd", "player":
+
+    switch cmd {
+
+	    // --- play/pause/togglestate unified ---
+	    case "pause", "play", "resume", "togglestate":
+	      var target bool
+	      if cmd == "togglestate" {
+	        target = !playing
+	      } else if cmd == "pause" {
+	        target = false
+	      } else { // play/resume
+	        target = true
+	      }
+
+	      if target == playing {
+	        if target {
+	          js["response"] = "mpd already playing"
+	        } else {
+	          js["response"] = "mpd already paused"
+	        }
+	        out, _ := json.Marshal(js)
+	        return []string{string(out)}
+	      }
+
+	      err := mpdDo(func(c *mpd.Client) error {
+	        return c.Pause(!target)
+	      }, "JSON-togglestate")
+
+	      if err != nil {
+	        js["response"] = "error"
+	        js["error"] = err.Error()
+	      } else {
+	        if target {
+	          js["response"] = "play"
+	        } else {
+	          js["response"] = "pause"
+	        }
+	      }
+
+	      out, _ := json.Marshal(js)
+	      return []string{string(out)}
+
+//      // --- random/consume/repeat/single ---
+//      case "random", "togglerandom",
+//           "consume", "toggleconsume",
+//           "repeat", "togglerepeat",
+//           "single", "togglesingle":
+//
+//        var method func(bool) error
+//        var current string
+//        var toggle bool
+//
+//        switch cmd {
+//        case "random", "togglerandom":
+//          method = func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Random(v) }, "JSON-random") }
+//          current = randomState
+//        case "consume", "toggleconsume":
+//          method = func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Consume(v) }, "JSON-consume") }
+//          current = consumeState
+//        case "repeat", "togglerepeat":
+//          method = func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Repeat(v) }, "JSON-repeat") }
+//          current = repeatState
+//        case "single", "togglesingle":
+//          method = func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Single(v) }, "JSON-single") }
+//          current = singleState
+//        }
+//
+//        if cmd[:6] == "toggle" {
+//          toggle = current != "1"
+//        } else if b, ok := argsIface.(bool); ok {
+//          toggle = b
+//        } else {
+//          toggle = current == "0"
+//        }
+//
+//        if (toggle && current == "1") || (!toggle && current == "0") {
+//          if toggle {
+//            js["response"] = "1"
+//          } else {
+//            js["response"] = "0"
+//          }
+//        } else {
+//          err := method(toggle)
+//          if err != nil {
+//            js["response"] = "error"
+//            js["error"] = err.Error()
+//          } else {
+//            if toggle {
+//              js["response"] = "1"
+//            } else {
+//              js["response"] = "0"
+//            }
+//          }
+//        }
+//
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+
+      // --- random/consume/repeat/single ---
+      case "random", "togglerandom",
+           "consume", "toggleconsume",
+           "repeat", "togglerepeat",
+           "single", "togglesingle":
+
+        type toggleCmd struct {
+          method func(bool) error
+          state  string
+        }
+
+        cmds := map[string]toggleCmd{
+          "random":       {func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Random(v) }, "JSON-random") }, randomState},
+          "togglerandom": {func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Random(v) }, "JSON-random") }, randomState},
+          "consume":      {func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Consume(v) }, "JSON-consume") }, consumeState},
+          "toggleconsume":{func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Consume(v) }, "JSON-consume") }, consumeState},
+          "repeat":       {func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Repeat(v) }, "JSON-repeat") }, repeatState},
+          "togglerepeat": {func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Repeat(v) }, "JSON-repeat") }, repeatState},
+          "single":       {func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Single(v) }, "JSON-single") }, singleState},
+          "togglesingle": {func(v bool) error { return mpdDo(func(c *mpd.Client) error { return c.Single(v) }, "JSON-single") }, singleState},
+        }
+
+        cmdData, ok := cmds[cmd]
+        if !ok {
+          js["response"] = "error"
+          js["error"] = "unknown toggle cmd"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        // Determine target value
+        var toggle bool
+        if len(cmd) >= 6 && cmd[:6] == "toggle" {
+          toggle = cmdData.state != "1"
+        } else if b, ok := argsIface.(bool); ok {
+          toggle = b
+        } else {
+          toggle = cmdData.state == "0"
+        }
+
+        // apply and respond
+        var toggleStr string
+        if toggleStr = "0"; toggle { toggleStr = "1" }
+        if cmdData.state != toggleStr {
+          if err := cmdData.method(toggle); err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+          } else {
+            js["response"] = toggleStr
+          }
+        } else {
+          js["response"] = toggleStr
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+
+      // --- next/restart remain unchanged ---
+      case "restart":
+        err := mpdDo(func(c *mpd.Client) error { return c.SeekCur(0, false) }, "JSON-restart")
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+        } else {
+          js["response"] = "restarted"
+        }
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+//      case "next":
+//        err := mpdDo(func(c *mpd.Client) error { return c.Next() }, "JSON-next")
+//        if err != nil {
+//          js["response"] = "error"
+//          js["error"] = err.Error()
+//          out, _ := json.Marshal(js)
+//          return []string{string(out)}
+//        }
+//
+//        if URI != "" {
+//          err = mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(skippedList, URI) }, "JSON-next-addSkipped")
+//          if err != nil {
+//            js["response"] = "error"
+//            js["error"] = err.Error()
+//            out, _ := json.Marshal(js)
+//            return []string{string(out)}
+//          }
+//        } else {
+//          js["response"] = "warning"
+//          js["error"] = "MPD returned to URI to add to skipped playlist; not updated."
+//        }
+//
+//        var newSongID string
+//        var newSongZI int
+//        err = mpdDo(func(c *mpd.Client) error {
+//          status, err := c.Status()
+//          if err != nil {
+//            return err
+//          }
+//          newSongID = status["songid"]
+//          if ziStr, ok := status["song"]; ok {
+//            zi, err := strconv.Atoi(ziStr)
+//            if err == nil {
+//              newSongZI = zi
+//            }
+//          }
+//          return nil
+//        }, "JSON-next-postStatus")
+//
+//        if err != nil {
+//          js["response"] = "error"
+//          js["error"] = err.Error()
+//        } else if newSongID == songID {
+//          js["response"] = "error"
+//          js["error"] = fmt.Sprintf("Song ID unchanged; newSongID: %s; lastSongID: %s", newSongID, songID)
+//        } else {
+//          js["response"] = fmt.Sprintf("playing %d", newSongZI+1)
+//        }
+//
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+
+      case "next":
+        responses := []string{}
+        errors := []string{}
+
+        // Step 1: advance to next song
+        if err := mpdDo(func(c *mpd.Client) error { return c.Next() }, "JSON-next"); err != nil {
+          errors = append(errors, fmt.Sprintf("Next failed: %s", err))
+        } else {
+          responses = append(responses, fmt.Sprintf("Skipped %d: %s", songZI+1, title))
+        }
+
+        // Step 2: add previous song to skipped list if URI exists
+        if URI != "" {
+          if err = mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(skippedList, URI) }, "JSON-next-addSkip"); err != nil {
+            errors = append(errors, fmt.Sprintf("Add to %s failed: %s", skippedList, err))
+          } else {
+            responses = append(responses, fmt.Sprintf("%s added to %s", URI, skippedList))
+          }
+        }
+
+        // Step 3: fetch new status
+        var newSongID string
+        var newSongZI int
+        if err = mpdDo(func(c *mpd.Client) error {
+          status, err := c.Status()
+          if err != nil {
+            return err
+          }
+          newSongID = status["songid"]
+          if ziStr, ok := status["song"]; ok {
+            zi, err := strconv.Atoi(ziStr)
+            if err == nil {
+              newSongZI = zi
+            }
+          }
+          return nil
+        }, "JSON-next-postStatus"); err != nil {
+          errors = append(errors, fmt.Sprintf("Fetch status failed: %s", err))
+        } else if newSongID == songID {
+          errors = append(errors, fmt.Sprintf("Song ID unchanged; newSongID: %s; lastSongID: %s", newSongID, songID))
+        } else {
+          responses = append(responses, fmt.Sprintf("playing %d", newSongZI+1))
+        }
+
+        // Step 4: return combined response
+        if len(errors) > 0 {
+          responses = append(responses, "error")
+          js["response"] = responses
+          js["errors"] = errors
+        } else {
+          js["response"] = responses
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+      case "ignore":
+        if URI != "" {
+          err := mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(ignoredList, URI) }, "JSON-ignore-addIgnored")
+          if err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+          } else {
+            js["response"] = fmt.Sprintf("Added to %s playlist: %s", ignoredList, URI)
+          }
+        } else {
+          js["response"] = "error"
+          js["error"] = "Ignore failed: MPD returned no URI to add to ignored playlist"
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+
+
+
+      default:
+        js["response"] = "error"
+        js["error"] = "unknown mpd cmd"
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
+  case "linger":
+    // placeholder for future Linger commands
+    js["response"] = "error"
+    js["error"] = "linger system not implemented"
+    out, _ := json.Marshal(js)
+    return []string{string(out)}
+
+  default:
+    js["response"] = "error"
+    js["error"] = "invalid system"
+    out, _ := json.Marshal(js)
+    return []string{string(out)}
+  }
+
+} // func verbProcessorJSON()
+
+//func verbProcessorJSON(js map[string]interface{}) []string {
+//
+//  cmdIface, ok := js["cmd"]
+//  if !ok {
+//    js["response"] = "error"
+//    js["error"] = "missing cmd"
+//    out, _ := json.Marshal(js)
+//    return []string{string(out)}
+//  }
+//  cmd, ok := cmdIface.(string)
+//  if !ok {
+//    js["response"] = "error"
+//    js["error"] = "cmd not string"
+//    out, _ := json.Marshal(js)
+//    return []string{string(out)}
+//  }
+//
+//  args, _ := js["args"].(string)
+//
+//  system, _ := js["system"].(string)
+//
+//
+//  // --- pull authoritative MPD info BEFORE switch ---
+//  var URI string
+//  var songID string
+//  var playState string
+//  var randomState string
+//  var playing = true
+//  var consumeState string
+//
+//  err := mpdDo(func(c *mpd.Client) error {
+//    song, err := c.CurrentSong()
+//    if err != nil {
+//      return err
+//    }
+//
+//    URI = song["file"]
+//
+//    status, err := c.Status()
+//    if err != nil {
+//      return err
+//    }
+//
+//    songID = status["songid"]
+//    playState = status["state"]
+//    if playState != "play" {
+//      playing = false
+//    }
+//
+////    ziStr, ok := status["song"]
+////    if ok {
+////      zi, err := strconv.Atoi(ziStr)
+////      if err == nil {
+////        oldSongZI = zi
+////      }
+////    }
+//
+//    r, ok := status["random"]
+//    if ok {
+//      randomState = r
+//    }
+//
+//    return nil
+//
+//  }, "JSON-preSwitch")
+//
+//  if err != nil {
+//    js["response"] = "error"
+//    js["error"] = err.Error()
+//    out, _ := json.Marshal(js)
+//    return []string{string(out)}
+//  }
+//
+////  switch system {
+////  case "mpd"
+//
+//  switch cmd {
+//
+//    case "random":
+//
+//      argIface, ok := js["args"]
+//      if !ok {
+//        js["response"] = "error"
+//        js["error"] = "missing args"
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+//      }
+//
+//      newRandom, ok := argIface.(bool)
+//      if !ok {
+//        js["response"] = "error"
+//        js["error"] = "args must be boolean"
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+//      }
+//
+//      err := mpdDo(func(c *mpd.Client) error {
+//        return c.Random(newRandom)
+//      }, "JSON-random-set")
+//
+//      if err != nil {
+//        js["response"] = "error"
+//        js["error"] = err.Error()
+//      } else {
+//        if newRandom {
+//          js["response"] = "random on"
+//        } else {
+//          js["response"] = "random off"
+//        }
+//      }
+//
+//      out, _ := json.Marshal(js)
+//      return []string{string(out)}
+//
+//    case "togglestate":
+//      var err error
+//
+//      err = mpdDo(func(c *mpd.Client) error {
+//        return c.Pause(! playing)
+//      }, "JSON-togglestate")
+//
+//
+//      if err != nil {
+//        js["response"] = "error"
+//        js["error"] = err.Error()
+//      } else {
+//        if playing {
+//          js["response"] = "pause"
+//        } else {
+//          js["response"] = "play"
+//        }
+//      }
+//
+//      out, _ := json.Marshal(js)
+//      return []string{string(out)}
+//
+//		case "pause", "play", "resume":
+//		  // Determine if command is redundant
+//		  if (cmd == "pause" && !playing) || ((cmd == "play" || cmd == "resume") && playing) {
+//		    if playing {
+//		      js["response"] = "mpd already playing"
+//		    } else {
+//		      js["response"] = "mpd already paused"
+//		    }
+//		    out, _ := json.Marshal(js)
+//		    return []string{string(out)}
+//		  }
+//
+//		  // Otherwise, reuse togglestate logic
+//		  js["cmd"] = "togglestate"
+//		  return verbProcessorJSON(js)
+//
+////    case "pause":
+////
+////      if !playing {
+////        js["response"] = "mpd already paused"
+////        out, _ := json.Marshal(js)
+////        return []string{string(out)}
+////      }
+////
+////      err := mpdDo(func(c *mpd.Client) error {
+////        return c.Pause(true)
+////      }, "JSON-pause")
+////
+////      if err != nil {
+////        js["response"] = "error"
+////        js["error"] = err.Error()
+////      } else {
+////        js["response"] = "pause"
+////      }
+////
+////      out, _ := json.Marshal(js)
+////      return []string{string(out)}
+////
+////    case "play", "resume":
+////
+////      if playing {
+////        js["response"] = "mpd already playing"
+////        out, _ := json.Marshal(js)
+////        return []string{string(out)}
+////      }
+////
+////      err := mpdDo(func(c *mpd.Client) error {
+////        return c.Pause(false)
+////      }, "JSON-play")
+////
+////      if err != nil {
+////        js["response"] = "error"
+////        js["error"] = err.Error()
+////      } else {
+////        js["response"] = "play"
+////      }
+////
+////      out, _ := json.Marshal(js)
+////      return []string{string(out)}
+//
+//    case "restart":
+//
+//      err := mpdDo(func(c *mpd.Client) error {
+//        return c.SeekCur(0, false)
+//      }, "JSON-restart")
+//
+//      if err != nil {
+//        js["response"] = "error"
+//        js["error"] = err.Error()
+//      } else {
+//        js["response"] = "restarted"
+//      }
+//
+//      out, _ := json.Marshal(js)
+//      return []string{string(out)}
+//
+//    case "next":
+//
+//      err := mpdDo(func(c *mpd.Client) error {
+//        return c.Next()
+//      }, "JSON-next")
+//
+//      if err != nil {
+//        js["response"] = "error"
+//        js["error"] = err.Error()
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+//      }
+//
+//      // add URI to .mpdskip
+//      if URI != "" {
+//        err = mpdDo(func(c *mpd.Client) error {
+//          return c.PlaylistAdd(".mpdskip", URI)
+//        }, "JSON-next-addSkip")
+//
+//        if err != nil {
+//          js["response"] = "error"
+//          js["error"] = err.Error()
+//          out, _ := json.Marshal(js)
+//          return []string{string(out)}
+//        }
+//      }
+//
+//      // fetch NEW status after Next()
+//      var newSongID string
+//      var newSongZI int
+//
+//      err = mpdDo(func(c *mpd.Client) error {
+//
+//        status, err := c.Status()
+//        if err != nil {
+//          return err
+//        }
+//
+//        newSongID =status["songid"]
+//
+//        ziStr, ok := status["song"]
+//        if ok {
+//          zi, err := strconv.Atoi(ziStr)
+//          if err == nil {
+//            newSongZI = zi
+//          }
+//        }
+//        return nil
+//      }, "JSON-next-postStatus")
+//
+//      if err != nil {
+//        js["response"] = "error"
+//        js["error"] = err.Error()
+//      } else if newSongID == songID {
+//        js["response"] = "error"
+//        js["error"] = fmt.Sprintf("Song ID unchanged; newSongID: %s; lastSongID: %s", newSongID, songID)
+//      } else {
+//        js["response"] = fmt.Sprintf("playing %d", newSongZI+1)
+//      }
+//
+//      out, _ := json.Marshal(js)
+//      return []string{string(out)}
+//
+//    default:
+//
+//      js["response"] = "error"
+//      js["error"] = "unknown cmd"
+//      out, _ := json.Marshal(js)
+//      return []string{string(out)}
+//
+//  }
+//} // func verbProcessorJSON()
 
 
 
@@ -1778,6 +2180,14 @@ func runIdleLoop(w *mpd.Watcher) error {
         // Protect shared FSM state.
         state.mu.Lock()
         defer state.mu.Unlock()
+
+        // Assign playing=true to state.MPDplaying if "state" == "play"
+        if status["state"] == "play" {
+          state.MPDplaying = true
+        } else {
+          state.MPDplaying = false
+        }
+
         // Compute the current limit
         limit := state.baseLimit
         if state.blockOn && state.blockLimit > 0 {
@@ -2085,69 +2495,35 @@ func verbProcessor(csv string) []string {
             return err
           }
 
-     dbg("DBG json-log tags=%+v", tags)
-     dbg("DBG json-log notes=%v", notes)
+          dbg("DBG json-log tags=%+v", tags)
+          dbg("DBG json-log notes=%v", notes)
 
- /*     // --- convert map to AudioV1 using convert2json() ---
-      js, err := convert2json(tags)
-      if err != nil {
-        return fmt.Errorf("convert2json failed: %v", err)
-      }
+          // --- convert map to LogEntryV1 using convert2json() ---
+          entry := &LogEntryV1{}
 
-          epoch := isoLocalEpoch(ll.Timestamp)
-          ts := TimestampV1{
-            Epoch: epoch,
-            Log: ll.Timestamp,
-            Display: formatDisplayTime(ll.Timestamp),
-          }
-
-          entry := LogEntryV1{
-            Timestamps: ts,
-            Action:     ll.Action,
-            Notes:      strings.Join(notes, "; "),
-            File:       ll.Path,
-            URL:        url.PathEscape(ll.Path),
-            Audio:      js.AudioV1,
+          err = convert2json(
+            tags,
+            entry,
+            ll.Timestamp,
+            ll.Action,
+            notes,
+            ll.Path,
+          )
+          if err != nil {
+            return fmt.Errorf("convert2json failed: %v", err)
           }
 
           // append as JSON string
           b, _ := json.Marshal(entry)
           responses = append(responses, string(b))
         }
+
         return nil
       }, "JSONLog")
 
       if err != nil {
         responses = append(responses, fmt.Sprintf("error=%v", err))
       }
-*/
-      // --- convert map to LogEntryV1 using convert2json() ---
-      entry := &LogEntryV1{}
-
-      err = convert2json(
-        tags,
-        entry,
-        ll.Timestamp,
-        ll.Action,
-        notes,
-        ll.Path,
-      )
-      if err != nil {
-        return fmt.Errorf("convert2json failed: %v", err)
-      }
-
-      // append as JSON string
-      b, _ := json.Marshal(entry)
-      responses = append(responses, string(b))
-    }
-
-    return nil
-  }, "JSONLog")
-
-  if err != nil {
-    responses = append(responses, fmt.Sprintf("error=%v", err))
-  }
-//#2163
 
     case "json-status":
       log.Printf("IPC: received json-status command")
@@ -2158,15 +2534,8 @@ func verbProcessor(csv string) []string {
         responses = append(responses, fmt.Sprintf("ERR fetching status: %v", err))
         break
       }
-     debug=true
-     dbg("DBG json-status data=%+v", data)
+      dbg("DBG json-status data=%+v", data)
 
-//      // --- convert to JSON struct ---
-//      js, err := convert2json(data)
-//      if err != nil {
-//        responses = append(responses, fmt.Sprintf("ERR JSON conversion: %v", err))
-//        break
-//      }
       // --- convert to JSON struct ---
       js := &StatusV1{}
       err = convert2json(data, js)
@@ -2192,7 +2561,7 @@ func verbProcessor(csv string) []string {
       var numEntries = 24
       log.Printf("IPC: received getlog command")
       json := getLogEntriesJSON(numEntries)
-//      json := mpdLogParse(numEntries)
+//    json := mpdLogParse(numEntries)
       for _, ll := range json {
         // simplest: format as string
         resp := fmt.Sprintf("%s", ll)
@@ -2300,7 +2669,7 @@ func verbProcessor(csv string) []string {
           for k, v := range song {
             kv := ("next_"+strings.ToLower(k)+"="+v)
             responses = append(responses,
-//              fmt.Sprintf("next_%s=%s", k, v),
+//            fmt.Sprintf("next_%s=%s", k, v),
               fmt.Sprintf("%s", kv),
             )
           }
@@ -3690,6 +4059,21 @@ func main() {
   if v, ok := kv["skiplist"]; ok && v != "" && skippedList == "" {
     skippedList = v
   }
+  // fallback to default if still empty
+  if skippedList == "" {
+    skippedList = defaultSkippedList
+  }
+
+  // no flag implemented for ignoredList; assignment defaults to ""
+  // this sets up recording of ignored files in a designated mpd playlist.m3u
+  // to allow for further processing
+  if v, ok := kv["ignorelist"]; ok && v != "" && ignoredList == "" {
+    ignoredList = v
+  }
+  // fallback to default if still empty
+  if ignoredList == "" {
+    ignoredList = defaultIgnoredList
+  }
 
   if v, ok := kv["log"]; ok && v != "" && logPath == "" {
     logPath = v
@@ -3794,12 +4178,17 @@ func main() {
     } else {
       state.lastSongID = status["songid"]
       state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
-
-      switch status["state"] {
-      case "paused", "stop":
-        state.count = 0
-      default:
-        state.count = 1
+      switch status["state"] {                            // This doesn't look right: why is count being asigned this way?
+        case "pause", "stop":                             // Especially when paused??
+          state.count = 0
+          state.MPDplaying = false
+        case "play":
+          state.MPDplaying = true
+          state.count = 1
+        default:
+          log.Printf("MPD status 'state' is neither 'play', 'pause', nor 'stop': %s!", status["state"])
+          state.MPDplaying = false
+          state.count = 0
       }
     }
     client.Close()
@@ -3878,5 +4267,7 @@ func main() {
   }
 } // func main()
 // End of mpdgolinger
+
+
 
 
