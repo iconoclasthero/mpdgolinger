@@ -1263,6 +1263,127 @@ func verbProcessorJSON(js map[string]interface{}) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
+      case "playlist_current":
+        window := 12 // default window size
+
+        // optionally allow override via args["window"]
+        if w, ok := args["window"].(float64); ok {
+          window = int(w)
+        }
+
+        err := mpdDo(func(c *mpd.Client) error {
+
+          // 1. get current position
+          status, err := c.Status()
+          if err != nil {
+            return err
+          }
+
+          posStr, ok := status["song"]
+          if !ok {
+            return fmt.Errorf("no current song position")
+          }
+
+          pos, err := strconv.Atoi(posStr)
+          if err != nil {
+            return err
+          }
+
+          // 2. calculate bounds
+          lower := pos - window
+          if lower < 0 {
+            lower = 0
+          }
+
+          upper := pos + window + 1
+
+          // 3. fetch window slice
+          songs, err := c.PlaylistInfo(lower, upper)
+          if err != nil {
+            return err
+          }
+
+          // 4. format response
+          resp := []string{}
+
+          for i, song := range songs {
+            actualPos := lower + i
+
+            line := fmt.Sprintf(
+              "%d☢%s☢%s☢%s☢%s☢%s☢%s☢%s",
+              actualPos+1,
+              song["albumartist"],
+              song["artist"],
+              song["title"],
+              song["album"],
+              song["disc"],
+              song["track"],
+              song["time"],
+            )
+
+            resp = append(resp, line)
+          }
+
+          js["response"] = resp
+          return nil
+
+        }, "playlist_current")
+
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+      case "playlist_album":
+        // expect keys: mbAlbumID, albumArtist, album
+        mbAlbumID, _ := argsIface["mbAlbumID"].(string)
+        albumArtist, _ := argsIface["albumArtist"].(string)
+        album, _ := argsIface["album"].(string)
+
+        songs, err := mpdDo(func(c *mpd.Client) error {
+          entries, err := c.PlaylistInfo(-1000, -1000)
+          if err != nil {
+            return err
+          }
+
+          var filtered []Attrs
+          for _, e := range entries {
+            if mbID, ok := e["MUSICBRAINZ_ALBUMID"]; ok && mbID == mbAlbumID && mbAlbumID != "" {
+              filtered = append(filtered, e)
+              continue
+            }
+            if mbID, ok := e["musicbrainz_albumid"]; ok && mbID == mbAlbumID && mbAlbumID != "" {
+              filtered = append(filtered, e)
+              continue
+            }
+            if e["albumartist"] == albumArtist && e["album"] == album {
+              filtered = append(filtered, e)
+            }
+          }
+
+          respArr := make([]string, len(filtered))
+          for i, f := range filtered {
+            respArr[i] = fmt.Sprintf("%s☢%s☢%s☢%s☢%s☢%s☢%s☢%s",
+              f["position"], f["artist"], f["title"], f["albumartist"], f["album"],
+              f["disc"], f["track"], f["time"],
+            )
+          }
+
+          js["response"] = respArr
+          return nil
+        }, "JSON-playlistAlbum")
+
+        if err != nil {
+          js["response"] = []string{"error"}
+          js["error"] = err.Error()
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
       default: // of system case "mpd" switch cmd
         js["response"] = "error"
         js["error"] = "unknown mpd cmd"
@@ -1300,13 +1421,38 @@ func verbProcessorJSON(js map[string]interface{}) []string {
         out, _ := json.Marshal(respArr)
         return []string{string(out)}
 
-    default: // of system case "linger" switch cmd
-      // placeholder for future Linger commands
-      js["response"] = "error"
-      js["error"] = "unknown linger cmd"
-      out, _ := json.Marshal(js)
-      return []string{string(out)}
+      default: // of system case "linger" switch cmd
+        js["response"] = "error"
+        js["error"] = "unknown linger cmd"
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
     } // switch cmd
+
+  case "pulseaudio":
+    switch cmd {
+      case "up_volume", "down_volume", "mute_volume":
+        arg := ""
+        switch cmd {
+        case "up_volume": arg = "+5"
+        case "down_volume": arg = "-5"
+        case "mute_volume": arg = "mute"
+        }
+        outBytes, err := exec.Command("./pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
+//        resp := []string{string(outBytes)}
+        resp := []string{strings.TrimSpace(string(outBytes))}
+        if err != nil {
+          resp = append(resp, fmt.Sprintf("error: %v", err))
+        }
+        js["response"] = resp
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+      default: // of system case "pulseaudio" switch cmd
+        js["response"] = "error"
+        js["error"] = "unknown pulseaudio cmd"
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      } // switch cmd
 
   default: // of switch system
     js["response"] = "error"
