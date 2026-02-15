@@ -1190,58 +1190,6 @@ func verbProcessorJSON(js map[string]interface{}) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
-//      case "next":
-//        err := mpdDo(func(c *mpd.Client) error { return c.Next() }, "JSON-next")
-//        if err != nil {
-//          js["response"] = "error"
-//          js["error"] = err.Error()
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
-//
-//        if URI != "" {
-//          err = mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(skippedList, URI) }, "JSON-next-addSkipped")
-//          if err != nil {
-//            js["response"] = "error"
-//            js["error"] = err.Error()
-//            out, _ := json.Marshal(js)
-//            return []string{string(out)}
-//          }
-//        } else {
-//          js["response"] = "warning"
-//          js["error"] = "MPD returned to URI to add to skipped playlist; not updated."
-//        }
-//
-//        var newSongID string
-//        var newSongZI int
-//        err = mpdDo(func(c *mpd.Client) error {
-//          status, err := c.Status()
-//          if err != nil {
-//            return err
-//          }
-//          newSongID = status["songid"]
-//          if ziStr, ok := status["song"]; ok {
-//            zi, err := strconv.Atoi(ziStr)
-//            if err == nil {
-//              newSongZI = zi
-//            }
-//          }
-//          return nil
-//        }, "JSON-next-postStatus")
-//
-//        if err != nil {
-//          js["response"] = "error"
-//          js["error"] = err.Error()
-//        } else if newSongID == songID {
-//          js["response"] = "error"
-//          js["error"] = fmt.Sprintf("Song ID unchanged; newSongID: %s; lastSongID: %s", newSongID, songID)
-//        } else {
-//          js["response"] = fmt.Sprintf("playing %d", newSongZI+1)
-//        }
-//
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-
       case "next":
         responses := []string{}
         errors := []string{}
@@ -1315,10 +1263,7 @@ func verbProcessorJSON(js map[string]interface{}) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
-
-
-
-      default:
+      default: // of system case "mpd" switch cmd
         js["response"] = "error"
         js["error"] = "unknown mpd cmd"
         out, _ := json.Marshal(js)
@@ -1326,306 +1271,51 @@ func verbProcessorJSON(js map[string]interface{}) []string {
       }
 
   case "linger":
-    // placeholder for future Linger commands
-    js["response"] = "error"
-    js["error"] = "linger system not implemented"
-    out, _ := json.Marshal(js)
-    return []string{string(out)}
+    switch cmd {
+      case "next":
+        log.Printf("IPC: received linger next")
 
-  default:
+        // 1. Update block state
+        state.mu.Lock()
+        state.transition = true
+        state.paused = false
+        state.mu.Unlock()
+
+        // 2. Delegate to existing sscmsc next handler
+        resp := verbProcessorJSON(map[string]interface{}{
+          "system": "mpd",
+          "cmd":    "next",
+        })
+
+        // Unmarshal into slice
+        var respArr []string
+        if err := json.Unmarshal([]byte(resp[0]), &respArr); err != nil {
+          respArr = []string{"error unmarshaling response"}
+        }
+
+        // Add linger-specific message
+        respArr = append(respArr, "linger block advanced")
+
+        // Marshal back
+        out, _ := json.Marshal(respArr)
+        return []string{string(out)}
+
+    default: // of system case "linger" switch cmd
+      // placeholder for future Linger commands
+      js["response"] = "error"
+      js["error"] = "unknown linger cmd"
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+    } // switch cmd
+
+  default: // of switch system
     js["response"] = "error"
     js["error"] = "invalid system"
     out, _ := json.Marshal(js)
     return []string{string(out)}
-  }
+  } // switch system
 
 } // func verbProcessorJSON()
-
-//func verbProcessorJSON(js map[string]interface{}) []string {
-//
-//  cmdIface, ok := js["cmd"]
-//  if !ok {
-//    js["response"] = "error"
-//    js["error"] = "missing cmd"
-//    out, _ := json.Marshal(js)
-//    return []string{string(out)}
-//  }
-//  cmd, ok := cmdIface.(string)
-//  if !ok {
-//    js["response"] = "error"
-//    js["error"] = "cmd not string"
-//    out, _ := json.Marshal(js)
-//    return []string{string(out)}
-//  }
-//
-//  args, _ := js["args"].(string)
-//
-//  system, _ := js["system"].(string)
-//
-//
-//  // --- pull authoritative MPD info BEFORE switch ---
-//  var URI string
-//  var songID string
-//  var playState string
-//  var randomState string
-//  var playing = true
-//  var consumeState string
-//
-//  err := mpdDo(func(c *mpd.Client) error {
-//    song, err := c.CurrentSong()
-//    if err != nil {
-//      return err
-//    }
-//
-//    URI = song["file"]
-//
-//    status, err := c.Status()
-//    if err != nil {
-//      return err
-//    }
-//
-//    songID = status["songid"]
-//    playState = status["state"]
-//    if playState != "play" {
-//      playing = false
-//    }
-//
-////    ziStr, ok := status["song"]
-////    if ok {
-////      zi, err := strconv.Atoi(ziStr)
-////      if err == nil {
-////        oldSongZI = zi
-////      }
-////    }
-//
-//    r, ok := status["random"]
-//    if ok {
-//      randomState = r
-//    }
-//
-//    return nil
-//
-//  }, "JSON-preSwitch")
-//
-//  if err != nil {
-//    js["response"] = "error"
-//    js["error"] = err.Error()
-//    out, _ := json.Marshal(js)
-//    return []string{string(out)}
-//  }
-//
-////  switch system {
-////  case "mpd"
-//
-//  switch cmd {
-//
-//    case "random":
-//
-//      argIface, ok := js["args"]
-//      if !ok {
-//        js["response"] = "error"
-//        js["error"] = "missing args"
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-//      }
-//
-//      newRandom, ok := argIface.(bool)
-//      if !ok {
-//        js["response"] = "error"
-//        js["error"] = "args must be boolean"
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-//      }
-//
-//      err := mpdDo(func(c *mpd.Client) error {
-//        return c.Random(newRandom)
-//      }, "JSON-random-set")
-//
-//      if err != nil {
-//        js["response"] = "error"
-//        js["error"] = err.Error()
-//      } else {
-//        if newRandom {
-//          js["response"] = "random on"
-//        } else {
-//          js["response"] = "random off"
-//        }
-//      }
-//
-//      out, _ := json.Marshal(js)
-//      return []string{string(out)}
-//
-//    case "togglestate":
-//      var err error
-//
-//      err = mpdDo(func(c *mpd.Client) error {
-//        return c.Pause(! playing)
-//      }, "JSON-togglestate")
-//
-//
-//      if err != nil {
-//        js["response"] = "error"
-//        js["error"] = err.Error()
-//      } else {
-//        if playing {
-//          js["response"] = "pause"
-//        } else {
-//          js["response"] = "play"
-//        }
-//      }
-//
-//      out, _ := json.Marshal(js)
-//      return []string{string(out)}
-//
-//		case "pause", "play", "resume":
-//		  // Determine if command is redundant
-//		  if (cmd == "pause" && !playing) || ((cmd == "play" || cmd == "resume") && playing) {
-//		    if playing {
-//		      js["response"] = "mpd already playing"
-//		    } else {
-//		      js["response"] = "mpd already paused"
-//		    }
-//		    out, _ := json.Marshal(js)
-//		    return []string{string(out)}
-//		  }
-//
-//		  // Otherwise, reuse togglestate logic
-//		  js["cmd"] = "togglestate"
-//		  return verbProcessorJSON(js)
-//
-////    case "pause":
-////
-////      if !playing {
-////        js["response"] = "mpd already paused"
-////        out, _ := json.Marshal(js)
-////        return []string{string(out)}
-////      }
-////
-////      err := mpdDo(func(c *mpd.Client) error {
-////        return c.Pause(true)
-////      }, "JSON-pause")
-////
-////      if err != nil {
-////        js["response"] = "error"
-////        js["error"] = err.Error()
-////      } else {
-////        js["response"] = "pause"
-////      }
-////
-////      out, _ := json.Marshal(js)
-////      return []string{string(out)}
-////
-////    case "play", "resume":
-////
-////      if playing {
-////        js["response"] = "mpd already playing"
-////        out, _ := json.Marshal(js)
-////        return []string{string(out)}
-////      }
-////
-////      err := mpdDo(func(c *mpd.Client) error {
-////        return c.Pause(false)
-////      }, "JSON-play")
-////
-////      if err != nil {
-////        js["response"] = "error"
-////        js["error"] = err.Error()
-////      } else {
-////        js["response"] = "play"
-////      }
-////
-////      out, _ := json.Marshal(js)
-////      return []string{string(out)}
-//
-//    case "restart":
-//
-//      err := mpdDo(func(c *mpd.Client) error {
-//        return c.SeekCur(0, false)
-//      }, "JSON-restart")
-//
-//      if err != nil {
-//        js["response"] = "error"
-//        js["error"] = err.Error()
-//      } else {
-//        js["response"] = "restarted"
-//      }
-//
-//      out, _ := json.Marshal(js)
-//      return []string{string(out)}
-//
-//    case "next":
-//
-//      err := mpdDo(func(c *mpd.Client) error {
-//        return c.Next()
-//      }, "JSON-next")
-//
-//      if err != nil {
-//        js["response"] = "error"
-//        js["error"] = err.Error()
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-//      }
-//
-//      // add URI to .mpdskip
-//      if URI != "" {
-//        err = mpdDo(func(c *mpd.Client) error {
-//          return c.PlaylistAdd(".mpdskip", URI)
-//        }, "JSON-next-addSkip")
-//
-//        if err != nil {
-//          js["response"] = "error"
-//          js["error"] = err.Error()
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
-//      }
-//
-//      // fetch NEW status after Next()
-//      var newSongID string
-//      var newSongZI int
-//
-//      err = mpdDo(func(c *mpd.Client) error {
-//
-//        status, err := c.Status()
-//        if err != nil {
-//          return err
-//        }
-//
-//        newSongID =status["songid"]
-//
-//        ziStr, ok := status["song"]
-//        if ok {
-//          zi, err := strconv.Atoi(ziStr)
-//          if err == nil {
-//            newSongZI = zi
-//          }
-//        }
-//        return nil
-//      }, "JSON-next-postStatus")
-//
-//      if err != nil {
-//        js["response"] = "error"
-//        js["error"] = err.Error()
-//      } else if newSongID == songID {
-//        js["response"] = "error"
-//        js["error"] = fmt.Sprintf("Song ID unchanged; newSongID: %s; lastSongID: %s", newSongID, songID)
-//      } else {
-//        js["response"] = fmt.Sprintf("playing %d", newSongZI+1)
-//      }
-//
-//      out, _ := json.Marshal(js)
-//      return []string{string(out)}
-//
-//    default:
-//
-//      js["response"] = "error"
-//      js["error"] = "unknown cmd"
-//      out, _ := json.Marshal(js)
-//      return []string{string(out)}
-//
-//  }
-//} // func verbProcessorJSON()
-
 
 
 func startWS(port int) {
@@ -1638,8 +1328,7 @@ func startWS(port int) {
       log.Fatalf("ws server failed: %v", err)
     }
   }()
-} // func startWS
-
+} // func startWS()
 
 
 // runXYStep executes one XY shuffle step using playlist positions ("song").
@@ -1721,7 +1410,7 @@ func loadConfig(cliPath string) configFile {
   cf.exists = true
   cf.data = string(data)
   return cf
-} // func loadConfig(cliPath string) configFile {
+} // func loadConfig()
 
 
 // dumpConfig prints the config path and optionally its contents if verbose
@@ -1768,7 +1457,7 @@ func parseConfig(data string) map[string]string {
     }
   }
   return cfg
-} // func parseConfig(data string) map[string]string
+} // func parseConfig()
 
 
 // mpdDo runs a function with a short-lived MPD client and logs errors
@@ -2978,57 +2667,6 @@ func verbProcessor(csv string) []string {
       log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
         state.paused, expired, state.count, limit, state.transition)
       resp = map[bool]string{true: "Paused", false: "Resumed"}[paused]
-
-//    case "next":
-//      log.Printf("IPC: received next command")
-//      state.mu.Lock()
-//      state.transition = true
-//      state.paused = false
-//      state.mu.Unlock()
-//
-//      _ = mpdDo(func(c *mpd.Client) error {
-//        cs, err := c.CurrentSong()
-//        if err != nil {
-//          return err
-//        }
-//        if err := c.PlaylistAdd(skippedList, cs["file"]); err != nil {
-//          return err
-//        }
-//        if err := c.Random(true); err != nil {
-//          return err
-//        }
-//        if err := c.Next(); err != nil {
-//          return err
-//        }
-//        return c.Play(-1)
-//      }, "IPC-nextBlock")
-//
-//      log.Printf("STATE CHANGE: [IPC-nextBlock] forced block advance, count reset")
-//      resp = "Advanced to next block"
-//
-//    case "skip":
-//      log.Printf("IPC: received skip command")
-//      _ = mpdDo(func(c *mpd.Client) error {
-//        cs, err := c.CurrentSong()
-//        if err != nil {
-//          return err
-//        }
-//        if err := c.PlaylistAdd(skippedList, cs["file"]); err != nil {
-//          return err
-//        }
-//        if err := c.Next(); err != nil {
-//          return err
-//        }
-//        return c.Play(-1)
-//      }, "IPC-skip")
-//
-//      state.mu.Lock()
-//      log.Printf(
-//        "STATE CHANGE: [IPC-skip] count=%d baseLimit=%d blockLimit=%d transition=%v paused=%v",
-//        state.count, state.baseLimit, state.blockLimit, state.transition, state.paused,
-//      )
-//      state.mu.Unlock()
-//      resp = "Skipped to next track"
 
     case "next", "skip":
       log.Printf("IPC: received %s command", cmd)
