@@ -1,12 +1,13 @@
--------------------------
-lin·​ger [ˈliŋ-gər] verb 
-To  stay in a place longer than necessary, often due to enjoyment or reluctance to leave, or for something to remain or persist, like a scent or feeling, even as its strength fades; it implies slowness, delay, and persistence
--------------------------
-
 # mpdgolinger
 
 **mpdgolinger** is a Go-based daemon for managing MPD (Music Player Daemon) playback with block limits, idle supervision, and IPC commands.
 
+---
+
+*lin·​ger* [ˈliŋ-gər] verb — 
+to stay in a place longer than necessary, often due to **enjoyment** or reluctance to leave, or for something to *remain or persist,* like a scent or **feeling**, even as its strength fades; it implies *slowness, delay, and persistence*
+
+---
 
 ## Background
 
