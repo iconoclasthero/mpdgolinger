@@ -5,7 +5,7 @@
 ---
 
 *lin·​ger* [ˈliŋ-gər] verb — 
-to stay in a place longer than necessary, often due to **enjoyment**, **reluctance to leave**, or a *desire to savor*, for something to *remain or persist,* like a scent or **feeling**, even as its strength fades; it implies *slowness, delay, and persistence*
+to stay in a place longer than necessary, often due to **enjoyment**, **reluctance to leave**, or a **desire to savor**, for something to *remain or persist,* like a scent or **feeling**, even as its strength fades; it implies *slowness, delay, and persistence*
 
 ---
 
