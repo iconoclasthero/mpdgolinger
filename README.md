@@ -1,15 +1,17 @@
+| ------------------------- |
+| lin·​ger [ˈliŋ-gər] verb |
+| To  stay in a place longer than necessary, often due to enjoyment or reluctance to leave, or for something to remain or persist, like a scent or feeling, even as its strength fades; it implies slowness, delay, and persistence |
+
 # mpdgolinger
 
 **mpdgolinger** is a Go-based daemon for managing MPD (Music Player Daemon) playback with block limits, idle supervision, and IPC commands.
+
 
 ## Background
 
 My collection has roughly 80,000 songs and 7,000 artists and my current playlist numbers ca. 73,000. I generally add music by the directory so—in theory—I should have a playlist that consists of albums by artist, roughly alphabetically. In pure random mode, mpd should play just one song in a row by an artist (save for over-represented artists in the collection). 
 
 Classic rock stations have long had gimmicks like "Rock Blocks," "Double Shots," "Twofer Tuesdays," "Workfoce blocks," etc., where multiple songs from the same artist or around a common theme are played consecutively. That's essentially what this does. Set your limit=_n_ (default _n_=4) and mpd playback will _linger_ on the playlist for _n_ songs before advancing on random to another block. This is compatible with consume and repeat mpd playback modes. And if you're really digging, say, a particular Dead bootleg and want to hear more than _n_ songs for a block, you can temporarily override the limit for a block. Given the law of low numbers (Benford's Law), there's a decent chance the random will land on 4 consecutive songs by the same artist (at least until comnsume—if enabled—has swiss-cheesed your playlist).
-
-lin·​ger [ˈliŋ-gər] verb
-To  stay in a place longer than necessary, often due to enjoyment or reluctance to leave, or for something to remain or persist, like a scent or feeling, even as its strength fades; it implies slowness, delay, and persistence
 
 ## Features
 
