@@ -112,34 +112,40 @@ mpdgolinger quit|exit         # exits manually-started daemon (not for system da
 
 XY Mode allows a randomized playback of a specified subset of a playlist **in consume mode only.** The initial bounds (X & Y) are specified via the client (the Y bound may be specified by an increment). During playback the playlist remains at position X and a random song between X+1 and Y is moved to X+1.  When X is finished and consumed, Y is decremented by one and the cycle repeats until Y=X; XY mode is disabled (via `mpdgolinger xyoff`); or a playlist change causes the current song to change from X.
 
+#### Notes
+
+* Modifying the playlist during XY playback mode may have unexpected and/or unintended results due to limitations of the mpd protocol: this will be especially problematic if Y < `playlistlength` and music is removed from the XY range (resulting in playlist entries > Y being shifted into the XY range).  Removing music from before the XY range should result in XY mode being turned off as the playlist number will change; removing music after XY will have no consequences. 
+
+* As below, negative integers or 0 have special meaning: non-integer values or negative `<start>` values are rejected. All valid values—absolute or relative `±<end>` values—refer to the user-facing one-indexed playlist positions (i.e., not mpd's song IDs or internal zero-indexed playlist positions).
+
+* Absolute mode: used when both `<start>` and `<end>` are non-negative.  Relative mode: used when `<end>` is `+N` or `-N`.
+
 #### XY Usage
 
 ```sh
 mpdgolinger xy <x> <y|+n>     # turns XY Mode on with bounds <x> <y> or increment <+n>
 mpdgolinger xyoff             # turns XY Mode off
 ```
-* Modifying the playlist during XY playback mode may have unexpected and/or unintended results due to limitations of the mpd protocol: this will be especially problematic if Y < `playlistlength` and music is removed from the XY range (resulting in playlist entries > Y being shifted into the XY range).  Removing music from before the XY range should result in XY mode being turned off as the playlist number will change; removing music after XY will have no consequences. As below, negative integers or 0 have special meaning. Non-integer values or negative start values are rejected.
 
-
-| Command Format                           | Mode                | Description                          |
-| -----------------------------------------|---------------------- | --------------------------------------------------------------------------- |
-| `xy <start> <end>`                    | Absoluge | Start at `<start>` and end at `<end>`. Both must be positive integers.      |
-| `xy <start> <0\|null>`               | Absoluge |Start at `<start>` and play to the end of the playlist. |
-| `xy 0 <end\|0\|null>`                | Absolute |Start at current song and play to `<end>` value/end of playlist. 
-| `xy <start> ±N`                       | Relative | Start at `<start>` and include the ±N songs relative to `<start>`|
-| Non-integer & negative `<start>` values | Invalid | Will be rejected.                                       |
+| Command Format                  | Mode     | Description                                                           |
+| --------------------------------|----------|-----------------------------------------------------------------------|
+| `xy <start> <end>`              | Absolute | Start at `<start>` and end at `<end>`. Both must be positive integers.|
+| `xy <start> <0\|null>`          | Absolute |Start at `<start>` and play to the end of the playlist.                |
+| `xy 0 <end\|0\|null>`           | Absolute |Start at current song and play to `<end>` value/end of playlist.       |
+| `xy <start> ±N`                 | Relative | Start at `<start>` and include the ±N songs relative to `<start>`     |
+| Non-integer & `<start> < 0` values | Invalid | Will be rejected.                                                   |
 
 #### XY Command Examples
 
-| Command    | Effect                                                     |
-| ---------- | ---------------------------------------------------------- |
-| `xy 0 0`   | Play from **current song** to the **end of the playlist**. |
-| `xy 1 0`   | Play from **first song** to the end of the playlist.       |
-| `xy 5`     | Play from song 5 to the end of the playlist.               |
-| `xy 3 10`  | Play from song 3 to song 10.                               |
-| `xy 10 3`  | Automatically orders to play from song 3 to 10.            |
-| `xy 8 +4`  | Play from song 8 and include the next 4 songs.             |
-| `xy 10 -2` | Play from song 10 and include the previous 2 songs.        |
+| Command    | Effect                                                        |
+| ---------- | ------------------------------------------------------------- |
+| `xy 0 0`   | Play from **current song** to the **end of the playlist**.    |
+| `xy 1 0`   | Play from **first song** to the end of the playlist.          |
+| `xy 5`     | Play from song 5 to the end of the playlist.                  |
+| `xy 3 10`  | Play from song 3 to song 10.                                  |
+| `xy 10 3`  | Absolute mode: automatically orders to play from song 3 to 10.|
+| `xy 8 +4`  | Play from song 8 and include the next 4 songs.                |
+| `xy 10 -2` | Play from song 10 and include the previous 2 songs.           |
 
 
 ## Development
