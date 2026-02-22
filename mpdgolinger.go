@@ -3410,7 +3410,17 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
               return nil
           }, "xy-restore-consume")
           log.Printf("[IPC] XY mode turned off")
+
           js["response"] = "XY mode turned off"
+          resp := verbProcessor("json-status")
+          if len(resp) > 0 {
+            var status map[string]interface{}
+            if err := json.Unmarshal([]byte(resp[0]), &status); err == nil {
+              for k, v := range status {
+                js[k] = v
+              }
+            }
+          }
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
