@@ -6,6 +6,7 @@ import (
    flag "github.com/spf13/pflag"
   "github.com/fhs/gompd/v2/mpd"
   "github.com/coder/websocket"
+  "github.com/mitchellh/mapstructure"
   "context"
   "regexp"
   "bufio"
@@ -67,9 +68,9 @@ type derivedState struct {
 } // type derivedState struct
 
 type xyState struct {
-  active bool
-  start  int // songid X
-  end    int // songid Y
+     active  bool
+     start   int // songpos X
+     end     int // songpos Y
 }
 
 var xy xyState
@@ -121,6 +122,7 @@ type     PlayerV1     struct {
      Repeat           bool     `json:"repeat"`
      Single           bool     `json:"single"`
      SongPosition     int      `json:"song_position"`
+     SongID           int      `json:"songID"`
      SongLength       int      `json:"song_length"`
 }
 
@@ -132,6 +134,9 @@ type    LingerV1      struct {
      Limit            int      `json:"limit"`
      BlockLimit       int      `json:"blocklimit"`
      Paused           bool     `json:"paused"`
+     LingerXY         bool     `json:"lingerxy"`
+     LingerX          int      `json:"lingerx"`
+     LingerY					int			 `json:"lingery"`
 }
 
 type    TimestampV1   struct {
@@ -373,6 +378,7 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     // --- player ---
     dst.Player.State        = raw["state"]
     dst.Player.Volume       = atoi(raw["volume"])
+    dst.Player.SongID       = atoi(raw["songid"])
     songZI                 := atoi(raw["song"])
     dst.Player.SongPosition = songZI + 1
     dst.Player.SongLength   = atoi(raw["playlistlength"])
@@ -406,6 +412,9 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     dst.Linger.Limit        = atoi(raw["lingerlimit"])
     dst.Linger.BlockLimit   = atoi(raw["lingerblocklmt"])
     dst.Linger.Paused       = raw["lingerpause"] == "1"
+    dst.Linger.LingerXY     = raw["lingerxy"] == "1"
+    dst.Linger.LingerX      = atoi(raw["lingerx"])
+    dst.Linger.LingerY      = atoi(raw["lingery"])
 
     return nil
 
@@ -461,7 +470,7 @@ func isoLocalEpoch(iso string) int64 {
     }
     // Convert to local epoch
     return t.Unix()
-}
+} // func isoLocalEpoch
 
 func formatDisplayTime(iso string) string {
     t, err := time.Parse("2006-01-02T15:04:05", iso)
@@ -469,22 +478,22 @@ func formatDisplayTime(iso string) string {
         return iso
     }
     return t.Format("Jan 02 3:04 pm")
-}
+} // func formatDisplayTime
 
 func atoi(s string) int {
   i, _ := strconv.Atoi(s)
   return i
-}
+} // func atoi()
 
 func dbg(f string, a ...any) {
   if debug {
     fmt.Fprintf(os.Stderr, "DEBUG: "+f+"\n", a...)
   }
-} // cnuf dbg
+} // func dbg()
 
 func emitError(msg string) {
   fmt.Printf("error=%q\n", msg)
-} // cnuf emitError
+} // func emitError()
 
 
 func printSong(song map[string]string) {
@@ -498,7 +507,7 @@ func printSong(song map[string]string) {
     }
     fmt.Printf("%s=%q\n", outk, v)
   }
-} // cnuf printSong
+} // func printSong()
 
 
 /* ---------------- tryparsed ---------------- */
@@ -614,6 +623,7 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
     }
     ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
     state.mu.Unlock()
+    dbg("DBG xy.active=%v\n", xy.active)
 
     m["writetime"] = ds.WriteTime
     m["lingersong"] = strconv.Itoa(ds.SongZI + 1)
@@ -2347,104 +2357,262 @@ func wsWatcher(ctx *wsCtx) {
       continue
     }
 
-    // --- push to all subscribed connections (safe write) ---
+////    // --- push to all subscribed connections (safe write) ---
+////    ctx.mu.Lock()
+////    for conn := range ctx.conns {
+////
+////      ctx.writeMu.Lock()
+////      dead := false
+////
+////      write := func(typ websocket.MessageType, payload []byte) bool {
+////        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+////        err := conn.Write(wctx, typ, payload)
+////        cancel()
+////
+////        if err != nil {
+////          log.Printf("[WS] write failed, removing conn: %v", err)
+////          conn.Close(websocket.StatusNormalClosure, "")
+////          dead = true
+////          return false
+////        }
+////        return true
+////      }
+////
+////      // push status
+////      if !write(websocket.MessageText, data) {
+////        ctx.writeMu.Unlock()
+////        delete(ctx.conns, conn)
+////        continue
+////      }
+////
+////      // push notes
+////      for _, note := range notes {
+////        if !write(websocket.MessageText, []byte(note)) {
+////          break
+////        }
+////      }
+////
+//////      // push album art if changed
+//////      if !dead && pushArt {
+//////        if len(img) > 0 {
+//////          if write(websocket.MessageBinary, img) {
+//////            log.Printf("[ART] pushed %d bytes", len(img))
+//////          }
+//////        } else {
+//////          // MUST push empty binary frame to clear stale art on client
+//////          if write(websocket.MessageBinary, []byte{}) {
+//////            log.Printf("[ART] pushed empty frame (clears client art)")
+//////          }
+//////        }
+//////      }
+////
+////      log.Println("[ANTI-SPAGHETTI] before added ctx.mu.Unlock()")
+////      ctx.mu.Unlock()
+////      log.Println("[ANTI-SPAGHETTI] before nested ctx.mu.Lock()")
+//////      ctx.mu.Lock()
+////      log.Println("[ANTI-SPAGHETTI] after cmmented-out nested ctx.mu.Lock()")
+////      for conn := range ctx.conns {
+////          ctx.writeMu.Lock()
+////          dead := false
+////
+////          write := func(typ websocket.MessageType, payload []byte) bool {
+////              wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+////              err := conn.Write(wctx, typ, payload)
+////              cancel()
+////              if err != nil {
+////                  log.Printf("[WS] write failed, removing conn: %v", err)
+////                  conn.Close(websocket.StatusNormalClosure, "")
+////                  dead = true
+////                  return false
+////              }
+////              return true
+////          }
+////
+////          // push album art if needed
+//////          if !dead && pushArt {
+//////              if len(img) > 0 {
+//////                  write(websocket.MessageBinary, img)
+//////              } else {
+//////                  write(websocket.MessageBinary, []byte{})
+//////              }
+//////          }
+////// TEMP TEST: disable album art writes
+////if false && !dead && pushArt {
+////    if len(img) > 0 {
+////        write(websocket.MessageBinary, img)
+////    } else {
+////        write(websocket.MessageBinary, []byte{})
+////    }
+////}
+////
+////          ctx.writeMu.Unlock()
+////      }
+////      ctx.mu.Unlock()
+////
+////      // push log data if any
+//////    if !dead && len(allLogEntries) > 0 {
+////      if songChanged && !dead && len(allLogEntries) > 0 {
+////        for _, entryData := range allLogEntries {
+////          if write(websocket.MessageText, entryData) {
+//////            log.Printf("[LOG] pushed %d bytes", len(entryData))
+////          }
+////        }
+////      }
+////
+////      ctx.writeMu.Unlock()
+////    }
+////    ctx.mu.Unlock()
+////
+////    time.Sleep(100 * time.Millisecond)
+////  }
+////} // func wsWatcher()
+//// --- push to all subscribed connections (safe write) ---
+//ctx.mu.Lock()
+//for conn := range ctx.conns {
+//
+//    ctx.writeMu.Lock()
+//    dead := false
+//
+//    write := func(typ websocket.MessageType, payload []byte) bool {
+//        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+//        err := conn.Write(wctx, typ, payload)
+//        cancel()
+//        if err != nil {
+//            log.Printf("[WS] write failed, removing conn: %v", err)
+//            conn.Close(websocket.StatusNormalClosure, "")
+//            dead = true
+//            return false
+//        }
+//        return true
+//    }
+//
+//    // push status
+//    if !write(websocket.MessageText, data) {
+//        ctx.writeMu.Unlock()
+//        delete(ctx.conns, conn)
+//        continue
+//    }
+//
+//    // push notes
+//    for _, note := range notes {
+//        if !write(websocket.MessageText, []byte(note)) {
+//            break
+//        }
+//    }
+//
+//    // TEMP TEST: disable album art writes
+//    if !dead && pushArt {
+//        if len(img) > 0 {
+//            write(websocket.MessageBinary, img)
+//        } else {
+//            write(websocket.MessageBinary, []byte{})
+//        }
+//    }
+//
+//    // push log data if any
+//    if songChanged && !dead && len(allLogEntries) > 0 {
+//        for _, entryData := range allLogEntries {
+//            write(websocket.MessageText, entryData)
+//        }
+//    }
+//
+//    ctx.writeMu.Unlock()
+//}
+//ctx.mu.Unlock()
+//}
+//time.Sleep(100 * time.Millisecond)
+//} // func wsWatcher()
+
+    // --- push to all subscribed connections ---
     ctx.mu.Lock()
+
     for conn := range ctx.conns {
 
-      ctx.writeMu.Lock()
-      dead := false
+        ctx.writeMu.Lock()
+        dead := false
 
-      write := func(typ websocket.MessageType, payload []byte) bool {
-        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-        err := conn.Write(wctx, typ, payload)
-        cancel()
+        write := func(typ websocket.MessageType, payload []byte) bool {
+            wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+            defer cancel()
 
-        if err != nil {
-          log.Printf("[WS] write failed, removing conn: %v", err)
-          conn.Close(websocket.StatusNormalClosure, "")
-          dead = true
-          return false
+            err := conn.Write(wctx, typ, payload)
+            if err != nil {
+                log.Printf("[WS] write failed, removing conn: %v", err)
+                conn.Close(websocket.StatusNormalClosure, "")
+                dead = true
+                return false
+            }
+            return true
         }
-        return true
-      }
 
-      // push status
-      if !write(websocket.MessageText, data) {
+        dbg("broadcast start conn=%p", conn)
+
+        // --- STATUS ---
+        if !write(websocket.MessageText, data) {
+            ctx.writeMu.Unlock()
+            delete(ctx.conns, conn)
+            continue
+        }
+
+        // --- NOTES ---
+        for _, note := range notes {
+            if !write(websocket.MessageText, []byte(note)) {
+                break
+            }
+        }
+
+        if dead {
+            ctx.writeMu.Unlock()
+            delete(ctx.conns, conn)
+            continue
+        }
+
+        // --- ALBUM ART ---
+        if pushArt {
+            dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
+
+            if len(img) > 0 {
+                if !write(websocket.MessageBinary, img) {
+                    ctx.writeMu.Unlock()
+                    delete(ctx.conns, conn)
+                    continue
+                }
+                dbg("album art pushed (%d bytes)", len(img))
+            } else {
+                // empty frame clears stale client art
+                if !write(websocket.MessageBinary, []byte{}) {
+                    ctx.writeMu.Unlock()
+                    delete(ctx.conns, conn)
+                    continue
+                }
+                dbg("empty album art frame pushed")
+            }
+        }
+
+        // --- LOG ENTRIES ---
+        if songChanged && len(allLogEntries) > 0 {
+            dbg("pushing %d log entries", len(allLogEntries))
+            for _, entry := range allLogEntries {
+                if !write(websocket.MessageText, entry) {
+                    break
+                }
+            }
+        }
+
         ctx.writeMu.Unlock()
-        delete(ctx.conns, conn)
-        continue
-      }
 
-      // push notes
-      for _, note := range notes {
-        if !write(websocket.MessageText, []byte(note)) {
-          break
+        if dead {
+            delete(ctx.conns, conn)
+            continue
         }
-      }
 
-//      // push album art if changed
-//      if !dead && pushArt {
-//        if len(img) > 0 {
-//          if write(websocket.MessageBinary, img) {
-//            log.Printf("[ART] pushed %d bytes", len(img))
-//          }
-//        } else {
-//          // MUST push empty binary frame to clear stale art on client
-//          if write(websocket.MessageBinary, []byte{}) {
-//            log.Printf("[ART] pushed empty frame (clears client art)")
-//          }
-//        }
-//      }
-
-      ctx.mu.Lock()
-      for conn := range ctx.conns {
-          ctx.writeMu.Lock()
-          dead := false
-
-          write := func(typ websocket.MessageType, payload []byte) bool {
-              wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-              err := conn.Write(wctx, typ, payload)
-              cancel()
-              if err != nil {
-                  log.Printf("[WS] write failed, removing conn: %v", err)
-                  conn.Close(websocket.StatusNormalClosure, "")
-                  dead = true
-                  return false
-              }
-              return true
-          }
-
-          // push album art if needed
-          if !dead && pushArt {
-              if len(img) > 0 {
-                  write(websocket.MessageBinary, img)
-              } else {
-                  write(websocket.MessageBinary, []byte{})
-              }
-          }
-
-          ctx.writeMu.Unlock()
-      }
-      ctx.mu.Unlock()
-
-      // push log data if any
-//    if !dead && len(allLogEntries) > 0 {
-      if songChanged && !dead && len(allLogEntries) > 0 {
-        for _, entryData := range allLogEntries {
-          if write(websocket.MessageText, entryData) {
-//            log.Printf("[LOG] pushed %d bytes", len(entryData))
-          }
-        }
-      }
-
-      ctx.writeMu.Unlock()
+        dbg("broadcast complete conn=%p", conn)
     }
+
     ctx.mu.Unlock()
-
-    time.Sleep(100 * time.Millisecond)
   }
+  time.Sleep(100 * time.Millisecond)
 } // func wsWatcher()
-
 
 // verbProcessorJSON handles JSON commands from the WebSocket and returns
 // JSON-formatted responses. Does NOT send over the WebSocket — wsHandler does that.
@@ -3217,6 +3385,90 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
         return []string{string(out)}
 
+      case "xy":
+        js := make(map[string]interface{})
+        // parse args iface
+        var cmd struct {
+          LingerXY bool `json:"lingerxy"`
+          LingerX  int  `json:"lingerx"`
+          LingerY  int  `json:"lingery"`
+          XYInc    bool `json:"xyinc"`
+        }
+        if err := mapstructure.Decode(argsIface, &cmd); err != nil {
+          log.Printf("[IPC] xy: failed to decode args: %v", err)
+          js["error"] = "failed to parse XY args"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        if !cmd.LingerXY {
+          xy.active = false
+          _ = mpdDo(func(c *mpd.Client) error {
+              if err := c.Consume(state.consume); err != nil {
+                  log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
+              }
+              return nil
+          }, "xy-restore-consume")
+          log.Printf("[IPC] XY mode turned off")
+          js["response"] = "XY mode turned off"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        // normalize
+        xy.active = true
+        xy.start = cmd.LingerX - 1         // convert from user 1I to mpd ZI
+
+        if cmd.XYInc {
+          xy.end = xy.start + cmd.LingerY
+        } else {
+          xy.end = cmd.LingerY - 1          // convert from user 1I to mpd ZI
+        }
+
+        if xy.start > xy.end {
+            xy.start, xy.end = xy.end, xy.start  // order start/end as needed
+        }
+
+
+        _ = mpdDo(func(c *mpd.Client) error {
+          st, err := c.Status()
+          if err != nil { return err }
+
+          state.mu.Lock()
+          state.consume = (st["consume"] == "1") // save current consume state
+          state.mu.Unlock()
+
+          if err := c.Consume(true); err != nil {
+            log.Printf("[XY] failed to enable consume: %v", err)
+          }
+          if err := c.Random(false); err != nil {
+            log.Printf("[XY] failed to disable random: %v", err)
+          }
+
+          // jump to start if needed
+          songZI, _ := strconv.Atoi(st["song"])
+          plLength, _ := strconv.Atoi(st["playlistlength"])
+
+          if xy.start == -1 { xy.start = songZI }
+          if xy.end == -1 { xy.end = plLength - 1 }
+
+          if songZI != xy.start {
+            if err := c.Play(xy.start); err != nil {
+              log.Printf("[XY] failed to jump to start: %v", err)
+            }
+          }
+
+          return nil
+        }, "xy-init")
+
+        log.Printf("[IPC] XY mode enabled: %d → %d", xy.start, xy.end)
+        js["response"] = fmt.Sprintf("XY mode enabled: %d → %d", xy.start+1, xy.end+1)
+        js["lingerxy"] = true
+        js["lingerx"] = xy.start + 1
+        js["lingery"] = xy.end + 1
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
       default: // of system case "linger" switch cmd
         js["response"] = "error"
         js["error"] = "unknown linger cmd"
@@ -3362,6 +3614,11 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //        out, _ := json.Marshal(js)
         return nil //[]string{string(out)}
 
+    case "ping":
+      js["response"] = "pong"
+      out, _ := json.Marshal(js)
+      ctx.conn.Write(context.Background(), websocket.MessageText, out)
+      return nil
 
     default: // of system case "websocket" switch cmd
       js["response"] = "error"
@@ -3371,10 +3628,20 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
     } // websocket switch cmd
 
   default: // of switch system
-    js["response"] = "error"
-    js["error"] = "invalid system"
-    out, _ := json.Marshal(js)
-    return []string{string(out)}
+    switch cmd {
+      case "ping":
+        js["response"] = "pong"
+        js["timestamp"] = "implement timestamp"
+        out, _ := json.Marshal(js)
+        ctx.conn.Write(context.Background(), websocket.MessageText, out)
+        return nil
+
+    default:
+      js["response"] = "error"
+      js["error"] = "invalid system"
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+    }
   } // switch system
 
 } // func verbProcessorJSON()
@@ -3562,7 +3829,8 @@ func mpdDo(fn func(*mpd.Client) error, ctx string) error {
   if mpdHost != "" && mpdPort != 0 && mpdSocket != "" {
     if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
       conn.Close()
-      log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+//      log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+      dbg("[mpdDo] socket usable: %s", mpdSocket)
       useSocket = true
     } else if client, err = mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort)); err == nil {
       log.Printf("[mpdDo] tcp usable: %s:%d", mpdHost, mpdPort)
@@ -3576,7 +3844,8 @@ func mpdDo(fn func(*mpd.Client) error, ctx string) error {
   if (!useSocket || !useTCP) && mpdSocket != "" {
     if conn, err := net.DialTimeout("unix", mpdSocket, 500*time.Millisecond); err == nil {
       conn.Close()
-      log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+//      log.Printf("[mpdDo] socket usable: %s", mpdSocket)
+      dbg("[mpdDo] socket usable: %s", mpdSocket)
       useSocket = true
     } else {
       log.Printf("[mpdDo] socket unusable: %v", err)
@@ -4984,7 +5253,6 @@ func verbProcessor(csv string) []string {
         state.mu.Lock()
         state.consume = (st["consume"] == "1")  // immediately set consume mode on
         state.mu.Unlock()
-
         if err := c.Consume(true); err != nil {
           log.Printf("[XY] failed to enable consume: %v", err)
         }
@@ -4997,8 +5265,6 @@ func verbProcessor(csv string) []string {
 
         if xy.start == -1 {
           xy.start = songZI
-//        } else {
-//        inc = 0
         }
         if inc == 1 {
           xy.end = xy.end + xy.start + 1
