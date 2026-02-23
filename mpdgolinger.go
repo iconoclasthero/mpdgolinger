@@ -3387,6 +3387,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
       case "xy":
         js := make(map[string]interface{})
+        var xyErr error
         // parse args iface
         var cmd struct {
           LingerXY bool `json:"lingerxy"`
@@ -3425,22 +3426,8 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           return []string{string(out)}
         }
 
-        // normalize
-        xy.active = true
-        xy.start = cmd.LingerX - 1         // convert from user 1I to mpd ZI
 
-        if cmd.XYInc {
-          xy.end = xy.start + cmd.LingerY
-        } else {
-          xy.end = cmd.LingerY - 1          // convert from user 1I to mpd ZI
-        }
-
-        if xy.start > xy.end {
-            xy.start, xy.end = xy.end, xy.start  // order start/end as needed
-        }
-
-
-        _ = mpdDo(func(c *mpd.Client) error {
+        err := mpdDo(func(c *mpd.Client) error {
           st, err := c.Status()
           if err != nil { return err }
 
@@ -3455,12 +3442,34 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             log.Printf("[XY] failed to disable random: %v", err)
           }
 
-          // jump to start if needed
           songZI, _ := strconv.Atoi(st["song"])
-          plLength, _ := strconv.Atoi(st["playlistlength"])
+          pllength, _ := strconv.Atoi(st["playlistlength"])
 
-          if xy.start == -1 { xy.start = songZI }
-          if xy.end == -1 { xy.end = plLength - 1 }
+          // normalize
+          xy.active = true
+          xy.start = cmd.LingerX - 1         // convert from user 1I to mpd ZI
+
+          if xy.start == -1 {
+            xy.start = songZI
+          }
+
+          if cmd.XYInc {
+            xy.end = xy.start + cmd.LingerY +1
+          } else {
+            xy.end = cmd.LingerY - 1          // convert from user 1I to mpd ZI
+            if xy.end == -1 { xy.end = pllength - 1 } // pllength is not zero-indexed!
+          }
+
+          if xy.start > xy.end {
+              xy.start, xy.end = xy.end, xy.start  // order start/end as needed
+          }
+
+          if xy.end > pllength - 1 { xy.end = pllength -1 }
+
+          if xy.start < 0 {
+            xyErr = fmt.Errorf("X value must be greater than zero: X=%d → Y=%d", xy.start+1, xy.end+1)
+            return xyErr
+          }
 
           if songZI != xy.start {
             if err := c.Play(xy.start); err != nil {
@@ -3470,6 +3479,18 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
           return nil
         }, "xy-init")
+
+        if err != nil {
+          js["error"] = err.Error()
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        if xyErr != nil {
+          js["error"] = xyErr.Error()
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
 
         log.Printf("[IPC] XY mode enabled: %d → %d", xy.start, xy.end)
         js["response"] = fmt.Sprintf("XY mode enabled: %d → %d", xy.start+1, xy.end+1)
