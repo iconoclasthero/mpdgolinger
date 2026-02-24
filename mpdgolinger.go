@@ -3452,9 +3452,9 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           if xy.start == -1 {
             xy.start = songZI
           }
-debug = true
+
           if args.XYInc {
-            xy.end = xy.start + args.LingerY
+            xy.end = xy.start + args.LingerY + 1
             dbg("xy.start + args.LingerY = %d + %d = %d", xy.start, args.LingerY, xy.start + args.LingerY)
           } else {
             xy.end = args.LingerY - 1                 // convert from user 1I to mpd ZI
@@ -3485,7 +3485,7 @@ debug = true
               log.Print("[XY] failed to return consume or original %v state: %v", state.consume, err)
             }
           }
-debug = false
+
           return nil
         }, "xy-init")
 
