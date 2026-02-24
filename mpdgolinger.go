@@ -3389,26 +3389,26 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         js := make(map[string]interface{})
         var xyErr error
         // parse args iface
-        var cmd struct {
+        var args struct {
           LingerXY bool `json:"lingerxy"`
           LingerX  int  `json:"lingerx"`
           LingerY  int  `json:"lingery"`
           XYInc    bool `json:"xyinc"`
         }
-        if err := mapstructure.Decode(argsIface, &cmd); err != nil {
+        if err := mapstructure.Decode(argsIface, &args); err != nil {
           log.Printf("[IPC] xy: failed to decode args: %v", err)
           js["error"] = "failed to parse XY args"
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
-        if !cmd.LingerXY {
+        if !args.LingerXY {
           xy.active = false
           _ = mpdDo(func(c *mpd.Client) error {
-              if err := c.Consume(state.consume); err != nil {
-                  log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
-              }
-              return nil
+            if err := c.Consume(state.consume); err != nil {
+              log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
+            }
+            return nil
           }, "xy-restore-consume")
           log.Printf("[IPC] XY mode turned off")
 
@@ -3432,7 +3432,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           if err != nil { return err }
 
           state.mu.Lock()
-          state.consume = (st["consume"] == "1") // save current consume state
+          state.consume = (st["consume"] == "1")      // save current consume state
           state.mu.Unlock()
 
           if err := c.Consume(true); err != nil {
@@ -3447,27 +3447,28 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
           // normalize
           xy.active = true
-          xy.start = cmd.LingerX - 1         // convert from user 1I to mpd ZI
+          xy.start = args.LingerX - 1                 // convert from user 1I to mpd ZI
 
           if xy.start == -1 {
             xy.start = songZI
           }
-
-          if cmd.XYInc {
-            xy.end = xy.start + cmd.LingerY +1
+debug = true
+          if args.XYInc {
+            xy.end = xy.start + args.LingerY
+            dbg("xy.start + args.LingerY = %d + %d = %d", xy.start, args.LingerY, xy.start + args.LingerY)
           } else {
-            xy.end = cmd.LingerY - 1          // convert from user 1I to mpd ZI
+            xy.end = args.LingerY - 1                 // convert from user 1I to mpd ZI
             if xy.end == -1 { xy.end = pllength - 1 } // pllength is not zero-indexed!
           }
 
           if xy.start > xy.end {
-              xy.start, xy.end = xy.end, xy.start  // order start/end as needed
+            xy.start, xy.end = xy.end, xy.start       // order start/end as needed
           }
 
           if xy.end > pllength - 1 { xy.end = pllength -1 }
 
           if xy.start < 0 {
-            xyErr = fmt.Errorf("X value must be greater than zero: X=%d → Y=%d", xy.start+1, xy.end+1)
+            xyErr = fmt.Errorf("X value must be greater than zero: X=%d → Y=%d", xy.start + 1, xy.end + 1)
             return xyErr
           }
 
@@ -3477,6 +3478,14 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             }
           }
 
+          if xy.start == xy.end {
+            xyErr = fmt.Errorf("Nothing to do, X = Y: %d = %d", xy.start, xy.end)
+            xy.active = false
+            if err := c.Consume(state.consume); err != nil {
+              log.Print("[XY] failed to return consume or original %v state: %v", state.consume, err)
+            }
+          }
+debug = false
           return nil
         }, "xy-init")
 
@@ -5282,7 +5291,7 @@ func verbProcessor(csv string) []string {
           return err
         }
         state.mu.Lock()
-        state.consume = (st["consume"] == "1")  // immediately set consume mode on
+        state.consume = (st["consume"] == "1")  // immediately record consume mode in the state struct
         state.mu.Unlock()
         if err := c.Consume(true); err != nil {
           log.Printf("[XY] failed to enable consume: %v", err)
