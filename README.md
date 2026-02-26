@@ -112,7 +112,7 @@ mpdgolinger mpc               # outputs mpd state, current/next songs, linger st
 mpdgolinger quit|exit         # exits manually-started daemon (not for system daemon)
 ```
 
-### XY Playback Mode
+### X⚡Y Playback Mode
 
 XY Mode allows a randomized playback of a specified subset of a playlist **in consume mode only.** The initial bounds (X & Y) are specified via the client (the Y bound may be specified by an increment). During playback the playlist remains at position X and a random song between X+1 and Y is moved to X+1.  When X is finished and consumed, Y is decremented by one and the cycle repeats until Y=X; XY mode is disabled (via `mpdgolinger xyoff`); or a playlist change causes the current song to change from X.
 
