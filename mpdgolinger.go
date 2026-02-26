@@ -3090,6 +3090,176 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
+//      case "seek":
+//        var time int
+//        var percent float64
+//
+//        if argsIface != nil {
+//          switch v := argsIface.(type) {
+////          case map[string]interface{}:
+////            if w, ok := v["window"].(float64); ok {
+////               = int(w)
+////            }
+//          case float64:
+//            if v < 1 {
+//              percent = v
+//            } else {
+//              seconds = int(v)
+//            }
+//
+//          case string:
+//            if strings.HasSuffix(v, "%") {
+//              n, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64)
+//              if err != nil {
+//                js["response"] = "error"
+//                js["error"] = err.Error()
+//                return []string{string(js["response"].(string))}
+//              }
+//                percent = n / 100.0
+//              } else {
+//                n, err := strconv.Atoi(v)
+//                if err != nil {
+//                  js["response"] = "error"
+//                  js["error"] = err.Error()
+//                  return []string{string(js["response"].(string))}  // return immediately
+//                }
+//                  seconds = n
+//                }
+//              }
+//            }
+//          }
+//        }
+//
+//        err := mpdDo(func(c *mpd.Client) error {
+//          if percent != "" {
+//            status, err := c.Status()
+//            if err != nil {
+//              js["response"] = "error"
+//              js["error"] = err.Error()
+//              return err
+//            }
+//            durationStr := status["duration"]
+//            if !ok {
+//              err := fmt.Errorf("duration not found")
+//              js["response"] = "error"
+//              js["error"] = err.Error()
+//              return err
+//            }
+//            duration, err := strconv.ParseFloat(durationStr, 64)
+//            if err != nil {
+//              js["response"] = "error"
+//              js["error"] = err.Error()
+//              return err
+//            }
+//            seconds = int(duration * percent)
+//          }
+//
+//          err = c.SeekCur(time.Duration(seconds)*time.Second, false)
+//          if err != nil {
+//            js["response"] = "error"
+//            js["error"] = err.Error()
+//            return err
+//          }
+//
+//          js["response"] = fmt.Sprintf("Seek to %d", time)
+//          return nil
+//        }, "Seek")
+//
+//        if err != nil {
+//            js["response"] = "error"
+//            js["error"] = err.Error()
+//        }
+//
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+
+      case "seek":
+        var relative bool
+        var seconds int
+        var percent float64
+
+        // parse argsIface
+        if argsIface != nil {
+          switch v := argsIface.(type) {
+
+          case float64:
+            if v < 1 {
+              percent = v
+              relative = true
+            } else {
+              seconds = int(v)
+            }
+
+          case string:
+            if strings.HasSuffix(v, "%") {
+              n, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64)
+              if err != nil {
+                js["response"] = "error"
+                js["error"] = err.Error()
+                return []string{string(js["response"].(string))}
+              }
+              percent = n / 100.0
+              relative = true
+            } else {
+              n, err := strconv.Atoi(v)
+              if err != nil {
+                js["response"] = "error"
+                js["error"] = err.Error()
+                return []string{string(js["response"].(string))}
+              }
+              seconds = n
+            }
+          }
+        }
+
+        // perform the seek
+        err := mpdDo(func(c *mpd.Client) error {
+
+          if relative {
+            status, err := c.Status()
+            if err != nil {
+              js["response"] = "error"
+              js["error"] = err.Error()
+              return err
+            }
+
+            durationStr, ok := status["duration"]
+            if !ok {
+              err := fmt.Errorf("duration not found in status")
+              js["response"] = "error"
+              js["error"] = err.Error()
+              return err
+            }
+
+            duration, err := strconv.ParseFloat(durationStr, 64)
+            if err != nil {
+              js["response"] = "error"
+              js["error"] = err.Error()
+              return err
+            }
+
+            seconds = int(duration * percent)
+          }
+
+          err := c.SeekCur(time.Duration(seconds)*time.Second, false)
+          if err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+            return err
+          }
+
+          js["response"] = fmt.Sprintf("Seek to %d", seconds)
+          return nil
+        }, "Seek")
+
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
 
       default: // of system case "mpd" switch cmd
         js["response"] = "error"
@@ -3454,7 +3624,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           }
 
           if args.XYInc {
-            xy.end = xy.start + args.LingerY + 1
+            xy.end = xy.start + args.LingerY
             dbg("xy.start + args.LingerY = %d + %d = %d", xy.start, args.LingerY, xy.start + args.LingerY)
           } else {
             xy.end = args.LingerY - 1                 // convert from user 1I to mpd ZI
@@ -3463,6 +3633,10 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
           if xy.start > xy.end {
             xy.start, xy.end = xy.end, xy.start       // order start/end as needed
+          }
+
+          if args.LingerY < 0 {
+            xy.end = xy.end + 1
           }
 
           if xy.end > pllength - 1 { xy.end = pllength -1 }
