@@ -392,6 +392,7 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     dst.Player.Random       = raw["random"] == "1"
     dst.Player.Consume      = raw["consume"] == "1"
     dst.Player.Repeat       = raw["repeat"] == "1"
+    dst.Player.Single       = raw["single"] == "1"
 
     // --- current song ---
     dst.Current             = audioFromRaw(raw, "")
