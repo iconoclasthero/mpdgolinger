@@ -624,7 +624,7 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 	}
 
 	return results, nil
-}
+} // func mpdPlaylist
 
 
 /* ---------------- utils ---------------- */
@@ -1786,7 +1786,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
         case map[string]interface{}:
 
-          if ak, ok := v["albumKey"].(string); ok {
+          if ak, ok := v["albumkey"].(string); ok {
             albumKey = ak
           }
 
