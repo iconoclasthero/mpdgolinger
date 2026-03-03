@@ -1709,7 +1709,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
         log.Printf("[vPJ] state.lastAlbumKey=%s", state.lastAlbumKey)
         // fallback to state
-        if albumKey == "" {
+        if albumKey == "" || albumKey == "album" {
           albumKey = state.lastAlbumKey
         }
 
