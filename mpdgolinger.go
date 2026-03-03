@@ -518,6 +518,7 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 
 	uuidRe := regexp.MustCompile(`^[0-9a-fA-F-]{36}$`)
 	pathRe := regexp.MustCompile(`^(.+/)+[^/]+\.[a-zA-Z0-9]{3,4}$`)
+  aaRe := regexp.MustCompile(`^.+ -- .+$`)
 
 	var cmd string
 
@@ -537,16 +538,35 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 	case pathRe.MatchString(albumKey):
 		albumKey = filepath.Dir(albumKey)
 		cmd = fmt.Sprintf(
-			"playlistsearch \"(file starts_with \\\"%s\\\")\"\n",
+			"playlistsearch \"(base \\\"%s\\\")\"\n",
 			albumKey,
 		)
+
+  // match AlbumArtist -- Album
+  case aaRe.MatchString(albumKey):
+    parts := strings.SplitN(albumKey, " -- ", 2)
+    if len(parts) != 2 {
+      return nil, fmt.Errorf("cannot parse albumKey: %q", albumKey)
+    }
+
+    albumArtist := strings.TrimSpace(parts[0])
+    album := strings.TrimSpace(parts[1])
+    cmd = fmt.Sprintf(
+      "playlistsearch \"((albumArtist == \\\"%s\\\") AND (album == \\\"%s\\\"))\"\n",
+      albumArtist,
+      album,
+    )
+
+  case strings.HasPrefix(albumKey, "search"):
+    searchExp := strings.TrimPrefix(albumKey, "search")
+    part := strings.SplitN(searchExp, " ", 3)
+
+    cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", part[0], part[1], part[3])
 
 	// raw expression
 	default:
 		cmd = fmt.Sprintf(
-			"playlistsearch \"(%s)\"\n",
-			albumKey,
-		)
+			"playlistsearch \"(any == \\\"%s\\\")\"\n", albumKey)
 	}
 
   log.Printf("[mpdPlaylist] cmd=%s", cmd)
@@ -1740,181 +1760,182 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
       case "playlist":
 
-      	var (
-      		albumKey string
-      		search   string
-      		rangeStr string
-      		window   *int
-      	)
+        var (
+          albumKey string
+          search   string
+          rangeStr string
+          window   *int
+        )
 
-      	// ----------------------------
-      	// Parse argsIface
-      	// ----------------------------
-      	if argsIface == nil {
-      		js["response"] = "error"
-      		js["error"] = "playlist requires args"
-      		out, _ := json.Marshal(js)
-      		return []string{string(out)}
-      	}
+        // ----------------------------
+        // Parse argsIface
+        // ----------------------------
+        if argsIface == nil {
+          js["response"] = "error"
+          js["error"] = "playlist requires args"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
 
-      	switch v := argsIface.(type) {
+        switch v := argsIface.(type) {
 
-      	case string:
-      		if v == "album" {
-      			albumKey = state.lastAlbumKey
-      		}
+        case string:
+          if v == "album" {
+            albumKey = state.lastAlbumKey
+          }
 
-      	case map[string]interface{}:
+        case map[string]interface{}:
 
-      		if ak, ok := v["albumKey"].(string); ok {
-      			albumKey = ak
-      		}
+          if ak, ok := v["albumKey"].(string); ok {
+            albumKey = ak
+          }
 
-      		if s, ok := v["search"].(string); ok {
-      			search = s
-      		}
+          if s, ok := v["search"].(string); ok {
+            search = s
+          }
 
-      		if r, ok := v["range"].(string); ok {
-      			rangeStr = r
-      		}
+          if r, ok := v["range"].(string); ok {
+            rangeStr = r
+          }
 
-      		if c, ok := v["current"].(float64); ok {
-      			n := int(c)
-      			window = &n
-      		}
-      	}
+          if c, ok := v["current"].(float64); ok {
+            n := int(c)
+            window = &n
+          }
+        }
 
-      	// ============================================================
-      	// 1️⃣ ALBUM OR SEARCH → RAW MPD SOCKET
-      	// ============================================================
-      	if albumKey != "" || search != "" {
+        // ============================================================
+        // 1️⃣ ALBUM OR SEARCH → RAW MPD SOCKET
+        // ============================================================
+        if albumKey != "" || search != "" {
 
-      		key := albumKey
-      		if search != "" {
-      			key = fmt.Sprintf(`any == "%s"`, search)
-      		}
+          key := albumKey
+          if search != "" {
+//          key = fmt.Sprintf(`any == "%s"`, search)
+            key = fmt.Sprintf("any == %s", search)
+          }
 
-      		results, err := mpdPlaylist(key)
-      		if err != nil {
-      			js["response"] = "error"
-      			js["error"] = err.Error()
-      			out, _ := json.Marshal(js)
-      			return []string{string(out)}
-      		}
+          results, err := mpdPlaylist(key)
+          if err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+          }
 
-      		js["response"] = results
-      		out, _ := json.Marshal(js)
-      		return []string{string(out)}
-      	}
+          js["response"] = results
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
 
-      	// ============================================================
-      	// 2️⃣ RANGE OR CURRENT → gompd PlaylistInfo
-      	// ============================================================
-      	if rangeStr != "" || window != nil {
+        // ============================================================
+        // 2️⃣ RANGE OR CURRENT → gompd PlaylistInfo
+        // ============================================================
+        if rangeStr != "" || window != nil {
 
-      		err := mpdDo(func(c *mpd.Client) error {
+          err := mpdDo(func(c *mpd.Client) error {
 
-      			var lower, upper int
+            var lower, upper int
 
-      			// ---- CURRENT WINDOW ----
-      			if window != nil {
+            // ---- CURRENT WINDOW ----
+            if window != nil {
 
-      				status, err := c.Status()
-      				if err != nil {
-      					return err
-      				}
+              status, err := c.Status()
+              if err != nil {
+                return err
+              }
 
-      				posStr, ok := status["song"]
-      				if !ok {
-      					return fmt.Errorf("no current song position")
-      				}
+              posStr, ok := status["song"]
+              if !ok {
+                return fmt.Errorf("no current song position")
+              }
 
-      				pos, err := strconv.Atoi(posStr)
-      				if err != nil {
-      					return err
-      				}
+              pos, err := strconv.Atoi(posStr)
+              if err != nil {
+                return err
+              }
 
-      				lower = pos - *window
-      				if lower < 0 {
-      					lower = 0
-      				}
+              lower = pos - *window
+              if lower < 0 {
+                lower = 0
+              }
 
-      				upper = pos + *window + 1
-      			}
+              upper = pos + *window + 1
+            }
 
-      			// ---- EXPLICIT RANGE ----
-      			if rangeStr != "" {
+            // ---- EXPLICIT RANGE ----
+            if rangeStr != "" {
 
-      				parts := strings.Split(rangeStr, "-")
-      				if len(parts) != 2 {
-      					return fmt.Errorf("invalid range format")
-      				}
+              parts := strings.Split(rangeStr, "-")
+              if len(parts) != 2 {
+                return fmt.Errorf("invalid range format")
+              }
 
-      				x, err := strconv.Atoi(parts[0])
-      				if err != nil {
-      					return err
-      				}
+              x, err := strconv.Atoi(parts[0])
+              if err != nil {
+                return err
+              }
 
-      				y, err := strconv.Atoi(parts[1])
-      				if err != nil {
-      					return err
-      				}
+              y, err := strconv.Atoi(parts[1])
+              if err != nil {
+                return err
+              }
 
-      				// convert 1-indexed → 0-indexed
-      				x--
-      				y--
+              // convert 1-indexed → 0-indexed
+              x--
+              y--
 
-      				if x > y {
-      					x, y = y, x
-      				}
+              if x > y {
+                x, y = y, x
+              }
 
-      				if x < 0 {
-      					x = 0
-      				}
+              if x < 0 {
+                x = 0
+              }
 
-      				lower = x
-      				upper = y + 1
-      			}
+              lower = x
+              upper = y + 1
+            }
 
-      			songs, err := c.PlaylistInfo(lower, upper)
-      			if err != nil {
-      				return err
-      			}
+            songs, err := c.PlaylistInfo(lower, upper)
+            if err != nil {
+              return err
+            }
 
-      			var resp []AudioV1
+            var resp []AudioV1
 
-      			for _, song := range songs {
-      				raw := map[string]string{}
-      				for k, v := range song {
-      					raw[strings.ToLower(k)] = v
-      				}
+            for _, song := range songs {
+              raw := map[string]string{}
+              for k, v := range song {
+                raw[strings.ToLower(k)] = v
+              }
 
-      				var a AudioV1
-      				if err := convert2json(raw, &a); err == nil {
-      					resp = append(resp, a)
-      				}
-      			}
+              var a AudioV1
+              if err := convert2json(raw, &a); err == nil {
+                resp = append(resp, a)
+              }
+            }
 
-      			js["response"] = resp
-      			return nil
-      		}, "playlist")
+            js["response"] = resp
+            return nil
+          }, "playlist")
 
-      		if err != nil {
-      			js["response"] = "error"
-      			js["error"] = err.Error()
-      		}
+          if err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+          }
 
-      		out, _ := json.Marshal(js)
-      		return []string{string(out)}
-      	}
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
 
-      	// ============================================================
-      	// 3️⃣ FALLTHROUGH
-      	// ============================================================
-      	js["response"] = "error"
-      	js["error"] = "invalid playlist args"
-      	out, _ := json.Marshal(js)
-      	return []string{string(out)}
+        // ============================================================
+        // 3️⃣ FALLTHROUGH
+        // ============================================================
+        js["response"] = "error"
+        js["error"] = "invalid playlist args"
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
 
 
       // --- play/pause/togglestate unified ---
