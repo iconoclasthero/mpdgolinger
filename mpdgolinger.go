@@ -427,15 +427,15 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
     // --- current song ---
     dst.Current             = audioFromRaw(raw, "")
-    dst.Current.Duration, _ = strconv.ParseFloat(raw["duration"], 64)
-    dst.Current.Time        = atoi(raw["time"])
-    dst.Current.File        = raw["file"]
+//    dst.Current.Duration, _ = strconv.ParseFloat(raw["duration"], 64)
+//    dst.Current.Time        = atoi(raw["time"])
+//    dst.Current.File        = raw["file"]
 
     // --- next song ---
     dst.Next                = audioFromRaw(raw, "next_")
-    dst.Next.Duration, _    = strconv.ParseFloat(raw["next_duration"], 64)
-    dst.Next.Time           = atoi(raw["next_time"])
-    dst.Next.File           = raw["next_file"]
+//    dst.Next.Duration, _    = strconv.ParseFloat(raw["next_duration"], 64)
+//    dst.Next.Time           = atoi(raw["next_time"])
+//    dst.Next.File           = raw["next_file"]
     // --- linger ---
     dst.Linger.Song         = atoi(raw["lingersong"])
     dst.Linger.SongID       = atoi(raw["lingersongid"])
