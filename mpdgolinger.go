@@ -521,6 +521,9 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 
 	var cmd string
 
+
+  log.Printf("[mpdPlaylist] albumKey=%s", albumKey)
+
 	switch {
 
 	// MUSICBRAINZ_ALBUMID
