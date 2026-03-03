@@ -1723,6 +1723,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         // -----------------------
         // Execute playlist lookup
         // -----------------------
+        log.Printf("[vPJ] albumKey=%s", albumKey)
         playlist, err := mpdPlaylist(albumKey)
         if err != nil {
           js["response"] = "error"
