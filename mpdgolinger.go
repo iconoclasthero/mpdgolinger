@@ -566,7 +566,7 @@ debug = true
 //    part := strings.SplitN(searchExp, " ", 3)
 
 //    cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", part[0], part[1], part[2])
-    cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", "artist", "==", "Bob Dylan")
+    cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", "artist", "==", "U2")
 
 	// raw expression
 	default:
