@@ -560,10 +560,12 @@ debug = true
     )
 
   case strings.HasPrefix(albumKey, "search"):
+    dbg("case strings.HasPrefix(%s, \"search\")", albumKey)
     searchExp := strings.TrimPrefix(albumKey, "search")
+    dbg("searchExp = %s", searchExp)
     part := strings.SplitN(searchExp, " ", 3)
 
-    cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", part[0], part[1], part[3])
+    cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", part[0], part[1], part[2])
 
 	// raw expression
 	default:
