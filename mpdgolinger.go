@@ -102,10 +102,10 @@ type      AudioV1     struct {
      AlbumArtist      string   `json:"albumartist"`
      Album            string   `json:"album"`
      Year             string   `json:"year"`
-     Duration         string   `json:"duration"`
-     Time             string   `json:"time"`
-     Disc             string   `json:"disc"`
-     Track            string   `json:"track"`
+     Duration         float64  `json:"duration"`
+     Time             int      `json:"time"`
+     Disc             int      `json:"disc"`
+     Track            int      `json:"track"`
      MBAlbumID        string   `json:"musicbrainz_albumid"`
      MBTrackID        string   `json:"musicbrainz_trackid"`
      MBReleaseTrackID string   `json:"musicbrainz_releasetrackid"`
@@ -361,18 +361,21 @@ var (
 
 
 func audioFromRaw(raw map[string]string, p string) AudioV1 {
-  var d string
+  var src string
+//  var dur float64
   yearRE := regexp.MustCompile(`\d{4}`)
   if raw["originaldate"] != "" {
-    d = raw["originaldate"]
+    src = raw["originaldate"]
   } else {
-    d = raw["date"]
+    src = raw["date"]
   }
 
-  year := yearRE.FindString(d)
+  year := yearRE.FindString(src)
   if year == "" {
-    year = d
+    year = src
   }
+
+  dur, _ := strconv.ParseFloat(raw["duration"], 64)
 
   return AudioV1{
     Title:              raw[p+"title"],
@@ -380,10 +383,11 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
     AlbumArtist:        raw[p+"albumartist"],
     Album:              raw[p+"album"],
     Year:               year,
-    Duration:           raw[p+"duration"],
-    Time:               raw[p+"time"],
-    Disc:               raw[p+"disc"],
-    Track:              raw[p+"track"],
+//    Duration:           raw[p+"duration"],
+    Duration:           dur,
+    Time:               atoi(raw[p+"time"]),
+    Disc:               atoi(raw[p+"disc"]),
+    Track:              atoi(raw[p+"track"]),
     MBAlbumID:          raw[p+"musicbrainz_albumid"],
     MBTrackID:          raw[p+"musicbrainz_trackid"],
     MBReleaseTrackID:   raw[p+"musicbrainz_releasetrackid"],
@@ -423,14 +427,14 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
     // --- current song ---
     dst.Current             = audioFromRaw(raw, "")
-    dst.Current.Duration    = raw["duration"]
-    dst.Current.Time        = raw["time"]
+    dst.Current.Duration, _ = strconv.ParseFloat(raw["duration"], 64)
+    dst.Current.Time        = atoi(raw["time"])
     dst.Current.File        = raw["file"]
 
     // --- next song ---
     dst.Next                = audioFromRaw(raw, "next_")
-    dst.Next.Duration       = raw["next_duration"]
-    dst.Next.Time           = raw["next_time"]
+    dst.Next.Duration, _    = strconv.ParseFloat(raw["next_duration"], 64)
+    dst.Next.Time           = atoi(raw["next_time"])
     dst.Next.File           = raw["next_file"]
     // --- linger ---
     dst.Linger.Song         = atoi(raw["lingersong"])
@@ -475,8 +479,8 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
     // --- audio ---
     dst.Audio               = audioFromRaw(raw, "")
-    dst.Audio.Duration      = raw["duration"]
-    dst.Audio.Time          = raw["time"]
+    dst.Audio.Duration, _   = strconv.ParseFloat(raw["duration"], 64)
+    dst.Audio.Time          = atoi(raw["time"])
 
     return nil
 
@@ -921,10 +925,10 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
       audio.Artist = audioMap["artist"]
       audio.Album = audioMap["album"]
       audio.Year = audioMap["year"]
-      audio.Duration = audioMap["duration"]
-      audio.Time = audioMap["time"]
-      audio.Disc = audioMap["disc"]
-      audio.Track = audioMap["track"]
+      audio.Duration, _ = strconv.ParseFloat(audioMap["duration"], 64)
+      audio.Time = atoi(audioMap["time"])
+      audio.Disc = atoi(audioMap["disc"])
+      audio.Track = atoi(audioMap["track"])
       audio.MBAlbumID = audioMap["musicbrainz_albumid"]
       audio.MBReleaseTrackID = audioMap["musicbrainz_releasetrackid"]
       audio.MBArtistID = audioMap["musicbrainz_artistid"]
