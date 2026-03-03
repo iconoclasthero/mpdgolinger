@@ -99,6 +99,7 @@ type LogLine   struct {
 type      AudioV1     struct {
      Title            string   `json:"title"`
      Artist           string   `json:"artist"`
+     AlbumArtist      string   `json:"albumartist"`
      Album            string   `json:"album"`
      Year             string   `json:"year"`
      Duration         string   `json:"duration"`
@@ -106,10 +107,14 @@ type      AudioV1     struct {
      Disc             string   `json:"disc"`
      Track            string   `json:"track"`
      MBAlbumID        string   `json:"musicbrainz_albumid"`
+     MBTrackID        string   `json:"musicbrainz_trackid"`
      MBReleaseTrackID string   `json:"musicbrainz_releasetrackid"`
      MBArtistID       string   `json:"musicbrainz_artistid"`
+     MBAlbumArtistID  string   `json:"musicbrainz_albumartistid"`
+     MBReleaseGrpID   string   `json:"musicbrainz_releasegroupid"`
      File             string   `json:"file"`
      SongPosition     int      `json:"song_position"`
+     SongID           int      `json:"songID"`
 }
 
 type     PlayerV1     struct {
@@ -356,23 +361,38 @@ var (
 
 
 func audioFromRaw(raw map[string]string, p string) AudioV1 {
-  var year string
-	yearRE := regexp.MustCompile(`\d{4}`)
-	// Find the first match
-	year = yearRE.FindString(raw["date"])
+  var d string
+  yearRE := regexp.MustCompile(`\d{4}`)
+  if raw["originaldate"] != "" {
+    d = raw["originaldate"]
+  } else {
+    d = raw["date"]
+  }
+
+  year := yearRE.FindString(d)
+  if year == "" {
+    year = d
+  }
 
   return AudioV1{
     Title:              raw[p+"title"],
     Artist:             raw[p+"artist"],
+    AlbumArtist:        raw[p+"albumartist"],
     Album:              raw[p+"album"],
-//    Year:               raw[p+"date"],
     Year:               year,
     Duration:           raw[p+"duration"],
+    Time:               raw[p+"time"],
     Disc:               raw[p+"disc"],
     Track:              raw[p+"track"],
     MBAlbumID:          raw[p+"musicbrainz_albumid"],
+    MBTrackID:          raw[p+"musicbrainz_trackid"],
     MBReleaseTrackID:   raw[p+"musicbrainz_releasetrackid"],
     MBArtistID:         raw[p+"musicbrainz_artistid"],
+    MBAlbumArtistID:    raw[p+"musicbrainz_ablumartistid"],
+    MBReleaseGrpID:     raw[p+"musicbrainz_releasegroupid"],
+    File:               raw[p+"file"],
+    SongPosition:       atoi(raw[p+"pos"]),
+    SongID:             atoi(raw[p+"id"]),
   }
 } // func audioFromRaw()
 
