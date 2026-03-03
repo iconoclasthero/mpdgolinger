@@ -1276,6 +1276,10 @@ func wsWatcher(ctx *wsCtx) {
           }
         }
         lastAlbumKey = albumKey
+        state.mu.Lock()
+        state.lastAlbumKey = lastAlbumKey
+        state.mu.Unlock()
+
         pushArt = true
       } else {
         log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
