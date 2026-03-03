@@ -391,7 +391,7 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
     MBAlbumArtistID:    raw[p+"musicbrainz_albumartistid"],
     MBReleaseGrpID:     raw[p+"musicbrainz_releasegroupid"],
     File:               raw[p+"file"],
-    SongPosition:       atoi(raw[p+"pos"]),
+    SongPosition:       atoi(raw[p+"pos"]) + 1,
     SongID:             atoi(raw[p+"id"]),
   }
 } // func audioFromRaw()
