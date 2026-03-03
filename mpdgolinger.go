@@ -427,15 +427,10 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
     // --- current song ---
     dst.Current             = audioFromRaw(raw, "")
-//    dst.Current.Duration, _ = strconv.ParseFloat(raw["duration"], 64)
-//    dst.Current.Time        = atoi(raw["time"])
-//    dst.Current.File        = raw["file"]
 
     // --- next song ---
     dst.Next                = audioFromRaw(raw, "next_")
-//    dst.Next.Duration, _    = strconv.ParseFloat(raw["next_duration"], 64)
-//    dst.Next.Time           = atoi(raw["next_time"])
-//    dst.Next.File           = raw["next_file"]
+
     // --- linger ---
     dst.Linger.Song         = atoi(raw["lingersong"])
     dst.Linger.SongID       = atoi(raw["lingersongid"])
@@ -484,12 +479,127 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
     return nil
 
+  case *AudioV1:
+    *dst = audioFromRaw(raw, "")
+    return nil
+
   default:
     return fmt.Errorf("convert2json: unsupported output type %T", out)
   }
 } // func convert2json
 
 
+func mpdPlaylist(albumKey string) ([]AudioV1, error) {
+
+	// ---- connect ----
+	mpdSock := os.Getenv("MPD_SOCK")
+	if mpdSock == "" {
+		mpdSock = "/run/mpd/socket"
+	}
+
+	conn, err := net.Dial("unix", mpdSock)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+
+	// consume greeting
+	if _, err := reader.ReadString('\n'); err != nil {
+		return nil, err
+	}
+
+	// ---- local quote closure ----
+	quote := func(s string) string {
+		s = strings.ReplaceAll(s, `"`, `\"`)
+		return `"` + s + `"`
+	}
+
+	uuidRe := regexp.MustCompile(`^[0-9a-fA-F-]{36}$`)
+	pathRe := regexp.MustCompile(`^(.+/)+[^/]+\.[a-zA-Z0-9]{3,4}$`)
+
+	var cmd string
+
+	switch {
+
+	// MUSICBRAINZ_ALBUMID
+	case uuidRe.MatchString(albumKey):
+		cmd = fmt.Sprintf(
+			"playlistsearch MUSICBRAINZ_ALBUMID %s\n",
+			quote(albumKey),
+		)
+
+	// file starts_with
+	case pathRe.MatchString(albumKey):
+		albumKey = filepath.Dir(albumKey)
+		cmd = fmt.Sprintf(
+			"playlistsearch \"(file starts_with \\\"%s\\\")\"\n",
+			albumKey,
+		)
+
+	// raw expression
+	default:
+		cmd = fmt.Sprintf(
+			"playlistsearch \"(%s)\"\n",
+			albumKey,
+		)
+	}
+
+	// send
+	if _, err := conn.Write([]byte(cmd)); err != nil {
+		return nil, err
+	}
+
+	var results []AudioV1
+	var current map[string]string
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+
+		line = strings.TrimSpace(line)
+
+		if line == "OK" {
+			break
+		}
+		if strings.HasPrefix(line, "ACK") {
+			return nil, fmt.Errorf("MPD error: %s", line)
+		}
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "file: ") {
+			if current != nil {
+				var a AudioV1
+				if err := convert2json(current, &a); err == nil {
+					results = append(results, a)
+				}
+			}
+			current = make(map[string]string)
+		}
+
+		parts := strings.SplitN(line, ": ", 2)
+		if len(parts) == 2 {
+			if current == nil {
+				current = make(map[string]string)
+			}
+			current[strings.ToLower(parts[0])] = parts[1]
+		}
+	}
+
+	if current != nil {
+		var a AudioV1
+		if err := convert2json(current, &a); err == nil {
+			results = append(results, a)
+		}
+	}
+
+	return results, nil
+}
 
 
 /* ---------------- utils ---------------- */
@@ -950,221 +1060,6 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
 } // JSONLog
 
 
-//////func wsHandler(w http.ResponseWriter, r *http.Request) {
-//////  conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-//////    InsecureSkipVerify: true, // allow any origin
-//////  })
-//////  if err != nil {
-//////    log.Printf("ws accept failed: %v", err)
-//////    return
-//////  }
-//////  defer conn.Close(websocket.StatusNormalClosure, "done")
-//////
-//////  // ===== start read loop =====
-//////  for {
-//////    _, msgBytes, err := conn.Read(r.Context())
-//////    if err != nil {
-//////      log.Printf("ws read error: %v", err)
-//////      break
-//////    }
-//////
-//////    msg := string(msgBytes)
-//////
-//////func wsHandler(w http.ResponseWriter, r *http.Request) {
-//////  conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-//////    InsecureSkipVerify: true, // allow any origin
-//////  })
-//////  if err != nil {
-//////    log.Printf("ws accept failed: %v", err)
-//////    return
-//////  }
-//////
-//////  log.Printf("[WS] connected")
-//////
-//////  // ===== start read pump (required to keep connection alive) =====
-//////  go func() {
-//////    defer func() {
-//////      log.Printf("[WS] disconnected")
-//////      conn.Close(websocket.StatusNormalClosure, "read ended")
-//////      wsWatcherRemove(conn)
-//////    }()
-//////
-//////    for {
-//////      _, _, err := conn.Read(context.Background())
-//////      if err != nil {
-//////        log.Printf("[WS] read error: %v", err)
-//////        return
-//////      }
-//////    }
-//////  }()
-//////
-//////  // register connection with watcher
-//////  wsWatcherAdd(conn)
-//////
-//////  // ===== existing read loop (if you need message handling) =====
-//////  for {
-//////    _, msgBytes, err := conn.Read(r.Context())
-//////    if err != nil {
-//////      log.Printf("ws read error: %v", err)
-//////      break
-//////    }
-//////
-//////    msg := string(msgBytes)
-//////
-//////    // ===== JSON detection goes here =====
-////func wsHandler(w http.ResponseWriter, r *http.Request) {
-////  conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-////    InsecureSkipVerify: true,
-////  })
-////  if err != nil {
-////    log.Printf("ws accept failed: %v", err)
-////    return
-////  }
-////  // --- add connection to ctx.conns ---
-////  ctx.mu.Lock()
-////  ctx.conns[conn] = true
-////  ctx.mu.Unlock()
-////
-////  defer func() {
-////    ctx.mu.Lock()
-////    delete(ctx.conns, conn)
-////    ctx.mu.Unlock()
-////    conn.Close(websocket.StatusNormalClosure, "done")
-////    log.Printf("[WS] connection removed")
-////  }()
-////
-////  log.Printf("[WS] connection added")
-////
-////  // ===== read loop keeps websocket alive =====
-////  for {
-////    _, msgBytes, err := conn.Read(r.Context())
-////    if err != nil {
-////      log.Printf("ws read error: %v", err)
-////      break
-////    }
-////
-////    msg := string(msgBytes)
-////
-////    // ===== JSON detection goes here =====
-////    var js map[string]interface{}
-////
-////    ctx := &wsCtx{
-////      conn: conn,
-////    }
-////
-////    if err := json.Unmarshal(msgBytes, &js); err == nil {
-////      log.Printf("ws received JSON: %s", msg)
-////      responses := verbProcessorJSON(js, ctx) // call your parallel JSON handler
-////      for _, line := range responses {
-////        if line == "" {
-////          continue // skip empty strings
-////        }
-////        log.Printf("ws send frame: %q", line)
-////        conn.Write(r.Context(), websocket.MessageText, []byte(line))
-////      }
-////      continue // go back to the top of the for loop
-////    }
-////    // ===== end JSON detection =====
-////    // original messages go here
-////    responses := verbProcessor(msg)
-////    for _, line := range responses {
-////      if line == "" {
-////        continue // skip empty strings
-////      }
-////      log.Printf("ws send frame: %q", line)
-////      conn.Write(r.Context(), websocket.MessageText, []byte(line))
-////    }
-////
-////    // do not break — keep the connection alive for further messages
-////  }
-////  // ===== end read loop =====
-////} // func wsHandler
-//
-//func wsHandler(w http.ResponseWriter, r *http.Request) {
-//  conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-//    InsecureSkipVerify: true,
-//  })
-//  if err != nil {
-//    log.Printf("ws accept failed: %v", err)
-//    return
-//  }
-//
-//  // --- register connection globally ---
-//  wsGlobal.mu.Lock()
-//  wsGlobal.conns[conn] = struct{}{}
-//  wsGlobal.mu.Unlock()
-//
-//  log.Printf("[WS] connection added")
-//
-//  defer func() {
-//    wsGlobal.mu.Lock()
-//    delete(wsGlobal.conns, conn)
-//    wsGlobal.mu.Unlock()
-//
-//    conn.Close(websocket.StatusNormalClosure, "done")
-//
-//    log.Printf("[WS] connection removed")
-//  }()
-//
-//  // --- per-connection context for JSON handler only ---
-//  jctx := &wsCtx{
-//    conn: conn,
-//  }
-//
-//  // ===== read loop keeps websocket alive =====
-//  for {
-//    _, msgBytes, err := conn.Read(r.Context())
-//    if err != nil {
-//      log.Printf("ws read error: %v", err)
-//      break
-//    }
-//
-//    msg := string(msgBytes)
-//
-//    // ===== JSON detection =====
-//    var js map[string]interface{}
-//
-//    if err := json.Unmarshal(msgBytes, &js); err == nil {
-//      log.Printf("ws received JSON: %s", msg)
-//
-//      responses := verbProcessorJSON(js, jctx)
-//
-//      for _, line := range responses {
-//        if line == "" {
-//          continue
-//        }
-//
-//        err := conn.Write(r.Context(), websocket.MessageText, []byte(line))
-//        if err != nil {
-//          log.Printf("ws write error: %v", err)
-//          break
-//        }
-//
-//        log.Printf("ws send frame: %q", line)
-//      }
-//
-//      continue
-//    }
-//
-//    // ===== legacy text handling =====
-//    responses := verbProcessor(msg)
-//
-//    for _, line := range responses {
-//      if line == "" {
-//        continue
-//      }
-//
-//      err := conn.Write(r.Context(), websocket.MessageText, []byte(line))
-//      if err != nil {
-//        log.Printf("ws write error: %v", err)
-//        break
-//      }
-//
-//      log.Printf("ws send frame: %q", line)
-//    }
-//  }
-//} // func wsHander()
-
 // global context for all WS connections
 var globalWSCtx = &wsCtx{
   conns: make(map[*websocket.Conn]struct{}),
@@ -1264,257 +1159,6 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
   // Pull album art directly from MPD
   return c.AlbumArt(file)
 }
-
-//func wsWatcher(ctx *wsCtx) {
-//  log.Println("wsWatcher started")
-//
-//  // add this connection to the set
-//  ctx.mu.Lock()
-//  if ctx.conns == nil {
-//    ctx.conns = make(map[*websocket.Conn]struct{})
-//  }
-//  ctx.conns[ctx.conn] = struct{}{}
-//  ctx.mu.Unlock()
-//
-//  defer func() {
-//    ctx.mu.Lock()
-//    delete(ctx.conns, ctx.conn)
-//    ctx.mu.Unlock()
-//    log.Println("wsWatcher stopped for connection")
-//  }()
-//
-//  // persistent state trackers
-//  var lastAlbumKey string
-//  var lastSongID string
-//
-//  for range idleEvents {
-//
-//    // --- fetch normalized status ---
-//    status, notes, err := MPDtags(nil, "status", "status")
-//    if err != nil {
-//      log.Printf("wsWatcher MPDtags error: %v", err)
-//      continue
-//    }
-//
-//    js := &StatusV1{}
-//    if err := convert2json(status, js); err != nil {
-//      log.Printf("wsWatcher convert2json error: %v", err)
-//      continue
-//    }
-//
-//    data, err := json.Marshal(js)
-//    if err != nil {
-//      log.Printf("wsWatcher marshal error: %v", err)
-//      continue
-//    }
-//
-//    // --- fetch raw MPD song fields for album identity ---
-//    var albumKey string
-//    var img []byte
-//    var pushArt bool
-////    var logEntryData []byte
-//    var allLogEntries [][]byte
-//
-//    err = mpdDo(func(c *mpd.Client) error {
-//
-//      song, err := c.CurrentSong()
-//      if err != nil {
-//        return err
-//      }
-//
-//      mbalbid := song["MUSICBRAINZ_ALBUMID"]
-//      uri := song["file"]
-//      album := song["Album"]
-//      albumArtist := song["AlbumArtist"]
-//      songID := song["Id"]
-//      var songChanged bool
-//
-//      if lastSongID == "" || songID != lastSongID {
-//        songChanged = true
-//      }
-//
-//      switch {
-//      case mbalbid != "":
-//        albumKey = mbalbid
-//      case uri != "":
-//        if idx := strings.LastIndex(uri, "/"); idx > 0 {
-//          albumKey = uri[:idx]
-//        }
-//      case albumArtist != "" && album != "":
-//        albumKey = albumArtist + " -- " + album
-//      default:
-//        albumKey = songID
-//      }
-//
-//      // fetch art ONLY if album changed
-//      if albumKey != "" && albumKey != lastAlbumKey {
-//        log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-//        img, err = c.AlbumArt(uri)
-//        if err != nil {
-//          img = nil
-//        }
-//        lastAlbumKey = albumKey
-//        pushArt = true
-//      } else {
-//        log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
-//        pushArt = false
-//      }
-//
-////      // --- prepare log like json-log ---
-////      lines := mpdLogParse(24)
-////      for _, ll := range lines {
-////        tags, notes, err := MPDtags(c, ll.Path, ll.Action)
-////        if err != nil {
-////          log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
-////          continue
-////        }
-////
-////        entry := &LogEntryV1{}
-////        err = convert2json(
-////          tags,
-////          entry,
-////          ll.Timestamp, // same as json-log
-////          ll.Action,
-////          notes,
-////          ll.Path,
-////        )
-////        if err != nil {
-////          log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
-////          continue
-////        }
-////
-////        logEntryData, _ = json.Marshal(entry)
-////        log.Printf("[LOG] prepared log update %d bytes for file=%q", len(logEntryData), ll.Path)
-////      }
-////
-////      if songChanged {
-////        lastSongID = songID
-////      }
-////
-////      return nil
-////    }, "wsWatcher-albumkey")
-////
-////    if err != nil {
-////      log.Printf("wsWatcher mpdDo error: %v", err)
-////      continue
-////    }
-//
-//    // --- prepare log like json-log ---
-//    lines := mpdLogParse(24)
-//
-//    for _, ll := range lines {
-//      tags, notes, err := MPDtags(c, ll.Path, ll.Action)
-//      if err != nil {
-//        log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
-//        continue
-//      }
-//
-//      entry := &LogEntryV1{}
-//      err = convert2json(
-//        tags,
-//        entry,
-//        ll.Timestamp, // same as json-log
-//        ll.Action,
-//        notes,
-//        ll.Path,
-//      )
-//      if err != nil {
-//        log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
-//        continue
-//      }
-//
-//      entryData, err := json.Marshal(entry)
-//      if err != nil {
-//        log.Printf("[LOG] json.Marshal failed for %q: %v", ll.Path, err)
-//        continue
-//      }
-//
-//      allLogEntries = append(allLogEntries, entryData)
-//      log.Printf("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
-//    }
-//
-//    if songChanged {
-//      lastSongID = songID
-//    }
-//
-//    return nil
-//    }, "wsWatcher-albumkey")
-//
-//    if err != nil {
-//      log.Printf("wsWatcher mpdDo error: %v", err)
-//      continue
-//    }
-//
-//    // --- push to all subscribed connections (safe write) ---
-//    ctx.mu.Lock()
-//    for conn := range ctx.conns {
-//
-//      ctx.writeMu.Lock()
-//      dead := false
-//
-//      write := func(typ websocket.MessageType, payload []byte) bool {
-//        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-//        err := conn.Write(wctx, typ, payload)
-//        cancel()
-//
-//        if err != nil {
-//          log.Printf("[WS] write failed, removing conn: %v", err)
-//          conn.Close(websocket.StatusNormalClosure, "")
-//          dead = true
-//          return false
-//        }
-//        return true
-//      }
-//
-//      // push status
-//      if !write(websocket.MessageText, data) {
-//        ctx.writeMu.Unlock()
-//        delete(ctx.conns, conn)
-//        continue
-//      }
-//
-//      // push notes
-//      for _, note := range notes {
-//        if !write(websocket.MessageText, []byte(note)) {
-//          break
-//        }
-//      }
-//
-//      // push album art if changed
-//      if !dead && pushArt {
-//        if len(img) > 0 {
-//          if write(websocket.MessageBinary, img) {
-//            log.Printf("[ART] pushed %d bytes", len(img))
-//          }
-//        } else {
-//          if write(websocket.MessageBinary, []byte{}) {
-//            log.Printf("[ART] pushed empty (no art)")
-//          }
-//        }
-//      }
-//
-//      // push log data
-////      if !dead && len(logEntryData) > 0 {
-////        if write(websocket.MessageText, logEntryData) {
-////          log.Printf("[LOG] pushed %d bytes", len(logEntryData))
-////        }
-////      }
-//      // push log data if any
-//      if !dead && len(allLogEntries) > 0 {
-//        for _, entryData := range allLogEntries {
-//          if write(websocket.MessageText, entryData) {
-//            log.Printf("[LOG] pushed %d bytes", len(entryData))
-//          }
-//        }
-//      }
-//
-//      ctx.writeMu.Unlock()
-//    }
-//    ctx.mu.Unlock()
-//
-//    time.Sleep(100 * time.Millisecond)
-//  }
-//} // func wsWatcher
 
 
 func wsWatcher(ctx *wsCtx) {
@@ -2032,44 +1676,95 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
     switch cmd {
 
-	    // --- play/pause/togglestate unified ---
-	    case "pause", "play", "resume", "togglestate":
-	      var target bool
-	      if cmd == "togglestate" {
-	        target = !playing
-	      } else if cmd == "pause" {
-	        target = false
-	      } else { // play/resume
-	        target = true
-	      }
+      case "playlist":
 
-	      if target == playing {
-	        if target {
-	          js["response"] = "mpd already playing"
-	        } else {
-	          js["response"] = "mpd already paused"
-	        }
-	        out, _ := json.Marshal(js)
-	        return []string{string(out)}
-	      }
+        var albumKey string
 
-	      err := mpdDo(func(c *mpd.Client) error {
-	        return c.Pause(!target)
-	      }, "JSON-togglestate")
+        // -----------------------
+        // Parse argsIface
+        // -----------------------
+        if argsIface != nil {
+          switch v := argsIface.(type) {
 
-	      if err != nil {
-	        js["response"] = "error"
-	        js["error"] = err.Error()
-	      } else {
-	        if target {
-	          js["response"] = "play"
-	        } else {
-	          js["response"] = "pause"
-	        }
-	      }
+          case string:
+            // explicit album key supplied
+            albumKey = v
 
-	      out, _ := json.Marshal(js)
-	      return []string{string(out)}
+          case map[string]interface{}:
+            // {"album": true}
+            if _, ok := v["album"]; ok {
+              albumKey = state.lastAlbumKey
+            }
+          }
+        }
+
+        // fallback to state
+        if albumKey == "" {
+          albumKey = state.lastAlbumKey
+        }
+
+        if albumKey == "" {
+          js["response"] = "error"
+          js["error"] = "no album key available"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        // -----------------------
+        // Execute playlist lookup
+        // -----------------------
+        playlist, err := mpdPlaylist(albumKey)
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        js["response"] = "ok"
+        js["playlist"] = playlist
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+      // --- play/pause/togglestate unified ---
+      case "pause", "play", "resume", "togglestate":
+        var target bool
+        if cmd == "togglestate" {
+          target = !playing
+        } else if cmd == "pause" {
+          target = false
+        } else { // play/resume
+          target = true
+        }
+
+        if target == playing {
+          if target {
+            js["response"] = "mpd already playing"
+          } else {
+            js["response"] = "mpd already paused"
+          }
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        err := mpdDo(func(c *mpd.Client) error {
+          return c.Pause(!target)
+        }, "JSON-togglestate")
+
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+        } else {
+          if target {
+            js["response"] = "play"
+          } else {
+            js["response"] = "pause"
+          }
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
 
       // --- random/consume/repeat/single ---
       case "random", "togglerandom",
