@@ -491,6 +491,8 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
 func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 
+debug = true
+
 	// ---- connect ----
 	mpdSock := os.Getenv("MPD_SOCK")
 	if mpdSock == "" {
@@ -1812,7 +1814,8 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           key := albumKey
           if search != "" {
 //          key = fmt.Sprintf(`any == "%s"`, search)
-            key = fmt.Sprintf("any == %s", search)
+//            key = fmt.Sprintf("any == %s", search)
+            key = fmt.Sprintf("search %s", search)
           }
 
           results, err := mpdPlaylist(key)
