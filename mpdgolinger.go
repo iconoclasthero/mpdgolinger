@@ -134,7 +134,7 @@ type     PlayerV1     struct {
 
 type    LingerV1      struct {
      Song             int      `json:"song"`
-     SongID           string   `json:"songid"`
+     SongID           int      `json:"songid"`
      Count            int      `json:"count"`
      BaseLimit        int      `json:"baselimit"`
      Limit            int      `json:"limit"`
@@ -434,7 +434,7 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     dst.Next.File           = raw["next_file"]
     // --- linger ---
     dst.Linger.Song         = atoi(raw["lingersong"])
-    dst.Linger.SongID       = raw["lingersongid"]
+    dst.Linger.SongID       = atoi(raw["lingersongid"])
     dst.Linger.Count        = atoi(raw["lingercount"])
     dst.Linger.BaseLimit    = atoi(raw["lingerbase"])
     dst.Linger.Limit        = atoi(raw["lingerlimit"])
