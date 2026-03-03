@@ -549,6 +549,8 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 		)
 	}
 
+  log.Printf("[mpdPlaylist] cmd=%s", cmd)
+
 	// send
 	if _, err := conn.Write([]byte(cmd)); err != nil {
 		return nil, err
@@ -1689,15 +1691,15 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         if argsIface != nil {
           switch v := argsIface.(type) {
 
-          case string:
-            // explicit album key supplied
-            albumKey = v
+            case map[string]interface{}:
+              // {"album": true}
+              if _, ok := v["album"]; ok {
+                albumKey = state.lastAlbumKey
+              }
 
-          case map[string]interface{}:
-            // {"album": true}
-            if _, ok := v["album"]; ok {
-              albumKey = state.lastAlbumKey
-            }
+            case string:
+              // explicit album key supplied
+              albumKey = v
           }
         }
 
