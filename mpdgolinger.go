@@ -388,7 +388,7 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
     MBTrackID:          raw[p+"musicbrainz_trackid"],
     MBReleaseTrackID:   raw[p+"musicbrainz_releasetrackid"],
     MBArtistID:         raw[p+"musicbrainz_artistid"],
-    MBAlbumArtistID:    raw[p+"musicbrainz_ablumartistid"],
+    MBAlbumArtistID:    raw[p+"musicbrainz_albumartistid"],
     MBReleaseGrpID:     raw[p+"musicbrainz_releasegroupid"],
     File:               raw[p+"file"],
     SongPosition:       atoi(raw[p+"pos"]),
