@@ -491,8 +491,6 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
 func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 
-debug = true
-
 	// ---- connect ----
 	mpdSock := os.Getenv("MPD_SOCK")
 	if mpdSock == "" {
@@ -561,12 +559,14 @@ debug = true
 
   case strings.HasPrefix(albumKey, "search"):
     dbg("case strings.HasPrefix(%s, \"search\")", albumKey)
-    searchExp := strings.TrimPrefix(albumKey, "search ")
+    searchExp := strings.TrimSpace(strings.TrimPrefix(albumKey, "search "))
     dbg("searchExp = \"%s\"", searchExp)
     part := strings.SplitN(searchExp, " ", 3)
 
+    part[0] = strings.TrimSpace(part[0])
+    part[1] = strings.TrimSpace(part[1])
+    part[2] = strings.TrimSpace(part[2])
     cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", part[0], part[1], part[2])
-//    cmd = fmt.Sprintf("playlistsearch \"(%s %s \\\"%s\\\")\"\n", "artist", "==", "U2")
 
 	// raw expression
 	default:
