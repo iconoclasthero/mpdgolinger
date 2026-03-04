@@ -1943,10 +1943,154 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
+      case "play":  // 1946
+        var songPos int
+        var songID  int
+        var havePos bool
+        var haveID  bool
+
+        // ----------------------------
+        // Parse argsIface
+        // ----------------------------
+
+        switch v := argsIface.(type) {
+        case nil:
+          songPos = -1
+          havePos = true
+
+        case string:
+          i, err := strconv.Atoi(v)
+          if err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+//            out, _ := json.Marshal(js)
+//            return []string{string(out)}
+            break
+          }
+          songPos = i - 1
+          havePos = true
+
+        case float64:
+          songPos = int(v) - 1
+          havePos = true
+
+        case map[string]interface{}:
+          if s, ok := v["song_position"].(string); ok {
+            i, err := strconv.Atoi(s)
+            if err != nil {
+              js["response"] = "error"
+              js["error"] = err.Error()
+//              out, _ := json.Marshal(js)
+//              return []string{string(out)}
+              break
+            }
+            songPos = i - 1
+            havePos = true
+          }
+
+          if f, ok := v["song_position"].(float64); ok {
+             songPos = int(f) - 1
+             havePos = true
+          }
+
+          if sid, ok := v["songID"].(string); ok {
+            id, err := strconv.Atoi(sid)
+            if err != nil {
+              js["response"] = "error"
+              js["error"] = err.Error()
+//              out, _ := json.Marshal(js)
+//              return []string{string(out)}
+              break
+            }
+            songID = id
+            haveID = true
+          }
+
+          if fid, ok := v["songID"].(float64); ok {
+            songID = int(fid)
+            haveID = true
+          }
+
+          if havePos && haveID {
+            js["response"] = "error"
+            js["error"] = `"song_position" and "songID" are mutually exclusive`
+//            out, _ := json.Marshal(js)
+//            return []string{string(out)}
+            break
+          }
+
+        default:
+          js["response"] = "error"
+          js["error"] = `for "cmd":"play", "args" must be a number, nil, or object containing song_position or songID.`
+//          out, _ := json.Marshal(js)
+//          return []string{string(out)}
+        }
+
+        // If an error was set during the parsing, return early:
+        if js["response"] == "error" {
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        // =============================================================
+        // Execute MPD command
+        // =============================================================
+        err := mpdDo(func(c *mpd.Client) error {
+          var current int
+
+          // ============================================================
+          // 1️⃣  havePos = true, zero-indexed song position
+          // ============================================================
+          if havePos {
+            status, err := c.Status()
+            if err != nil {
+              return err
+            }
+            plLength, _ := strconv.Atoi(status["playlistlength"])
+            current, _ = strconv.Atoi(status["song"])
+            if songPos < plLength {
+              err = c.Play(songPos)
+              if err != nil {
+                return err
+              }
+              if songPos < 0 {
+                js["response"] = fmt.Sprintf("Playing %d", current + 1)
+              } else {
+                js["response"] = fmt.Sprintf("Playing %d", songPos + 1)
+              }
+            } else {
+              return fmt.Errorf("Song position %d out of range: 1-%d", songPos + 1, plLength)
+            }
+          } else if haveID {
+          // ============================================================
+          // 2️⃣  haveID = true
+          // ============================================================
+            err := c.PlayID(songID)
+            if err != nil {
+              return err
+            }
+            status, err := c.Status()
+            if err != nil {
+              return err
+            }
+            current, _ = strconv.Atoi(status["song"])
+            js["response"] = fmt.Sprintf("Playing %d, songID %d", current + 1, songID)
+          }
+          return nil
+        }, "play")
+
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+        // case "play"
 
       // --- play/pause/togglestate unified ---
-      case "pause", "play", "resume", "togglestate":
-        var target bool
+      case "pause", "resume", "togglestate":
+        var target bool //2083
         if cmd == "togglestate" {
           target = !playing
         } else if cmd == "pause" {
@@ -2323,88 +2467,6 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
-//      case "seek":
-//        var time int
-//        var percent float64
-//
-//        if argsIface != nil {
-//          switch v := argsIface.(type) {
-////          case map[string]interface{}:
-////            if w, ok := v["window"].(float64); ok {
-////               = int(w)
-////            }
-//          case float64:
-//            if v < 1 {
-//              percent = v
-//            } else {
-//              seconds = int(v)
-//            }
-//
-//          case string:
-//            if strings.HasSuffix(v, "%") {
-//              n, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64)
-//              if err != nil {
-//                js["response"] = "error"
-//                js["error"] = err.Error()
-//                return []string{string(js["response"].(string))}
-//              }
-//                percent = n / 100.0
-//              } else {
-//                n, err := strconv.Atoi(v)
-//                if err != nil {
-//                  js["response"] = "error"
-//                  js["error"] = err.Error()
-//                  return []string{string(js["response"].(string))}  // return immediately
-//                }
-//                  seconds = n
-//                }
-//              }
-//            }
-//          }
-//        }
-//
-//        err := mpdDo(func(c *mpd.Client) error {
-//          if percent != "" {
-//            status, err := c.Status()
-//            if err != nil {
-//              js["response"] = "error"
-//              js["error"] = err.Error()
-//              return err
-//            }
-//            durationStr := status["duration"]
-//            if !ok {
-//              err := fmt.Errorf("duration not found")
-//              js["response"] = "error"
-//              js["error"] = err.Error()
-//              return err
-//            }
-//            duration, err := strconv.ParseFloat(durationStr, 64)
-//            if err != nil {
-//              js["response"] = "error"
-//              js["error"] = err.Error()
-//              return err
-//            }
-//            seconds = int(duration * percent)
-//          }
-//
-//          err = c.SeekCur(time.Duration(seconds)*time.Second, false)
-//          if err != nil {
-//            js["response"] = "error"
-//            js["error"] = err.Error()
-//            return err
-//          }
-//
-//          js["response"] = fmt.Sprintf("Seek to %d", time)
-//          return nil
-//        }, "Seek")
-//
-//        if err != nil {
-//            js["response"] = "error"
-//            js["error"] = err.Error()
-//        }
-//
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
 
       case "seek":
         var relative bool
