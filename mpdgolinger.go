@@ -1942,8 +1942,9 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         js["error"] = "invalid playlist args"
         out, _ := json.Marshal(js)
         return []string{string(out)}
+      //// case "playlist" /////////////////////////////////////////////
 
-      case "play":  // 1946
+      case "play":
         var songPos int
         var songID  int
         var havePos bool
@@ -1963,8 +1964,6 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           if err != nil {
             js["response"] = "error"
             js["error"] = err.Error()
-//            out, _ := json.Marshal(js)
-//            return []string{string(out)}
             break
           }
           songPos = i - 1
@@ -1980,8 +1979,6 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             if err != nil {
               js["response"] = "error"
               js["error"] = err.Error()
-//              out, _ := json.Marshal(js)
-//              return []string{string(out)}
               break
             }
             songPos = i - 1
@@ -1998,8 +1995,6 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             if err != nil {
               js["response"] = "error"
               js["error"] = err.Error()
-//              out, _ := json.Marshal(js)
-//              return []string{string(out)}
               break
             }
             songID = id
@@ -2014,16 +2009,12 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           if havePos && haveID {
             js["response"] = "error"
             js["error"] = `"song_position" and "songID" are mutually exclusive`
-//            out, _ := json.Marshal(js)
-//            return []string{string(out)}
             break
           }
 
         default:
           js["response"] = "error"
           js["error"] = `for "cmd":"play", "args" must be a number, nil, or object containing song_position or songID.`
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
         }
 
         // If an error was set during the parsing, return early:
@@ -2086,9 +2077,9 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
         out, _ := json.Marshal(js)
         return []string{string(out)}
-        // case "play"
+      //// case "playlist" /////////////////////////////////////////////
 
-      // --- play/pause/togglestate unified ---
+      // --- pause/togglestate unified ---
       case "pause", "resume", "togglestate":
         var target bool //2083
         if cmd == "togglestate" {
@@ -2565,31 +2556,154 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
   case "linger":
     switch cmd {
+//      case "next":
+//        var respArr []string
+//        log.Printf("vPJ: received linger next")
+//
+//        // 1. Update block state
+//        state.mu.Lock()
+//        state.transition = true
+//        state.paused = false
+//        state.mu.Unlock()
+//
+//        // 2. Delegate to existing sscmsc random and next handler
+//        resp := verbProcessorJSON(map[string]interface{}{
+//          "system":"mpd",
+//             "cmd":"random",
+//            "args":1,
+//        }, ctx)
+//        // Unmarshal into slice
+//        if err := json.Unmarshal([]byte(resp[0]), &respArr); err != nil {
+//          respArr = []string{"error unmarshaling response"}
+//        }
+//
+//        resp = verbProcessorJSON(map[string]interface{}{
+//          "system":"mpd",
+//             "cmd":"next",
+//        }, ctx)
+//
+//        // Unmarshal into slice
+//        if err := json.Unmarshal([]byte(resp[0]), &respArr); err != nil {
+//          respArr = append([]string{"error unmarshaling response"})
+//        }
+//
+//        resp = verbProcessorJSON(map[string]interface{}{
+//          "system":"mpd",
+//             "cmd":"play",      // vPJ mpd/play/nil sends play -1
+//        }, ctx)
+//
+//        // Unmarshal into slice
+//        if err := json.Unmarshal([]byte(resp[0]), &respArr); err != nil {
+//          respArr = append([]string{"error unmarshaling response"})
+//        }
+//
+//
+//        // Add linger-specific message
+//        respArr = append(respArr, "linger block advanced")
+//
+//        // Marshal back
+//        out, _ := json.Marshal(respArr)
+//        return []string{string(out)}
       case "next":
+        var respArr []string
         log.Printf("vPJ: received linger next")
 
+        // ------------------------------------------------------------
         // 1. Update block state
+        // ------------------------------------------------------------
         state.mu.Lock()
         state.transition = true
         state.paused = false
         state.mu.Unlock()
 
-        // 2. Delegate to existing sscmsc next handler
+
+        // ------------------------------------------------------------
+        // ORIGINAL CODE
+        // Problem:
+        // 1. json.Unmarshal overwrote respArr each time
+        // 2. repeated verbProcessorJSON + map boilerplate
+        // ------------------------------------------------------------
+        /*
         resp := verbProcessorJSON(map[string]interface{}{
-          "system": "mpd",
-          "cmd":    "next",
+          "system":"mpd",
+             "cmd":"random",
+            "args":1,
         }, ctx)
 
-        // Unmarshal into slice
-        var respArr []string
         if err := json.Unmarshal([]byte(resp[0]), &respArr); err != nil {
           respArr = []string{"error unmarshaling response"}
         }
 
-        // Add linger-specific message
+        resp = verbProcessorJSON(map[string]interface{}{
+          "system":"mpd",
+             "cmd":"next",
+        }, ctx)
+
+        if err := json.Unmarshal([]byte(resp[0]), &respArr); err != nil {
+          respArr = append([]string{"error unmarshaling response"})
+        }
+
+        resp = verbProcessorJSON(map[string]interface{}{
+          "system":"mpd",
+             "cmd":"play",
+        }, ctx)
+
+        if err := json.Unmarshal([]byte(resp[0]), &respArr); err != nil {
+          respArr = append([]string{"error unmarshaling response"})
+        }
+        */
+
+
+        // ------------------------------------------------------------
+        // NEW CODE
+        //
+        // Helper: runs an MPD command through verbProcessorJSON
+        // and APPENDS the resulting response(s) into respArr.
+        //
+        // This removes repeated JSON handling and prevents
+        // overwriting previous responses.
+        // ------------------------------------------------------------
+        run := func(cmd string, args interface{}) {
+          req := map[string]interface{}{
+            "system":"mpd",
+            "cmd":cmd,
+          }
+
+          if args != nil {
+            req["args"] = args
+          }
+
+          resp := verbProcessorJSON(req, ctx)
+
+          var tmp []string
+          if err := json.Unmarshal([]byte(resp[0]), &tmp); err != nil {
+            respArr = append(respArr, "error unmarshaling response")
+            return
+          }
+
+          respArr = append(respArr, tmp...)
+        }
+
+
+        // ------------------------------------------------------------
+        // Equivalent to CLI handler behaviour
+        // ------------------------------------------------------------
+
+        // turn random on
+        run("random", 1)
+
+        // advance playlist
+        run("next", nil)
+
+        // resume playback if paused (vPJ play/nil → play -1)
+        run("play", nil)
+
+
+        // ------------------------------------------------------------
+        // Linger message
+        // ------------------------------------------------------------
         respArr = append(respArr, "linger block advanced")
 
-        // Marshal back
         out, _ := json.Marshal(respArr)
         return []string{string(out)}
 
