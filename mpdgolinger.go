@@ -301,7 +301,7 @@ var (
   defaultLibPrefix  = "/library/music"
   musicLibPrefix    = defaultLibPrefix
   debug     bool    = false // manual toggle
-  tryParsed bool
+  tryParsed bool    = true
   rawTags   bool
 )
 
