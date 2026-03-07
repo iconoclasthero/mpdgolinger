@@ -1721,7 +1721,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         } else {
           dbg("The variable is not an integer")
           js["response"] = "error"
-          js["error"] = ""
+          js["error"] = "Argument must be nil or an integer."
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
@@ -3251,12 +3251,23 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
       ctx.conn.Write(context.Background(), websocket.MessageText, out)
       return nil
 
-    default: // of system case "websocket" switch cmd
+    case "debug":
+      if b, ok := argsIface.(bool); ok {
+        debug = b
+      } else {
+        debug = true
+      }
+      js["response"] = fmt.Sprintf(`"debug":"%v"`, debug)
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+
+   default: // of system case "websocket" switch cmd
       js["response"] = "error"
       js["error"] = "unknown websocket cmd"
       out, _ := json.Marshal(js)
       return []string{string(out)}
     } // websocket switch cmd
+
 
   default: // of switch system
     switch cmd {
