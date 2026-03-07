@@ -1770,6 +1770,89 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
+      case "json-log-stream":
+        log.Printf("vPJ: received json-log-stream command")
+        nlines := 24 // default
+
+        if f, ok := argsIface.(float64); ok {
+          nlines = int(f)
+          dbg("The nlines is an integer with value: %d\n", nlines)
+        } else if argsIface == nil {
+          dbg("Number of log lines unspecified, defaulting to %d\n", nlines)
+        } else {
+          dbg("The variable is not an integer")
+          js["response"] = "error"
+          js["error"] = "Argument must be nil or an integer."
+          out, _ := json.Marshal(js)
+          ctx.conn.Write(context.Background(), websocket.MessageText, out)
+          return nil
+        }
+
+        lines := mpdLogParse(nlines)
+
+        err := mpdDo(func(c *mpd.Client) error {
+
+          for _, ll := range lines {
+
+            tags, notes, err := MPDtags(c, ll.Path, ll.Action)
+            if err != nil {
+              dbg("json-log-stream MPDtags error: %v", err)
+              continue
+            }
+
+            dbg("DBG json-log-stream tags=%+v", tags)
+            dbg("DBG json-log-stream notes=%v", notes)
+
+            entry := &LogEntryV1{}
+
+            err = convert2json(
+              tags,
+              entry,
+              ll.Timestamp,
+              ll.Action,
+              notes,
+              ll.Path,
+            )
+            if err != nil {
+              return fmt.Errorf("convert2json failed: %v", err)
+            }
+
+            js := map[string]any{
+              "response": "log-entry",
+              "entry": entry,
+            }
+
+            out, _ := json.Marshal(js)
+
+            err = ctx.conn.Write(context.Background(), websocket.MessageText, out)
+            if err != nil {
+              return err
+            }
+          }
+
+          return nil
+
+        }, "JSONLogStream")
+
+        if err != nil {
+          js := map[string]any{
+            "response": "error",
+            "error": err.Error(),
+          }
+          out, _ := json.Marshal(js)
+          ctx.conn.Write(context.Background(), websocket.MessageText, out)
+          return nil
+        }
+
+        js := map[string]any{
+          "response": "log-end",
+        }
+
+        out, _ := json.Marshal(js)
+        ctx.conn.Write(context.Background(), websocket.MessageText, out)
+
+        return nil
+
 
       case "playlist":
 
