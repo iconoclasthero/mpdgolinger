@@ -1817,6 +1817,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
               return fmt.Errorf("convert2json failed: %v", err)
             }
 
+            if entry == nil { continue }
 //            js := map[string]any{
 //              "response": "log-data",
 //              "data": entry,
