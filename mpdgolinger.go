@@ -1817,13 +1817,13 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
               return fmt.Errorf("convert2json failed: %v", err)
             }
 
-            js := map[string]any{
-              "response": "log-entry",
-              "entry": entry,
-            }
+//            js := map[string]any{
+//              "response": "log-data",
+//              "data": entry,
+//            }
+//            out, _ := json.Marshal(js)
 
-            out, _ := json.Marshal(js)
-
+            out, _ := json.Marshal(entry)
             err = ctx.conn.Write(context.Background(), websocket.MessageText, out)
             if err != nil {
               return err
