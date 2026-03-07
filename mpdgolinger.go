@@ -3257,7 +3257,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
       } else {
         debug = true
       }
-      js["response"] = fmt.Sprintf(`"debug":"%v"`, debug)
+      js["response"] = map[string]bool{"debug": debug}
       out, _ := json.Marshal(js)
       return []string{string(out)}
 
