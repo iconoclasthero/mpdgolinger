@@ -1757,7 +1757,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             responses = append(responses, string(b))
           }
           return nil
-        }, "json-log" )
+        }, "JSONLog")
 
         if err != nil {
           js["response"] = "error"
@@ -4092,7 +4092,7 @@ func shellQuoteSlice(slice []string) []string {
     out[i] = shellQuote(s)
   }
   return out
-} // func shellQuoteSlice(slice []string) []string 
+} // func shellQuoteSlice(slice []string) []string]
 
 
 // shellQuoteKV quotes only the value part of a key=value string for shell safety
