@@ -1727,7 +1727,8 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         }
 
         lines := mpdLogParse(nlines)
-        responses := []string{}
+//        responses := []string{}
+        responses := []LogEntryV1{}
 
         err := mpdDo(func(c *mpd.Client) error {
           for _, ll := range lines {
@@ -1753,8 +1754,8 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
               return fmt.Errorf("convert2json failed: %v", err)
             }
 
-            b, _ := json.Marshal(entry)
-            responses = append(responses, string(b))
+//            b, _ := json.Marshal(entry)
+            responses = append(responses, *entry)
           }
           return nil
         }, "JSONLog")
