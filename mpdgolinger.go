@@ -4149,7 +4149,7 @@ func verbProcessor(csv string) []string {
     case "json-log":
       log.Printf("IPC: received json-log command")
 
-      lines := mpdLogParse(1000)
+      lines := mpdLogParse(24)
       responses = responses[:0]
 
       err := mpdDo(func(c *mpd.Client) error {
