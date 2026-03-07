@@ -1705,63 +1705,70 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
   }
 
   // --- system switch ---
-  switch system {
+  switch system {   // mpd, player; linger; wesocket//
   case "mpd", "player":
 
     switch cmd {
+      case "json-log":
+        log.Printf("vPJ: received json-log command")
+        nlines := 24 // default
 
-//      case "playlist":
-//
-//        var albumKey string
-//
-//        // -----------------------
-//        // Parse argsIface
-//        // -----------------------
-//        if argsIface != nil {
-//          switch v := argsIface.(type) {
-//
-//            case map[string]interface{}:
-//              // {"album": true}
-//              if _, ok := v["album"]; ok {
-//                albumKey = state.lastAlbumKey
-//              }
-//
-//            case string:
-//              // explicit album key supplied
-//              albumKey = v
-//          }
-//        }
-//
-//        log.Printf("[vPJ] state.lastAlbumKey=%s", state.lastAlbumKey)
-//        // fallback to state
-//        if albumKey == "" || albumKey == "album" {
-//          albumKey = state.lastAlbumKey
-//        }
-//
-//        if albumKey == "" {
-//          js["response"] = "error"
-//          js["error"] = "no album key available"
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
-//
-//        // -----------------------
-//        // Execute playlist lookup
-//        // -----------------------
-//        log.Printf("[vPJ] albumKey=%s", albumKey)
-//        playlist, err := mpdPlaylist(albumKey)
-//        if err != nil {
-//          js["response"] = "error"
-//          js["error"] = err.Error()
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
-//
-//        js["response"] = "ok"
-//        js["playlist"] = playlist
-//
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
+        if f, ok := argsIface.(float64); ok {
+          nlines = int(f)
+          dbg("The nlines is an integer with value: %d\n", nlines)
+        } else if argsIface == "" {
+          dbg("Number of log lines unspecified, defaulting to %d\n", nlines)
+        } else {
+          dbg("The variable is not an integer")
+          js["response"] = "error"
+          js["error"] = ""
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        lines := mpdLogParse(nlines)
+        responses := []string{}
+
+        err := mpdDo(func(c *mpd.Client) error {
+          for _, ll := range lines {
+            tags, notes, err := MPDtags(c, ll.Path, ll.Action)
+            if err != nil {
+              return err
+            }
+
+            dbg("DBG json-log tags=%+v", tags)
+            dbg("DBG json-log notes=%v", notes)
+
+            entry := &LogEntryV1{}
+
+            err = convert2json(
+              tags,
+              entry,
+              ll.Timestamp,
+              ll.Action,
+              notes,
+              ll.Path,
+            )
+            if err != nil {
+              return fmt.Errorf("convert2json failed: %v", err)
+            }
+
+            b, _ := json.Marshal(entry)
+            responses = append(responses, string(b))
+          }
+          return nil
+        }, "json-log" )
+
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+        } else {
+          js["response"] = responses
+        }
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
 
       case "playlist":
 
