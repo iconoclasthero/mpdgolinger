@@ -1793,7 +1793,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         err := mpdDo(func(c *mpd.Client) error {
 
           for _, ll := range lines {
-
+            if ll.Path == "" { continue }
             tags, notes, err := MPDtags(c, ll.Path, ll.Action)
             if err != nil {
               dbg("json-log-stream MPDtags error: %v", err)
@@ -1817,14 +1817,15 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
               return fmt.Errorf("convert2json failed: %v", err)
             }
 
-            if entry == nil { continue }
+//            if entry != nil {
 //            js := map[string]any{
 //              "response": "log-data",
 //              "data": entry,
 //            }
 //            out, _ := json.Marshal(js)
 
-            out, _ := json.Marshal(entry)
+              out, _ := json.Marshal(entry)
+//            }
             err = ctx.conn.Write(context.Background(), websocket.MessageText, out)
             if err != nil {
               return err
