@@ -3525,20 +3525,23 @@ func mpdDo(fn func(*mpd.Client) error, ctx string) error {
     return fmt.Errorf("mpdDo: connect failed: %v", err)
   }
 
-  // Timeout-wrapped execution
-  done := make(chan error, 1)
-  go func() {
-    done <- fn(client)
-  }()
-
-  select {
-  case err := <-done:
-    client.Close()
-    return err
-  case <-time.After(3 * time.Second):
-    client.Close()
-    return fmt.Errorf("mpdDo: timeout (%s)", ctx)
-  }
+//  // Timeout-wrapped execution
+//  done := make(chan error, 1)
+//  go func() {
+//    done <- fn(client)
+//  }()
+//
+//  select {
+//  case err := <-done:
+//    client.Close()
+//    return err
+//  case <-time.After(3 * time.Second):
+//    client.Close()
+//    return fmt.Errorf("mpdDo: timeout (%s)", ctx)
+//  }
+  err = fn(client)
+  client.Close()
+  return err
 } // func mpdDo(fn func(*mpd.Client) error, ctx string) error
 
 
