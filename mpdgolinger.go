@@ -1716,7 +1716,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         if f, ok := argsIface.(float64); ok {
           nlines = int(f)
           dbg("The nlines is an integer with value: %d\n", nlines)
-        } else if argsIface == "" {
+        } else if argsIface == nil {
           dbg("Number of log lines unspecified, defaulting to %d\n", nlines)
         } else {
           dbg("The variable is not an integer")
