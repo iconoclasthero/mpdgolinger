@@ -362,7 +362,7 @@ var (
 
 func audioFromRaw(raw map[string]string, p string) AudioV1 {
   var src string
-//  var dur float64
+
   yearRE := regexp.MustCompile(`\d{4}`)
   if raw["originaldate"] != "" {
     src = raw["originaldate"]
@@ -375,7 +375,7 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
     year = src
   }
 
-  dur, _ := strconv.ParseFloat(raw["duration"], 64)
+  duration, _ := strconv.ParseFloat(raw["duration"], 64)
 
   return AudioV1{
     Title:              raw[p+"title"],
@@ -384,7 +384,7 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
     Album:              raw[p+"album"],
     Year:               year,
 //    Duration:           raw[p+"duration"],
-    Duration:           dur,
+    Duration:           duration,
     Time:               atoi(raw[p+"time"]),
     Disc:               atoi(raw[p+"disc"]),
     Track:              atoi(raw[p+"track"]),
@@ -1794,6 +1794,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
           for _, ll := range lines {
             if ll.Path == "" { continue }
+
             tags, notes, err := MPDtags(c, ll.Path, ll.Action)
             if err != nil {
               dbg("json-log-stream MPDtags error: %v", err)
@@ -1817,15 +1818,13 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
               return fmt.Errorf("convert2json failed: %v", err)
             }
 
-//            if entry != nil {
 //            js := map[string]any{
 //              "response": "log-data",
 //              "data": entry,
 //            }
 //            out, _ := json.Marshal(js)
 
-              out, _ := json.Marshal(entry)
-//            }
+            out, _ := json.Marshal(entry)
             err = ctx.conn.Write(context.Background(), websocket.MessageText, out)
             if err != nil {
               return err
@@ -2170,7 +2169,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
         out, _ := json.Marshal(js)
         return []string{string(out)}
-      //// case "playlist" /////////////////////////////////////////////
+      //// case "play" /////////////////////////////////////////////
 
       // --- pause/togglestate unified ---
       case "pause", "resume", "togglestate":
