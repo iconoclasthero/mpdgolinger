@@ -89,11 +89,17 @@ type configFile struct {
   exists       bool
 } // type configFile struct
 
-type LogLine   struct {
-     Timestamp string // exactly as in mpd.log
-     Action    string // played / skipped / ignored
-     Path      string // decoded filesystem path
-     Notes     string
+type     Condition    struct {
+     Field            string
+     Op               string
+     Value            string
+}
+
+type LogLine          struct {
+     Timestamp        string // exactly as in mpd.log
+     Action           string // played / skipped / ignored
+     Path             string // decoded filesystem path
+     Notes            string
 }
 
 type      AudioV1     struct {
@@ -680,6 +686,32 @@ func printSong(song map[string]string) {
     fmt.Printf("%s=%q\n", outk, v)
   }
 } // func printSong()
+
+
+// BuildMPDFilterArgs takes a slice of Conditions and returns
+// a fully escaped, MPD-ready filter string (suitable for playlistsearch, search, find, etc.)
+func BuildMPDFilterArgs(conds []Condition) string {
+	if len(conds) == 0 {
+		return `""`
+	}
+
+	var parts []string
+	for _, c := range conds {
+		// escape ", ', and \
+		val := strings.ReplaceAll(c.Value, `\`, `\\`)
+		val = strings.ReplaceAll(val, `"`, `\"`)
+		val = strings.ReplaceAll(val, `'`, `\'`)
+		parts = append(parts, fmt.Sprintf("(%s %s \"%s\")", c.Field, c.Op, val))
+	}
+
+	// join all clauses with AND (implicit, MPD only supports AND)
+	filter := "(" + strings.Join(parts, " AND ") + ")"
+
+	// quote entire filter argument
+	filter = `"` + strings.ReplaceAll(filter, `"`, `\"`) + `"`
+
+	return filter
+}
 
 
 /* ---------------- tryparsed ---------------- */
@@ -2645,6 +2677,109 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         out, _ := json.Marshal(js)
         return []string{string(out)}
       }
+
+  case "search":
+    switch cmd {
+      case "search":
+
+        if argsIface == nil {
+          js["response"]="error"
+          js["error"]="missing args"
+          out,_ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        args,ok := argsIface.(map[string]interface{})
+        if !ok {
+          js["response"]="error"
+          js["error"]="invalid args"
+          out,_ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        scope := "search"
+        if cmd=="playlist" { scope="playlistsearch" }
+        if cmd=="library"  { scope="search" }
+
+        valid := map[string]bool{
+          "search":true,
+          "find":true,
+          "playlistsearch":true,
+        }
+
+        if !valid[scope] {
+          js["response"]="error"
+          js["error"]="invalid scope"
+          out,_ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        var conds []Condition
+
+        if a,ok := args["conds"].([]interface{}); ok {
+          for _,x := range a {
+            if m,ok := x.(map[string]interface{}); ok {
+
+              f,_ := m["field"].(string)
+              o,_ := m["op"].(string)
+              v,_ := m["value"].(string)
+
+              if f!="" && o!="" && v!="" {
+                conds = append(conds,Condition{f,o,v})
+              }
+            }
+          }
+        }
+
+        if len(conds)==0 {
+          js["response"]="error"
+          js["error"]="no conditions"
+          out,_ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        filter := BuildMPDFilterArgs(conds)
+
+        err := mpdDo(func(c *mpd.Client) error {
+
+          rows,err := c.Command(scope,filter).AttrsList("file")
+          if err!=nil { return err }
+
+          resp := make([]AudioV1,0,len(rows))
+
+          for _,song := range rows {
+
+            raw := map[string]string{}
+            for k,v := range song {
+              raw[strings.ToLower(k)] = v
+            }
+
+            var a AudioV1
+            if convert2json(raw,&a)==nil {
+              resp = append(resp,a)
+            }
+          }
+
+          js["response"]=resp
+          return nil
+
+        },"search")
+
+        if err!=nil {
+          js["response"]="error"
+          js["error"]=err.Error()
+        }
+
+        out,_ := json.Marshal(js)
+        return []string{string(out)}
+
+      default: // of system case "search" switch cmd
+        js["response"] = "error"
+        js["error"] = "unknown search cmd"
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
 
   case "linger":
     switch cmd {
