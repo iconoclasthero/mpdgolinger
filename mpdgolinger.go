@@ -2712,7 +2712,7 @@ case "search":
   defer conn.Close()
 
   // Hardcoded single condition
-  cmdStr := `playlistsearch "(albumartist == "Bob Dylan")"` + "\n"
+  cmdStr := `playlistsearch "(albumartist == \"Bob Dylan\")"` + "\n"
 
   if _, err := conn.Write([]byte(cmdStr)); err != nil {
     js["response"], js["error"] = "error", err.Error()
