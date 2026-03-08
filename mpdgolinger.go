@@ -374,9 +374,10 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
   if year == "" {
     year = src
   }
+  duration := 0.0
   log.Printf("raw[title]=%s", raw["title"])
   log.Printf("raw[duration]=%s", raw["duration"])
-  duration, _ := strconv.ParseFloat(raw["duration"], 64)
+  duration, _ = strconv.ParseFloat(raw["duration"], 64)
 
   return AudioV1{
     Title:              raw[p+"title"],
