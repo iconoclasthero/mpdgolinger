@@ -364,7 +364,7 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
   var src string
 //  var dur float64
   yearRE := regexp.MustCompile(`\d{4}`)
-  if raw["originaldate"] != "" {
+  if raw[p+"originaldate"] != "" {
     src = raw["originaldate"]
   } else {
     src = raw["date"]
@@ -375,7 +375,7 @@ func audioFromRaw(raw map[string]string, p string) AudioV1 {
     year = src
   }
 
-  dur, _ := strconv.ParseFloat(raw["duration"], 64)
+  dur, _ := strconv.ParseFloat(raw[p+"duration"], 64)
 
   return AudioV1{
     Title:              raw[p+"title"],
@@ -414,11 +414,11 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     dst.Player.SongPosition = songZI + 1
     dst.Player.SongLength   = atoi(raw["playlistlength"])
     elapsed, _             := strconv.ParseFloat(raw["elapsed"], 64)
-    statusduration, _            := strconv.ParseFloat(raw["duration"], 64)
+    duration, _            := strconv.ParseFloat(raw["duration"], 64)
     dst.Player.Elapsed      = elapsed
-    dst.Player.Duration     = statusduration
-    if statusduration > 0 {
-      dst.Player.Percent    = (elapsed * 100) / statusduration
+    dst.Player.Duration     = duration
+    if duration > 0 {
+      dst.Player.Percent    = (elapsed * 100) / duration
     }
     dst.Player.Random       = raw["random"] == "1"
     dst.Player.Consume      = raw["consume"] == "1"
