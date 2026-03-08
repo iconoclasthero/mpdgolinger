@@ -826,10 +826,8 @@ func printSong(song map[string]string) {
 //} // func mpdSearch
 
 func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]string, error) {
-
   /* --- formerly quoteSearchArg --- */
   quoteSearchArg := func(conds []Condition) string {
-
     /* --- formerly escapeMPDFilterValue --- */
     escapeMPDFilterValue := func(s string) string {
       var b strings.Builder
@@ -860,7 +858,6 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
         b.WriteByte(c)
       }
       b.WriteByte('"')
-
       return b.String()
     }
 
@@ -875,12 +872,9 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
         c.Op,
         escaped,
       )
-
       parts = append(parts, part)
     }
-
     filter := "(" + strings.Join(parts, " AND ") + ")"
-
     return quoteMPDArg(filter)
   }
 
@@ -907,24 +901,19 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
     if err != nil {
       return nil, err
     }
-
     line = strings.TrimSpace(line)
-
     if line == "OK" {
       break
     }
-
     if strings.HasPrefix(line, "ACK") {
       return nil, fmt.Errorf("MPD error: %s", line)
     }
-
     if line == "" {
       continue
     }
 
     /* --- record boundary --- */
     if strings.HasPrefix(line, "file: ") {
-
       if current != nil {
         results = append(results, current)
       }
@@ -936,7 +925,6 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
       for k := range current {
         delete(current, k)
       }
-
       current["file"] = line[6:]
       continue
     }
@@ -945,11 +933,9 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
     if idx < 0 {
       continue
     }
-
     if current == nil {
       continue
     }
-
     key := strings.ToLower(line[:idx])
     val := line[idx+2:]
 
@@ -959,7 +945,6 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
   if current != nil {
     results = append(results, current)
   }
-
   return results, nil
 }
 
@@ -2928,7 +2913,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
   case "search":
     switch cmd {
-      case "playlistsearch","find":
+      case "playlistsearch","find","search":
         var conditions []Condition
         if argsIface == nil {
           js["response"]="error"
