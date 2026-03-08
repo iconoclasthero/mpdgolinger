@@ -695,135 +695,6 @@ func printSong(song map[string]string) {
 } // func printSong()
 
 
-////
-////func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]string, error) {
-////  /* --- formerly quoteSearchArg --- */
-////  quoteSearchArg := func(conds []Condition) string {
-////    /* --- formerly escapeMPDFilterValue --- */
-////    escapeMPDFilterValue := func(s string) string {
-////      var b strings.Builder
-////      b.Grow(len(s) * 2)
-////
-////      for i := 0; i < len(s); i++ {
-////        c := s[i]
-////        switch c {
-////        case '\\', '"', '\'':
-////          b.WriteByte('\\')
-////        }
-////        b.WriteByte(c)
-////      }
-////      return b.String()
-////    }
-////
-////    /* --- formerly quoteMPDArg --- */
-////    quoteMPDArg := func(s string) string {
-////      var b strings.Builder
-////      b.Grow(len(s)*2 + 2)
-////
-////      b.WriteByte('"')
-////      for i := 0; i < len(s); i++ {
-////        c := s[i]
-////        if c == '"' || c == '\\' {
-////          b.WriteByte('\\')
-////        }
-////        b.WriteByte(c)
-////      }
-////      b.WriteByte('"')
-////
-////      return b.String()
-////    }
-////
-////    /* --- builder logic --- */
-////    parts := make([]string, 0, len(conds))
-////
-////    for _, c := range conds {
-////      escaped := escapeMPDFilterValue(c.Value)
-////
-////      part := fmt.Sprintf(
-////        "(%s %s \"%s\")",
-////        c.Field,
-////        c.Op,
-////        escaped,
-////      )
-////
-////      parts = append(parts, part)
-////    }
-////
-////    filter := "(" + strings.Join(parts, " AND ") + ")"
-////
-////    return quoteMPDArg(filter)
-////  }
-////
-////  searchArg := quoteSearchArg(conds)
-////  searchString := cmd + " " + searchArg + "\n"
-////
-////  dbg("Sending command: %s", searchString)
-////
-////  if _, err := conn.Write([]byte(searchString)); err != nil {
-////    return nil, err
-////  }
-////
-////  reader := bufio.NewReader(conn)
-////
-////  results := make([]map[string]string, 0, 64)
-////  var current map[string]string
-////
-////  for {
-////    line, err := reader.ReadString('\n')
-////    if err != nil {
-////      return nil, err
-////    }
-////
-////    line = strings.TrimSpace(line)
-////
-////    if line == "OK" {
-////      break
-////    }
-////
-////    if strings.HasPrefix(line, "ACK") {
-////      return nil, fmt.Errorf("MPD error: %s", line)
-////    }
-////
-////    if line == "" {
-////      continue
-////    }
-////
-////    /* --- record boundary --- */
-////    if strings.HasPrefix(line, "file: ") {
-////
-////      if current != nil {
-////        results = append(results, current)
-////      }
-////
-////      current = make(map[string]string, 16)
-////      current["file"] = line[6:] // faster than TrimPrefix
-////
-////      continue
-////    }
-////
-////    /* --- key/value parsing without SplitN allocation --- */
-////    idx := strings.Index(line, ": ")
-////    if idx < 0 {
-////      continue
-////    }
-////
-////    if current == nil {
-////      // ignore metadata before first file
-////      continue
-////    }
-////
-////    key := strings.ToLower(line[:idx])
-////    val := line[idx+2:]
-////
-////    current[key] = val
-////  }
-////
-////  if current != nil {
-////    results = append(results, current)
-////  }
-////
-////  return results, nil
-////} // func mpdSearch
 //
 //func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]string, error) {
 //  /* --- formerly quoteSearchArg --- */
@@ -858,9 +729,11 @@ func printSong(song map[string]string) {
 //        b.WriteByte(c)
 //      }
 //      b.WriteByte('"')
+//
 //      return b.String()
 //    }
 //
+//    /* --- builder logic --- */
 //    parts := make([]string, 0, len(conds))
 //
 //    for _, c := range conds {
@@ -872,9 +745,12 @@ func printSong(song map[string]string) {
 //        c.Op,
 //        escaped,
 //      )
+//
 //      parts = append(parts, part)
 //    }
+//
 //    filter := "(" + strings.Join(parts, " AND ") + ")"
+//
 //    return quoteMPDArg(filter)
 //  }
 //
@@ -889,10 +765,6 @@ func printSong(song map[string]string) {
 //
 //  reader := bufio.NewReader(conn)
 //
-//  /* --- prevent infinite hang --- */
-//  conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-//  defer conn.SetReadDeadline(time.Time{})
-//
 //  results := make([]map[string]string, 0, 64)
 //  var current map[string]string
 //
@@ -901,41 +773,45 @@ func printSong(song map[string]string) {
 //    if err != nil {
 //      return nil, err
 //    }
+//
 //    line = strings.TrimSpace(line)
+//
 //    if line == "OK" {
 //      break
 //    }
+//
 //    if strings.HasPrefix(line, "ACK") {
 //      return nil, fmt.Errorf("MPD error: %s", line)
 //    }
+//
 //    if line == "" {
 //      continue
 //    }
 //
 //    /* --- record boundary --- */
 //    if strings.HasPrefix(line, "file: ") {
+//
 //      if current != nil {
 //        results = append(results, current)
 //      }
 //
-//      /* --- reuse map from pool --- */
-//      current = mpdMapPool.Get().(map[string]string)
+//      current = make(map[string]string, 16)
+//      current["file"] = line[6:] // faster than TrimPrefix
 //
-//      /* clear previous contents */
-//      for k := range current {
-//        delete(current, k)
-//      }
-//      current["file"] = line[6:]
 //      continue
 //    }
 //
+//    /* --- key/value parsing without SplitN allocation --- */
 //    idx := strings.Index(line, ": ")
 //    if idx < 0 {
 //      continue
 //    }
+//
 //    if current == nil {
+//      // ignore metadata before first file
 //      continue
 //    }
+//
 //    key := strings.ToLower(line[:idx])
 //    val := line[idx+2:]
 //
@@ -945,15 +821,14 @@ func printSong(song map[string]string) {
 //  if current != nil {
 //    results = append(results, current)
 //  }
+//
 //  return results, nil
 //} // func mpdSearch
 
-
 func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]string, error) {
-
   /* --- formerly quoteSearchArg --- */
   quoteSearchArg := func(conds []Condition) string {
-
+    /* --- formerly escapeMPDFilterValue --- */
     escapeMPDFilterValue := func(s string) string {
       var b strings.Builder
       b.Grow(len(s) * 2)
@@ -969,6 +844,7 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
       return b.String()
     }
 
+    /* --- formerly quoteMPDArg --- */
     quoteMPDArg := func(s string) string {
       var b strings.Builder
       b.Grow(len(s)*2 + 2)
@@ -982,14 +858,12 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
         b.WriteByte(c)
       }
       b.WriteByte('"')
-
       return b.String()
     }
 
     parts := make([]string, 0, len(conds))
 
     for _, c := range conds {
-
       escaped := escapeMPDFilterValue(c.Value)
 
       part := fmt.Sprintf(
@@ -998,12 +872,9 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
         c.Op,
         escaped,
       )
-
       parts = append(parts, part)
     }
-
     filter := "(" + strings.Join(parts, " AND ") + ")"
-
     return quoteMPDArg(filter)
   }
 
@@ -1018,6 +889,7 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
 
   reader := bufio.NewReader(conn)
 
+  /* --- prevent infinite hang --- */
   conn.SetReadDeadline(time.Now().Add(10 * time.Second))
   defer conn.SetReadDeadline(time.Time{})
 
@@ -1025,53 +897,47 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
   var current map[string]string
 
   for {
-
-    lineBytes, err := reader.ReadSlice('\n')
+    line, err := reader.ReadString('\n')
     if err != nil {
       return nil, err
     }
-
-    lineBytes = bytes.TrimSpace(lineBytes)
-
-    if len(lineBytes) == 0 {
+    line = strings.TrimSpace(line)
+    if line == "OK" {
+      break
+    }
+    if strings.HasPrefix(line, "ACK") {
+      return nil, fmt.Errorf("MPD error: %s", line)
+    }
+    if line == "" {
       continue
     }
 
-    if bytes.Equal(lineBytes, []byte("OK")) {
-      break
-    }
-
-    if bytes.HasPrefix(lineBytes, []byte("ACK")) {
-      return nil, fmt.Errorf("MPD error: %s", string(lineBytes))
-    }
-
-    if bytes.HasPrefix(lineBytes, []byte("file: ")) {
-
+    /* --- record boundary --- */
+    if strings.HasPrefix(line, "file: ") {
       if current != nil {
         results = append(results, current)
       }
 
+      /* --- reuse map from pool --- */
       current = mpdMapPool.Get().(map[string]string)
 
+      /* clear previous contents */
       for k := range current {
         delete(current, k)
       }
-
-      current["file"] = string(lineBytes[6:])
+      current["file"] = line[6:]
       continue
     }
 
-    idx := bytes.Index(lineBytes, []byte(": "))
+    idx := strings.Index(line, ": ")
     if idx < 0 {
       continue
     }
-
     if current == nil {
       continue
     }
-
-    key := strings.ToLower(string(lineBytes[:idx]))
-    val := string(lineBytes[idx+2:])
+    key := strings.ToLower(line[:idx])
+    val := line[idx+2:]
 
     current[key] = val
   }
@@ -1079,9 +945,8 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
   if current != nil {
     results = append(results, current)
   }
-
   return results, nil
-}
+} // func mpdSearch
 
 
 func tryParsedLookup(c *mpd.Client, path string) (map[string]string, error) {
