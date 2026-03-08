@@ -713,6 +713,19 @@ func BuildMPDFilterArgs(conds []Condition) string {
 	return filter
 }
 
+func BuildMPDFilterString(conds []Condition) string {
+    var parts []string
+    for _, c := range conds {
+        v := strings.ReplaceAll(c.Value, `\`, `\\`)
+        v = strings.ReplaceAll(v, `"`, `\"`)
+        v = strings.ReplaceAll(v, `'`, `\'`)
+        parts = append(parts, fmt.Sprintf("%s %s \"%s\"", c.Field, c.Op, v))
+    }
+    if len(parts) == 1 {
+        return parts[0] // no parentheses for single condition
+    }
+    return "(" + strings.Join(parts," AND ") + ")"
+}
 
 /* ---------------- tryparsed ---------------- */
 
@@ -2738,7 +2751,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           return []string{string(out)}
         }
 
-        filter := BuildMPDFilterArgs(conds)
+        filter := BuildMPDFilterString(conds)
 
         err := mpdDo(func(c *mpd.Client) error {
 
