@@ -2693,98 +2693,90 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
   case "search":
     switch cmd {
-      case "search":
+case "search":
 
-        if argsIface == nil {
-          js["response"]="error"
-          js["error"]="missing args"
-          out,_ := json.Marshal(js)
-          return []string{string(out)}
+  if argsIface == nil {
+    js["response"], js["error"] = "error", "missing args"
+    out,_ := json.Marshal(js)
+    return []string{string(out)}
+  }
+
+  args, ok := argsIface.(map[string]interface{})
+  if !ok {
+    js["response"], js["error"] = "error", "invalid args"
+    out,_ := json.Marshal(js)
+    return []string{string(out)}
+  }
+
+  scope := "search" // default MPD command
+  if cmd=="playlist" { scope="playlistsearch" }
+
+  var conds []Condition
+  if a, ok := args["conds"].([]interface{}); ok {
+    for _, x := range a {
+      if m, ok := x.(map[string]interface{}); ok {
+        f, _ := m["field"].(string)
+        o, _ := m["op"].(string)
+        v, _ := m["value"].(string)
+        if f != "" && o != "" && v != "" {
+          conds = append(conds, Condition{f,o,v})
         }
+      }
+    }
+  }
 
-        args,ok := argsIface.(map[string]interface{})
-        if !ok {
-          js["response"]="error"
-          js["error"]="invalid args"
-          out,_ := json.Marshal(js)
-          return []string{string(out)}
-        }
+  if len(conds) == 0 {
+    js["response"], js["error"] = "error", "no conditions"
+    out,_ := json.Marshal(js)
+    return []string{string(out)}
+  }
 
-        scope := "search"
-        if cmd=="playlist" { scope="playlistsearch" }
-        if cmd=="library"  { scope="search" }
+  // ========================
+  // Build MPD filter string
+  // ========================
+  var parts []string
+  for _, c := range conds {
+    v := strings.ReplaceAll(c.Value, `\`, `\\`)
+    v = strings.ReplaceAll(v, `"`, `\"`)
+    v = strings.ReplaceAll(v, `'`, `\'`)
+    parts = append(parts, fmt.Sprintf("%s %s \"%s\"", c.Field, c.Op, v))
+  }
+  var filter string
+  if len(parts) == 1 {
+    filter = parts[0]
+  } else {
+    filter = "(" + strings.Join(parts, " AND ") + ")"
+  }
 
-        valid := map[string]bool{
-          "search":true,
-          "find":true,
-          "playlistsearch":true,
-        }
+  // ========================
+  // Execute MPD command
+  // ========================
+  err := mpdDo(func(c *mpd.Client) error {
+    rows, err := c.Command(scope, filter).AttrsList("file")
+    if err != nil { return err }
 
-        if !valid[scope] {
-          js["response"]="error"
-          js["error"]="invalid scope"
-          out,_ := json.Marshal(js)
-          return []string{string(out)}
-        }
+    resp := make([]AudioV1, 0, len(rows))
+    for _, song := range rows {
+      raw := map[string]string{}
+      for k,v := range song {
+        raw[strings.ToLower(k)] = v
+      }
+      var a AudioV1
+      if convert2json(raw, &a) == nil {
+        resp = append(resp, a)
+      }
+    }
 
-        var conds []Condition
+    js["response"] = resp
+    return nil
+  }, "search")
 
-        if a,ok := args["conds"].([]interface{}); ok {
-          for _,x := range a {
-            if m,ok := x.(map[string]interface{}); ok {
+  if err != nil {
+    js["response"], js["error"] = "error", err.Error()
+  }
 
-              f,_ := m["field"].(string)
-              o,_ := m["op"].(string)
-              v,_ := m["value"].(string)
-
-              if f!="" && o!="" && v!="" {
-                conds = append(conds,Condition{f,o,v})
-              }
-            }
-          }
-        }
-
-        if len(conds)==0 {
-          js["response"]="error"
-          js["error"]="no conditions"
-          out,_ := json.Marshal(js)
-          return []string{string(out)}
-        }
-
-        filter := BuildMPDFilterString(conds)
-
-        err := mpdDo(func(c *mpd.Client) error {
-
-          rows,err := c.Command(scope,filter).AttrsList("file")
-          if err!=nil { return err }
-
-          resp := make([]AudioV1,0,len(rows))
-
-          for _,song := range rows {
-
-            raw := map[string]string{}
-            for k,v := range song {
-              raw[strings.ToLower(k)] = v
-            }
-
-            var a AudioV1
-            if convert2json(raw,&a)==nil {
-              resp = append(resp,a)
-            }
-          }
-
-          js["response"]=resp
-          return nil
-
-        },"search")
-
-        if err!=nil {
-          js["response"]="error"
-          js["error"]=err.Error()
-        }
-
-        out,_ := json.Marshal(js)
-        return []string{string(out)}
+  out,_ := json.Marshal(js)
+  return []string{string(out)}
 
       default: // of system case "search" switch cmd
         js["response"] = "error"
