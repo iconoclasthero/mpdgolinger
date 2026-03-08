@@ -2931,64 +2931,91 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         }
         raw, ok := args["conds"].([]interface{})
         if !ok {
-          log.Fatal("conds missing or invalid")
+          js["response"] = "error"
+          js["error"] = "missing conds"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
         }
 
-        for _, item := range raw {
+//        for _, item := range raw {
+//          m, ok := item.(map[string]interface{})
+//          if !ok {
+//            continue
+//          }
+//
+//          f, _ := m["field"].(string)
+//          o, _ := m["op"].(string)
+//          v, _ := m["value"].(string)
+//
+//          if f == "" || o == "" || v == "" {
+//            continue
+//          }
+//
+//          conditions = append(conditions, Condition{f, o, v})
+//        }
+//
+//        if len(conditions) == 0 {
+//          log.Fatal("no conditions supplied")
+//        }
 
+        for _, item := range raw {
           m, ok := item.(map[string]interface{})
           if !ok {
             continue
           }
-
           f, _ := m["field"].(string)
           o, _ := m["op"].(string)
           v, _ := m["value"].(string)
-
-          if f == "" || o == "" || v == "" {
-            continue
+          if f != "" && o != "" && v != "" {
+            conditions = append(conditions, Condition{f, o, v})
           }
-
-          conditions = append(conditions, Condition{f, o, v})
         }
 
         if len(conditions) == 0 {
-          log.Fatal("no conditions supplied")
+          js["response"] = "error"
+          js["error"] = "no conditions supplied"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
         }
 
         log.Println("cmd:", cmd)
         log.Println("conds:", conditions)
 
-        conn, err :=  directDialMPD()
+        conn, err := directDialMPD()
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("MPD connect failed: %v", err)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
         defer conn.Close()
 
         results, err := mpdSearch(conn, cmd, conditions)
         if err != nil {
-          log.Fatal(err)
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("MPD search failed: %v", err)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
         }
 
-        dbg("Found %d entries\n", len(results))
+        log.Printf("Found %d entries\n", len(results))
 
-        for i, r := range results {
-          dbg("[%d]\n", i)
-          for k, v := range r {
-            dbg("  %s: %s\n", k, v)
-          }
-          log.Println()
-        }
+//        for i, r := range results {
+//          for k, v := range r {
+//          }
+//          log.Println()
+//        }
 
         var resp []AudioV1
-
         for _, song := range results {
-
-          for k, v := range song {
-            lk := strings.ToLower(k)
-            if lk != k {
-              delete(song, k)
-              song[lk] = v
-            }
-          }
-
+//          for k, v := range song {
+//            lk := strings.ToLower(k)
+//            if lk != k {
+//              delete(song, k)
+//              song[lk] = v
+//            }
+//          }
+//
           var a AudioV1
           if err := convert2json(song, &a); err == nil {
             resp = append(resp, a)
@@ -2996,9 +3023,9 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         }
 
         js["response"] = resp
-
         out,_ := json.Marshal(js)
         return []string{string(out)}
+  ///////////// case "playlistsearch", "find", "search": ////////////////////
 
       default: // of system case "search" switch cmd
         js["response"] = "error"
@@ -4127,12 +4154,6 @@ func directDialMPD() (net.Conn, error) {
   if mpdSocket == "" {
     mpdSocket = defaultMPDsocket
   }
-
-//  conn, err := net.Dial("unix", mpdSock)
-//  if err != nil {
-//    return nil, err
-//  }
-//
   // Try UNIX socket first
   conn, err := net.Dial("unix", mpdSocket)
   if err != nil {
@@ -4181,18 +4202,6 @@ func directDialMPD() (net.Conn, error) {
 
   return conn, nil
 } // func directDialMPD
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
