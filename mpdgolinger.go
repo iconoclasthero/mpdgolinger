@@ -188,6 +188,7 @@ const (
   defaultDaemonIP    = "localhost"
   defaultDaemonPort  = 6559
   defaultIgnoredList = ".mpdignore"
+  defaultMPDpassword = ""
 ) // const
 
 
@@ -216,6 +217,7 @@ var (
   mpdSocket   string = ""
   mpdLog      string = ""
   mpdPath     string = ""
+  mpdPassword string = defaultMPDpassword
 
   skippedList string = ""  // no flag implemented
   ignoredList string = defaultIgnoredList
@@ -498,12 +500,12 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 
 	// ---- connect ----
-	mpdSock := os.Getenv("MPD_SOCK")
-	if mpdSock == "" {
-		mpdSock = "/run/mpd/socket"
+	mpdSocket = os.Getenv("MPD_SOCK")
+	if mpdSocket == "" {
+		mpdSocket = "/run/mpd/socket"
 	}
 
-	conn, err := net.Dial("unix", mpdSock)
+	conn, err := net.Dial("unix", mpdSocket)
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +529,6 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
   aaRe := regexp.MustCompile(`^.+ -- .+$`)
 
 	var cmd string
-
 
   log.Printf("[mpdPlaylist] albumKey=%s", albumKey)
 
@@ -688,46 +689,135 @@ func printSong(song map[string]string) {
 } // func printSong()
 
 
-// BuildMPDFilterArgs takes a slice of Conditions and returns
-// a fully escaped, MPD-ready filter string (suitable for playlistsearch, search, find, etc.)
-func BuildMPDFilterArgs(conds []Condition) string {
-	if len(conds) == 0 {
-		return `""`
-	}
+func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]string, error) {
+  /* --- formerly quoteSearchArg --- */
+  quoteSearchArg := func(conds []Condition) string {
+    /* --- formerly escapeMPDFilterValue --- */
+    escapeMPDFilterValue := func(s string) string {
+      var b strings.Builder
+      b.Grow(len(s) * 2)
 
-	var parts []string
-	for _, c := range conds {
-		// escape ", ', and \
-		val := strings.ReplaceAll(c.Value, `\`, `\\`)
-		val = strings.ReplaceAll(val, `"`, `\"`)
-		val = strings.ReplaceAll(val, `'`, `\'`)
-		parts = append(parts, fmt.Sprintf("(%s %s \"%s\")", c.Field, c.Op, val))
-	}
+      for i := 0; i < len(s); i++ {
+        c := s[i]
+        switch c {
+        case '\\', '"', '\'':
+          b.WriteByte('\\')
+        }
+        b.WriteByte(c)
+      }
+      return b.String()
+    }
 
-	// join all clauses with AND (implicit, MPD only supports AND)
-	filter := "(" + strings.Join(parts, " AND ") + ")"
+    /* --- formerly quoteMPDArg --- */
+    quoteMPDArg := func(s string) string {
+      var b strings.Builder
+      b.Grow(len(s)*2 + 2)
 
-	// quote entire filter argument
-	filter = `"` + strings.ReplaceAll(filter, `"`, `\"`) + `"`
+      b.WriteByte('"')
+      for i := 0; i < len(s); i++ {
+        c := s[i]
+        if c == '"' || c == '\\' {
+          b.WriteByte('\\')
+        }
+        b.WriteByte(c)
+      }
+      b.WriteByte('"')
 
-	return filter
-}
+      return b.String()
+    }
 
-func BuildMPDFilterString(conds []Condition) string {
-    var parts []string
+    /* --- builder logic --- */
+    parts := make([]string, 0, len(conds))
+
     for _, c := range conds {
-        v := strings.ReplaceAll(c.Value, `\`, `\\`)
-        v = strings.ReplaceAll(v, `"`, `\"`)
-        v = strings.ReplaceAll(v, `'`, `\'`)
-        parts = append(parts, fmt.Sprintf("%s %s \"%s\"", c.Field, c.Op, v))
-    }
-    if len(parts) == 1 {
-        return parts[0] // no parentheses for single condition
-    }
-    return "(" + strings.Join(parts," AND ") + ")"
-}
+      escaped := escapeMPDFilterValue(c.Value)
 
-/* ---------------- tryparsed ---------------- */
+      part := fmt.Sprintf(
+        "(%s %s \"%s\")",
+        c.Field,
+        c.Op,
+        escaped,
+      )
+
+      parts = append(parts, part)
+    }
+
+    filter := "(" + strings.Join(parts, " AND ") + ")"
+
+    return quoteMPDArg(filter)
+  }
+
+  searchArg := quoteSearchArg(conds)
+  searchString := cmd + " " + searchArg + "\n"
+
+  dbg("Sending command: %s", searchString)
+
+  if _, err := conn.Write([]byte(searchString)); err != nil {
+    return nil, err
+  }
+
+  reader := bufio.NewReader(conn)
+
+  results := make([]map[string]string, 0, 64)
+  var current map[string]string
+
+  for {
+    line, err := reader.ReadString('\n')
+    if err != nil {
+      return nil, err
+    }
+
+    line = strings.TrimSpace(line)
+
+    if line == "OK" {
+      break
+    }
+
+    if strings.HasPrefix(line, "ACK") {
+      return nil, fmt.Errorf("MPD error: %s", line)
+    }
+
+    if line == "" {
+      continue
+    }
+
+    /* --- record boundary --- */
+    if strings.HasPrefix(line, "file: ") {
+
+      if current != nil {
+        results = append(results, current)
+      }
+
+      current = make(map[string]string, 16)
+      current["file"] = line[6:] // faster than TrimPrefix
+
+      continue
+    }
+
+    /* --- key/value parsing without SplitN allocation --- */
+    idx := strings.Index(line, ": ")
+    if idx < 0 {
+      continue
+    }
+
+    if current == nil {
+      // ignore metadata before first file
+      continue
+    }
+
+    key := strings.ToLower(line[:idx])
+    val := line[idx+2:]
+
+    current[key] = val
+  }
+
+  if current != nil {
+    results = append(results, current)
+  }
+
+  return results, nil
+} // func mpdSearch
+
 
 func tryParsedLookup(c *mpd.Client, path string) (map[string]string, error) {
   dir  := filepath.Base(filepath.Dir(path))
@@ -2693,77 +2783,92 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
   case "search":
     switch cmd {
-case "search":
+      case "search":
+        var conditions []Condition
+        if argsIface == nil {
+          js["response"]="error"
+          js["error"]="missing args"
+          out,_ := json.Marshal(js)
+          return []string{string(out)}
+        }
 
-  // -----------------------------
-  // Single test search: albumartist == "Bob Dylan"
-  // -----------------------------
-  mpdSock := os.Getenv("MPD_SOCK")
-  if mpdSock == "" {
-    mpdSock = "/run/mpd/socket"
-  }
+        args,ok := argsIface.(map[string]interface{})
+        if !ok {
+          js["response"]="error"
+          js["error"]="invalid args"
+          out,_ := json.Marshal(js)
+          return []string{string(out)}
+        }
+        raw, ok := args["conds"].([]interface{})
+        if !ok {
+          log.Fatal("conds missing or invalid")
+        }
 
-  conn, err := net.Dial("unix", mpdSock)
-  if err != nil {
-    js["response"], js["error"] = "error", err.Error()
-    out, _ := json.Marshal(js)
-    return []string{string(out)}
-  }
-  defer conn.Close()
+        for _, item := range raw {
 
-  // Hardcoded single condition
-  cmdStr := `playlistsearch "((albumartist == \"Bob Dylan\"))"` + "\n"
+          m, ok := item.(map[string]interface{})
+          if !ok {
+            continue
+          }
 
-  if _, err := conn.Write([]byte(cmdStr)); err != nil {
-    js["response"], js["error"] = "error", err.Error()
-    out, _ := json.Marshal(js)
-    return []string{string(out)}
-  }
+          f, _ := m["field"].(string)
+          o, _ := m["op"].(string)
+          v, _ := m["value"].(string)
 
-  reader := bufio.NewReader(conn)
-  var results []map[string]string
-  var current map[string]string
+          if f == "" || o == "" || v == "" {
+            continue
+          }
 
-  for {
-    line, err := reader.ReadString('\n')
-    if err != nil {
-      js["response"], js["error"] = "error", err.Error()
-      break
-    }
+          conditions = append(conditions, Condition{f, o, v})
+        }
 
-    line = strings.TrimSpace(line)
-    if line == "OK" {
-      break
-    }
-    if strings.HasPrefix(line, "ACK") {
-      js["response"], js["error"] = "error", line
-      break
-    }
+        if len(conditions) == 0 {
+          log.Fatal("no conditions supplied")
+        }
 
-    if strings.HasPrefix(line, "file: ") {
-      if current != nil {
-        results = append(results, current)
-      }
-      current = make(map[string]string)
-    }
+        log.Println("cmd:", cmd)
+        log.Println("conds:", conditions)
 
-    parts := strings.SplitN(line, ": ", 2)
-    if len(parts) == 2 {
-      if current == nil {
-        current = make(map[string]string)
-      }
-      current[strings.ToLower(parts[0])] = parts[1]
-    }
-  }
+        conn, err :=  directDialMPD()
+        defer conn.Close()
 
-  if current != nil {
-    results = append(results, current)
-  }
+        results, err := mpdSearch(conn, cmd, conditions)
+        if err != nil {
+          log.Fatal(err)
+        }
 
-  js["response"] = results
-  out, _ := json.Marshal(js)
-  return []string{string(out)}
+        dbg("Found %d entries\n", len(results))
 
+        for i, r := range results {
+          dbg("[%d]\n", i)
+          for k, v := range r {
+            dbg("  %s: %s\n", k, v)
+          }
+          log.Println()
+        }
+
+        var resp []AudioV1
+
+        for _, song := range results {
+
+          for k, v := range song {
+            lk := strings.ToLower(k)
+            if lk != k {
+              delete(song, k)
+              song[lk] = v
+            }
+          }
+
+          var a AudioV1
+          if err := convert2json(song, &a); err == nil {
+            resp = append(resp, a)
+          }
+        }
+
+        js["response"] = resp
+
+        out,_ := json.Marshal(js)
+        return []string{string(out)}
 
       default: // of system case "search" switch cmd
         js["response"] = "error"
@@ -3885,6 +3990,80 @@ func dialMPD() (*mpd.Client, error) {
   // Otherwise, use TCP host:port
   return mpd.Dial("tcp", fmt.Sprintf("%s:%d", mpdHost, mpdPort))
 } // func dialMPD() (*mpd.Client, error)
+
+
+func directDialMPD() (net.Conn, error) {
+  mpdSocket = os.Getenv("MPD_SOCK")
+  if mpdSocket == "" {
+    mpdSocket = defaultMPDsocket
+  }
+
+//  conn, err := net.Dial("unix", mpdSock)
+//  if err != nil {
+//    return nil, err
+//  }
+//
+  // Try UNIX socket first
+  conn, err := net.Dial("unix", mpdSocket)
+  if err != nil {
+    // UNIX failed, try TCP fallback
+    addr := fmt.Sprintf("%s:%d", mpdHost, mpdPort)
+    conn, err = net.Dial("tcp", addr)
+    if err != nil {
+      return nil, fmt.Errorf("failed to connect via UNIX and TCP: %w", err)
+    }
+  }
+
+  reader := bufio.NewReader(conn)
+  line, err := reader.ReadString('\n')
+  dbg("MPD response: %s", line)
+
+  if err != nil {
+    conn.Close()
+    return nil, err
+  }
+
+  if !strings.HasPrefix(line, "OK MPD") {
+    conn.Close()
+    return nil, fmt.Errorf("mpd greeting invalid: %s", line)
+  }
+
+  if mpdPassword != "" {
+    cmd := fmt.Sprintf("password \"%s\"\n", mpdPassword)
+    if _, err := conn.Write([]byte(cmd)); err != nil {
+      conn.Close()
+      return nil, err
+    }
+
+    resp, err := reader.ReadString('\n')
+    dbg("MPD password response: %s", resp)
+
+    if err != nil {
+      conn.Close()
+      return nil, err
+    }
+
+    if !strings.HasPrefix(resp, "OK") {
+      conn.Close()
+      return nil, fmt.Errorf("mpd auth failed: %s", resp)
+    }
+  }
+
+  return conn, nil
+} // func directDialMPD
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 // logStateChange logs standardized state transition information
