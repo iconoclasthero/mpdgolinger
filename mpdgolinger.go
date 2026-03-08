@@ -2783,7 +2783,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 
   case "search":
     switch cmd {
-      case "search":
+      case "playlistsearch","find":
         var conditions []Condition
         if argsIface == nil {
           js["response"]="error"
