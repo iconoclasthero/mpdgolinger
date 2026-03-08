@@ -2695,65 +2695,28 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
     switch cmd {
 case "search":
 
-  argsMap, ok := argsIface.(map[string]interface{})
-  if !ok || argsMap==nil {
-    js["response"], js["error"]="error","missing/invalid args"
-    out,_ := json.Marshal(js)
-    return []string{string(out)}
-  }
-
-  var conds []Condition
-  if a, ok := argsMap["conds"].([]interface{}); ok {
-    for _, x := range a {
-      if m, ok := x.(map[string]interface{}); ok {
-        f, _ := m["field"].(string)
-        o, _ := m["op"].(string)
-        v, _ := m["value"].(string)
-        if f!="" && o!="" && v!="" {
-          conds = append(conds, Condition{f,o,v})
-        }
-      }
-    }
-  }
-
-  if len(conds)==0 {
-    js["response"], js["error"]="error","no conditions"
-    out,_ := json.Marshal(js)
-    return []string{string(out)}
-  }
-
   // -----------------------------
-  // Inline BuildPlaylistSearchMulti
-  // -----------------------------
-  var parts []string
-  for _, c := range conds {
-    val := c.Value
-    val = strings.ReplaceAll(val, `\`, `\\`)
-    val = strings.ReplaceAll(val, `"`, `\"`)
-    val = strings.ReplaceAll(val, `'`, `\'`)
-    parts = append(parts, fmt.Sprintf("(%s %s \"%s\")", c.Field, c.Op, val))
-  }
-
-  filter := "(" + strings.Join(parts, " AND ") + ")"
-  cmdStr := fmt.Sprintf("playlistsearch \"%s\"\n", filter)
-
-  // -----------------------------
-  // Inline mpdPlaylistSearch
+  // Single test search: albumartist == "Bob Dylan"
   // -----------------------------
   mpdSock := os.Getenv("MPD_SOCK")
-  if mpdSock=="" { mpdSock="/run/mpd/socket" }
+  if mpdSock == "" {
+    mpdSock = "/run/mpd/socket"
+  }
 
   conn, err := net.Dial("unix", mpdSock)
-  if err!=nil {
-    js["response"], js["error"]="error",err.Error()
-    out,_ := json.Marshal(js)
+  if err != nil {
+    js["response"], js["error"] = "error", err.Error()
+    out, _ := json.Marshal(js)
     return []string{string(out)}
   }
   defer conn.Close()
 
+  // Hardcoded single condition
+  cmdStr := `playlistsearch "(albumartist == Bob Dylan)"` + "\n"
+
   if _, err := conn.Write([]byte(cmdStr)); err != nil {
-    js["response"], js["error"]="error",err.Error()
-    out,_ := json.Marshal(js)
+    js["response"], js["error"] = "error", err.Error()
+    out, _ := json.Marshal(js)
     return []string{string(out)}
   }
 
@@ -2763,42 +2726,42 @@ case "search":
 
   for {
     line, err := reader.ReadString('\n')
-    if err!=nil { js["response"],js["error"]="error",err.Error(); break }
-    line = strings.TrimSpace(line)
-    if line=="OK" { break }
-    if strings.HasPrefix(line,"ACK") {
-      js["response"],js["error"]="error",line
+    if err != nil {
+      js["response"], js["error"] = "error", err.Error()
       break
     }
-    if line=="" { continue }
 
-    if strings.HasPrefix(line,"file: ") {
-      if current!=nil { results = append(results,current) }
+    line = strings.TrimSpace(line)
+    if line == "OK" {
+      break
+    }
+    if strings.HasPrefix(line, "ACK") {
+      js["response"], js["error"] = "error", line
+      break
+    }
+
+    if strings.HasPrefix(line, "file: ") {
+      if current != nil {
+        results = append(results, current)
+      }
       current = make(map[string]string)
     }
 
     parts := strings.SplitN(line, ": ", 2)
-    if len(parts)==2 {
-      if current==nil { current = make(map[string]string) }
+    if len(parts) == 2 {
+      if current == nil {
+        current = make(map[string]string)
+      }
       current[strings.ToLower(parts[0])] = parts[1]
     }
   }
 
-  if current!=nil { results = append(results,current) }
-
-  // -----------------------------
-  // convert2json / AudioV1
-  // -----------------------------
-  var resp []AudioV1
-  for _, r := range results {
-    raw := map[string]string{}
-    for k,v := range r { raw[strings.ToLower(k)] = v }
-    var a AudioV1
-    if convert2json(raw,&a)==nil { resp = append(resp,a) }
+  if current != nil {
+    results = append(results, current)
   }
 
-  js["response"] = resp
-  out,_ := json.Marshal(js)
+  js["response"] = results
+  out, _ := json.Marshal(js)
   return []string{string(out)}
 
 
