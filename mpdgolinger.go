@@ -2975,7 +2975,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //            conditions = append(conditions, Condition{f, o, v, u, n})
 //          }
           log.Printf("n=%s", n)
-          if n != "" || n != "!" {
+          if n != "" && n != "!" {
             js["response"] = "error"
             js["error"] = "Not operator may only be '!' or null"
             out, _ := json.Marshal(js)
