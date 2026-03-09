@@ -2960,7 +2960,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //        if len(conditions) == 0 {
 //          log.Fatal("no conditions supplied")
 //        }
-
+        parseErr := ""
         for _, item := range raw {
           m, ok := item.(map[string]interface{})
           if !ok {
@@ -2974,15 +2974,14 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //          if f != "" && o != "" && v != "" && ( n == "" || n == "!" ) && uok {
 //            conditions = append(conditions, Condition{f, o, v, u, n})
 //          }
-          log.Printf("u='%v'", u)
           if ! uok {
             u = false
           }
-          log.Printf("f='%s'", f)
-          log.Printf("o='%s'", o)
-          log.Printf("v='%s'", v)
-          log.Printf("u='%v'", u)
-          log.Printf("n='%s'", n)
+          dbg("f='%s'", f)
+          dbg("o='%s'", o)
+          dbg("v='%s'", v)
+          dbg("u='%v'", u)
+          dbg("n='%s'", n)
           if n != "" && n != "!" {
             js["response"] = "error"
             js["error"] = "Not operator may only be '!' or null"
@@ -2990,19 +2989,23 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             return []string{string(out)}
           }
           if u { // unary operator
-              if f != "" && v != "" && (n == "" || n == "!") {
-                  conditions = append(conditions, Condition{f, o, v, u, n})
+            if f != "" && v != "" && (n == "" || n == "!") {
+              conditions = append(conditions, Condition{f, o, v, u, n})
+              if o != "" {
+                js["note"] = fmt.Sprintf("Additional operator '%s' supplied with %s unary; ignored.", o, f)
               }
-          } else {
-              if f != "" && o != "" && v != "" && (n == "" || n == "!") {
-                  conditions = append(conditions, Condition{f, o, v, u, n})
-              }
+            }
+          } else            if f != "" && o != "" && v != "" && (n == "" || n == "!") {
+              conditions = append(conditions, Condition{f, o, v, u, n})
+            } else {
+          js["error"] = fmt.Sprintf("no conditions supplied: field='%s'; operator='%s'; value='%s'; unary='%v'; not='%s'", f, o, v, u, n)
+
           }
         }
 
         if len(conditions) == 0 {
           js["response"] = "error"
-          js["error"] = "no conditions supplied"
+          js["error"] = parseErr
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
