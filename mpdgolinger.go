@@ -93,6 +93,8 @@ type     Condition    struct {
      Field            string
      Op               string
      Value            string
+     Unary            bool
+     Not              string
 }
 
 type LogLine          struct {
@@ -866,13 +868,14 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
     for _, c := range conds {
       escaped := escapeMPDFilterValue(c.Value)
 
-      part := fmt.Sprintf(
-        "(%s %s \"%s\")",
-        c.Field,
-        c.Op,
-        escaped,
-      )
-      parts = append(parts, part)
+//      part := fmt.Sprintf(
+//        "(%s %s \"%s\")",
+//        c.Field,
+//        c.Op,
+//        escaped,
+//      )
+//      parts = append(parts, part)
+      parts = append(parts, fmt.Sprintf(`%s(%s %s "%s")`, c.Not, c.Field, c.Op, escaped))  // c.Not = "" || "!"
     }
     filter := "(" + strings.Join(parts, " AND ") + ")"
     return quoteMPDArg(filter)
@@ -2922,7 +2925,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           return []string{string(out)}
         }
 
-        args,ok := argsIface.(map[string]interface{})
+        args, ok := argsIface.(map[string]interface{})
         if !ok {
           js["response"]="error"
           js["error"]="invalid args"
@@ -2966,8 +2969,28 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           f, _ := m["field"].(string)
           o, _ := m["op"].(string)
           v, _ := m["value"].(string)
-          if f != "" && o != "" && v != "" {
-            conditions = append(conditions, Condition{f, o, v})
+          u, uok := m["unary"].(bool)
+          n, _ := m["not"].(string)
+//          if f != "" && o != "" && v != "" && ( n == "" || n == "!" ) && uok {
+//            conditions = append(conditions, Condition{f, o, v, u, n})
+//          }
+          if n != "" || n != "!" {
+            js["response"] = "error"
+            js["error"] = "Not operator may only be '!' or null"
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+          }
+          if ! uok {
+            u = false
+          }
+          if u { // unary operator
+              if f != "" && v != "" && (n == "" || n == "!") {
+                  conditions = append(conditions, Condition{f, o, v, u, n})
+              }
+          } else {
+              if f != "" && o != "" && v != "" && (n == "" || n == "!") {
+                  conditions = append(conditions, Condition{f, o, v, u, n})
+              }
           }
         }
 
@@ -3020,6 +3043,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           if err := convert2json(song, &a); err == nil {
             resp = append(resp, a)
           }
+          mpdMapPool.Put(song)
         }
 
         js["response"] = resp
@@ -4150,16 +4174,13 @@ func dialMPD() (*mpd.Client, error) {
 
 
 func directDialMPD() (net.Conn, error) {
-  mpdSocket = os.Getenv("MPD_SOCK")
-  if mpdSocket == "" {
-    mpdSocket = defaultMPDsocket
-  }
+  d := net.Dialer{Timeout: 5 * time.Second}
   // Try UNIX socket first
-  conn, err := net.Dial("unix", mpdSocket)
+  conn, err := d.Dial("unix", mpdSocket)
   if err != nil {
     // UNIX failed, try TCP fallback
     addr := fmt.Sprintf("%s:%d", mpdHost, mpdPort)
-    conn, err = net.Dial("tcp", addr)
+    conn, err = d.Dial("tcp", addr)
     if err != nil {
       return nil, fmt.Errorf("failed to connect via UNIX and TCP: %w", err)
     }
@@ -6139,6 +6160,8 @@ func main() {
     } else if env.mpdSocket != "" { // final fallback
       mpdSocket = env.mpdSocket
       log.Printf("mpdSocket set to env.mpdSocket: %s\n", env.mpdSocket)
+    } else if defaultMPDsocket != "" {
+      mpdSocket = defaultMPDsocket
     }
   } else {
     log.Printf("mpdSocket set to --mpdsocket: %s\n", mpdSocket)
