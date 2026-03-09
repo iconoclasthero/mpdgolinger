@@ -2998,7 +2998,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           } else            if f != "" && o != "" && v != "" && (n == "" || n == "!") {
               conditions = append(conditions, Condition{f, o, v, u, n})
             } else {
-          js["error"] = fmt.Sprintf("no conditions supplied: field='%s'; operator='%s'; value='%s'; unary='%v'; not='%s'", f, o, v, u, n)
+          parseErr = fmt.Sprintf("no conditions supplied: field='%s'; operator='%s'; value='%s'; unary='%v'; not='%s'", f, o, v, u, n)
 
           }
         }
