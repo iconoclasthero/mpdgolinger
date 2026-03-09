@@ -2974,6 +2974,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //          if f != "" && o != "" && v != "" && ( n == "" || n == "!" ) && uok {
 //            conditions = append(conditions, Condition{f, o, v, u, n})
 //          }
+          log.Printf("u='%v'", u)
           if ! uok {
             u = false
           }
