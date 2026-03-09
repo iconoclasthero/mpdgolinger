@@ -2974,20 +2974,18 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //          if f != "" && o != "" && v != "" && ( n == "" || n == "!" ) && uok {
 //            conditions = append(conditions, Condition{f, o, v, u, n})
 //          }
+          if ! uok {
+            u = false
+          }
           log.Printf("f='%s'", f)
           log.Printf("o='%s'", o)
           log.Printf("v='%s'", v)
-          log.Printf("u='%v'", u)
-
           log.Printf("n='%s'", n)
           if n != "" && n != "!" {
             js["response"] = "error"
             js["error"] = "Not operator may only be '!' or null"
             out, _ := json.Marshal(js)
             return []string{string(out)}
-          }
-          if ! uok {
-            u = false
           }
           if u { // unary operator
               if f != "" && v != "" && (n == "" || n == "!") {
