@@ -2980,6 +2980,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           log.Printf("f='%s'", f)
           log.Printf("o='%s'", o)
           log.Printf("v='%s'", v)
+          log.Printf("u='%v'", u)
           log.Printf("n='%s'", n)
           if n != "" && n != "!" {
             js["response"] = "error"
