@@ -2453,7 +2453,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           if err != nil {
             return err
           }
-          pllength,_ := strconv.Atoi(status["playlistlength"])
+          plBefore,_ := strconv.Atoi(status["playlistlength"])
 
         // ======================
         // parse argsIface
@@ -2485,7 +2485,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             if interval {
               if e == 0 {
                 start = s
-                end   = pllength
+                end   = plBefore
               } else if e > 0 {
                 start = s
                 end   = s + e
@@ -2528,7 +2528,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
           if interval {
             if e == 0 {
               start = s
-              end   = pllength
+              end   = plBefore
             } else if e > 0 {
               start = s
               end   = s + e
@@ -2602,6 +2602,13 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
             return err
           }
         }
+
+        status2, err := c.Status()
+        if err != nil {
+          return err
+        }
+        plAfter, _ := strconv.Atoi(status2["playlistlength"])
+        js["deleted"] = plBefore - plAfter
         return nil
       },"delete")
 
