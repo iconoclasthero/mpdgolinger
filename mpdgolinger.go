@@ -31,6 +31,7 @@ import (
   "encoding/json"
   "encoding/base64"
   "net/url"
+  "sort"
 )
 
 //const version = "0.03.0"
@@ -223,7 +224,7 @@ var (
 
    mpdMapPool = sync.Pool{
     New: func() any {
-      return make(map[string]string, 16)
+      return make(map[string]string, 32)
     },
   }
 
@@ -900,11 +901,12 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
   var current map[string]string
 
   for {
-    line, err := reader.ReadString('\n')
+    lineBytes, err := reader.ReadSlice('\n')
     if err != nil {
       return nil, err
     }
-    line = strings.TrimSpace(line)
+    lineBytes = bytes.TrimSpace(lineBytes)
+    line := string(lineBytes)
     if line == "OK" {
       break
     }
@@ -932,10 +934,15 @@ func mpdSearch(conn net.Conn, cmd string, conds []Condition) ([]map[string]strin
       continue
     }
 
-    idx := strings.Index(line, ": ")
-    if idx < 0 {
-      continue
+//    idx := strings.Index(line, ": ")
+//    if idx < 0 {
+//      continue
+//    }
+    idx := strings.IndexByte(line, ':')
+    if idx < 0 || idx+1 >= len(line) || line[idx+1] != ' ' {
+        continue
     }
+
     if current == nil {
       continue
     }
@@ -2304,6 +2311,312 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         return []string{string(out)}
       //// case "playlist" /////////////////////////////////////////////
 
+
+//      case "delete":
+//        type delrange struct {
+//          start int
+//          end   int
+//        }
+//
+//        var dr []delrange
+//
+//        for _,m := range req {
+//
+//          r,_ := m["range"].(string)
+//          parts := strings.SplitN(r,":",2)
+//          if len(parts) != 2 {
+//            return []string{`{"response":"error","error":"bad range"}`}
+//          }
+//
+//          s,_ := strconv.Atoi(parts[0])
+//          e,_ := strconv.Atoi(parts[1])
+//
+//          interval,_ := m["int"].(bool)
+//
+//          var start,end int
+//
+//          if interval {
+//            if e == 0 {
+//              start = s
+//              end   = 0
+//            } else if e > 0 {
+//              start = s
+//              end   = s + e
+//            } else {
+//              start = s + e
+//              end   = s
+//            }
+//
+//          } else {
+//            if e == 0 {
+//              start = s
+//              end   = s
+//            } else if s <= e {
+//              start = s
+//              end   = e
+//            } else {
+//              start = e
+//              end   = s
+//            }
+//          }
+//
+//          if start < 1 {
+//            start = 1
+//          }
+//
+//          dr = append(dr,delrange{start:start,end:end})
+//
+//        }
+//
+//        sort.Slice(dr,func(i,j int) bool{
+//          return dr[i].start > dr[j].start
+//        })
+//
+//        var clean []delrange
+//        maxend := -1
+//
+//        for _,r := range dr {
+//          if r.end > 0 && r.end <= maxend {
+//            continue
+//          }
+//          clean = append(clean,r)
+//          if r.end > maxend {
+//            maxend = r.end
+//          }
+//        }
+//
+//        dr = clean
+//
+//        err := mpdDo(func(c *mpd.Client) error {
+//
+//          status,err := c.Status()
+//          if err != nil {
+//            return err
+//          }
+//
+//          plLength,_ := strconv.Atoi(status["playlistlength"])
+//
+//          for _,r := range dr {
+//
+//            startZI := r.start - 1
+//
+//            var endZI int
+//
+//            if r.end == 0 {
+//              endZI = plLength
+//            } else if r.end > 0 {
+//              endZI = r.end
+//            } else {
+//              endZI = -1
+//            }
+//
+//            if endZI < 0 {
+//              err = c.Delete(startZI)
+//            } else {
+//              err = c.Delete(startZI,endZI)
+//            }
+//
+//            if err != nil {
+//              return err
+//            }
+//
+//          }
+//
+//          return nil
+//
+//        },"delete")
+//
+//        if err != nil {
+//          js["response"] = "error"
+//          js["error"] = err.Error()
+//        } else {
+//          js["response"] = "ok"
+//        }
+//
+//        out,_ := json.Marshal(js)
+//        return []string{string(out)}
+//
+//      //// case "delete" /////////////////////////////////////////////
+      case "delete":
+
+        type delrange struct {
+          start int
+          end   int
+        }
+
+        var dr []delrange
+//        var pllength int
+
+        err := mpdDo(func(c *mpd.Client) error {
+
+          status, err := c.Status()
+          if err != nil {
+            return err
+          }
+          pllength,_ := strconv.Atoi(status["playlistlength"])
+
+        // ======================
+        // parse argsIface
+        // ======================
+        switch v := argsIface.(type) {
+
+        case []interface{}:
+          for i,item := range v {
+            m, ok := item.(map[string]interface{})
+            if !ok {
+              return fmt.Errorf("args[%d] not object",i)
+            }
+
+            r, ok := m["range"].(string)
+            if !ok {
+              return fmt.Errorf("args[%d] missing range",i)
+            }
+
+            interval, _ := m["int"].(bool)
+            dr = append(dr,delrange{start:0,end:0}) // placeholder, will parse next
+            dr[len(dr)-1].start = 0
+            dr[len(dr)-1].end = 0
+
+            parts := strings.SplitN(r,":",2)
+            s,_ := strconv.Atoi(parts[0])
+            e,_ := strconv.Atoi(parts[1])
+
+            var start,end int
+            if interval {
+              if e == 0 {
+                start = s
+                end   = pllength
+              } else if e > 0 {
+                start = s
+                end   = s + e
+              } else {
+                start = s + e
+                end   = s
+              }
+            } else {
+              if e == 0 {
+                start = s
+                end   = s
+              } else if s <= e {
+                start = s
+                end   = e
+              } else {
+                start = e
+                end   = s
+              }
+            }
+
+            if start < 1 {
+              start = 1
+            }
+
+            dr[len(dr)-1] = delrange{start:start,end:end}
+          }
+
+        case map[string]interface{}:
+          r, ok := v["range"].(string)
+          if !ok {
+            return fmt.Errorf("missing range")
+          }
+          interval, _ := v["int"].(bool)
+          s,e := 0,0
+          parts := strings.SplitN(r,":",2)
+          s,_ = strconv.Atoi(parts[0])
+          e,_ = strconv.Atoi(parts[1])
+
+          var start,end int
+          if interval {
+            if e == 0 {
+              start = s
+              end   = pllength
+            } else if e > 0 {
+              start = s
+              end   = s + e
+            } else {
+              start = s + e
+              end   = s
+            }
+          } else {
+            if e == 0 {
+              start = s
+              end   = s
+            } else if s <= e {
+              start = s
+              end   = e
+            } else {
+              start = e
+              end   = s
+            }
+          }
+          if start < 1 {
+            start = 1
+          }
+          dr = append(dr, delrange{start:start,end:end})
+
+        case string:
+          n,_ := strconv.Atoi(v)
+          dr = append(dr, delrange{start:n,end:n})
+
+        case float64:
+          dr = append(dr, delrange{start:int(v),end:int(v)})
+
+        default:
+          fmt.Errorf("invalid args type")
+        }
+
+      // ======================
+      // merge overlapping / adjacent
+      // ======================
+      sort.Slice(dr, func(i,j int) bool { return dr[i].start < dr[j].start })
+
+      var merged []delrange
+      for _, r := range dr {
+        if len(merged) == 0 {
+          merged = append(merged,r)
+          continue
+        }
+        last := &merged[len(merged)-1]
+        if (r.start <= last.end+1 && last.end != 0 && r.end != 0) || last.end == 0 {
+          if r.end > last.end {
+            last.end = r.end
+          }
+          continue
+        }
+        merged = append(merged,r)
+      }
+
+      // ======================
+      // sort descending for safe delete
+      // ======================
+      sort.Slice(merged, func(i,j int) bool { return merged[i].start > merged[j].start })
+
+      // ======================
+      // execute deletes
+      // ======================
+
+        for _, r := range merged {
+          startZI := r.start - 1
+          var endZI int
+          endZI = r.end
+          if err := c.Delete(startZI,endZI); err != nil {
+            return err
+          }
+        }
+        return nil
+      },"delete")
+
+      if err != nil {
+        js["response"] = "error"
+        js["error"] = err.Error()
+      } else {
+        js["response"] = "ok"
+      }
+
+      out,_ := json.Marshal(js)
+      return []string{string(out)}
+      //// case "delete" /////////////////////////////////////////////
+
+
       case "play":
         var songPos int
         var songID  int
@@ -2917,7 +3230,7 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
   case "search":
     switch cmd {
       case "playlistsearch","find","search":
-        var conditions []Condition
+//        var conditions []Condition
         if argsIface == nil {
           js["response"]="error"
           js["error"]="missing args"
@@ -2960,52 +3273,91 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //        if len(conditions) == 0 {
 //          log.Fatal("no conditions supplied")
 //        }
-        parseErr := ""
-        for _, item := range raw {
+        conditions := make([]Condition, 0, len(raw))
+
+//        parseErr := ""
+        for i, item := range raw {
           m, ok := item.(map[string]interface{})
           if !ok {
-            continue
+            js["response"] = "error"
+            js["error"] = fmt.Sprintf("condition[%d] is not an object", i)
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+//            continue
           }
           f, _ := m["field"].(string)
           o, _ := m["op"].(string)
           v, _ := m["value"].(string)
-          u, uok := m["unary"].(bool)
+          u, _ := m["unary"].(bool)
           n, _ := m["not"].(string)
-//          if f != "" && o != "" && v != "" && ( n == "" || n == "!" ) && uok {
-//            conditions = append(conditions, Condition{f, o, v, u, n})
-//          }
-          if ! uok {
-            u = false
-          }
+
           dbg("f='%s'", f)
           dbg("o='%s'", o)
           dbg("v='%s'", v)
           dbg("u='%v'", u)
           dbg("n='%s'", n)
+
+          if strings.ToLower(n) == "null" { n = "" }
+          if strings.ToLower(n) == "not" { n="!" }
           if n != "" && n != "!" {
             js["response"] = "error"
-            js["error"] = "Not operator may only be '!' or null"
+            js["error"] = fmt.Sprintf("Condition[%d]: 'not' operator may only be '!' or null (got '%s')", i, n)
             out, _ := json.Marshal(js)
             return []string{string(out)}
           }
-          if u { // unary operator
-            if f != "" && v != "" && (n == "" || n == "!") {
-              conditions = append(conditions, Condition{f, o, v, u, n})
-              if o != "" {
-                js["note"] = fmt.Sprintf("Additional operator '%s' supplied with %s unary; ignored.", o, f)
-              }
-            }
-          } else            if f != "" && o != "" && v != "" && (n == "" || n == "!") {
-              conditions = append(conditions, Condition{f, o, v, u, n})
-            } else {
-          parseErr = fmt.Sprintf("no conditions supplied: field='%s'; operator='%s'; value='%s'; unary='%v'; not='%s'", f, o, v, u, n)
+//          if u { // unary operator
+//            if f != "" && v != "" && (n == "" || n == "!") {
+//              if o != "" {
+//                js["note"] = fmt.Sprintf("Additional operator '%s' supplied with %s unary; ignored.", o, f)
+//                o = ""
+//              }
+//              conditions = append(conditions, Condition{f, o, v, u, n})
+//            }
+//          } else            if f != "" && o != "" && v != "" && (n == "" || n == "!") {
+//              conditions = append(conditions, Condition{f, o, v, u, n})
+//            } else {
+//          parseErr = fmt.Sprintf("no conditions supplied: field='%s'; operator='%s'; value='%s'; unary='%v'; not='%s'", f, o, v, u, n)
+//
+//          }
 
+          if f == "" {
+            js["response"] = "error"
+            js["error"] = fmt.Sprintf("condition[%d]: field missing", i)
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
           }
+
+          if v == "" {
+            js["response"] = "error"
+            js["error"] = fmt.Sprintf("condition[%d]: value missing", i)
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+          }
+
+          if u {
+            if o != "" {
+              js["note"] = fmt.Sprintf("condition[%d]: operator '%s' ignored for unary filter '%s'", i, o, f)
+              o = ""
+            }
+          } else if o == "" {
+            js["response"] = "error"
+            js["error"] = fmt.Sprintf("condition[%d]: operator cannot be empty when unary=false", i)
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+          }
+
+          conditions = append(conditions, Condition{
+            Field: f,
+            Op:    o,
+            Value: v,
+            Unary: u,
+            Not:   n,
+          })
         }
 
         if len(conditions) == 0 {
           js["response"] = "error"
-          js["error"] = parseErr
+          js["error"] = "No valid conditions supplied"
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
