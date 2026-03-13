@@ -2419,6 +2419,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 //      //// case "add" /////////////////////////////////////////////
 
       case "add":
+log.Printf("Started case \"add\"")
 
         type AddItem struct {
           URI string          `json:"uri"`
