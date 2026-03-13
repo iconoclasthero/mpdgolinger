@@ -2450,6 +2450,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
           return []string{string(out)}
         }
         defer conn.Close()
+log.Printf("Connected to directDialMPD")
 
         w := bufio.NewWriter(conn)
         r := bufio.NewReader(conn)
