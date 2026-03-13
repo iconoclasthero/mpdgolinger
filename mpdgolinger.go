@@ -2486,7 +2486,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
           abs = append(abs,it)
         }
-
+log.Printf("abs: %s", abs)
         fmt.Fprintln(w,"command_list_begin")
 
         // capture playlist length before
