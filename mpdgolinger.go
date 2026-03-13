@@ -2558,21 +2558,33 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
           dbg("MPD: %s",line)
 
+//          if strings.HasPrefix(line,"playlistlength:") {
+//
+//            parts := strings.Split(strings.TrimSpace(line),": ")
+//            if len(parts) == 2 {
+//
+//              n,_ := strconv.Atoi(parts[1])
+//
+//              if found == 0 {
+//                plBefore = n
+//              } else {
+//                plAfter = n
+//              }
+//
+//              found++
+//            }
+//          }
           if strings.HasPrefix(line,"playlistlength:") {
 
-            parts := strings.Split(strings.TrimSpace(line),": ")
-            if len(parts) == 2 {
+            val := strings.TrimSpace(strings.TrimPrefix(line,"playlistlength:"))
+            n,_ := strconv.Atoi(val)
 
-              n,_ := strconv.Atoi(parts[1])
-
-              if found == 0 {
-                plBefore = n
-              } else {
-                plAfter = n
-              }
-
-              found++
+            if found == 0 {
+              plBefore = n
+            } else {
+              plAfter = n
             }
+            found++
           }
 
           if strings.HasPrefix(line,"ACK") {
