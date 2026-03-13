@@ -2293,132 +2293,130 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
       //// case "playlist" /////////////////////////////////////////////
 
 
-//      case "delete":
-//        type delrange struct {
-//          start int
-//          end   int
+//      case "add":
+//
+//        type AddItem struct {
+//          URI string          `json:"uri"`
+//          Pos json.RawMessage `json:"pos"`
 //        }
 //
-//        var dr []delrange
+//        var items []AddItem
 //
-//        for _,m := range req {
+//        // args may be a single URI string
+//        var single string
+//        if err := json.Unmarshal(req.Args, &single); err == nil {
+//          items = []AddItem{{URI: single}}
+//        } else {
 //
-//          r,_ := m["range"].(string)
-//          parts := strings.SplitN(r,":",2)
-//          if len(parts) != 2 {
-//            return []string{`{"response":"error","error":"bad range"}`}
-//          }
-//
-//          s,_ := strconv.Atoi(parts[0])
-//          e,_ := strconv.Atoi(parts[1])
-//
-//          interval,_ := m["int"].(bool)
-//
-//          var start,end int
-//
-//          if interval {
-//            if e == 0 {
-//              start = s
-//              end   = 0
-//            } else if e > 0 {
-//              start = s
-//              end   = s + e
-//            } else {
-//              start = s + e
-//              end   = s
-//            }
-//
-//          } else {
-//            if e == 0 {
-//              start = s
-//              end   = s
-//            } else if s <= e {
-//              start = s
-//              end   = e
-//            } else {
-//              start = e
-//              end   = s
-//            }
-//          }
-//
-//          if start < 1 {
-//            start = 1
-//          }
-//
-//          dr = append(dr,delrange{start:start,end:end})
-//
-//        }
-//
-//        sort.Slice(dr,func(i,j int) bool{
-//          return dr[i].start > dr[j].start
-//        })
-//
-//        var clean []delrange
-//        maxend := -1
-//
-//        for _,r := range dr {
-//          if r.end > 0 && r.end <= maxend {
-//            continue
-//          }
-//          clean = append(clean,r)
-//          if r.end > maxend {
-//            maxend = r.end
+//          // otherwise expect array of objects
+//          if err := json.Unmarshal(req.Args, &items); err != nil {
+//            js["response"] = "error"
+//            js["error"] = err.Error()
+//            out,_ := json.Marshal(js)
+//            return []string{string(out)}
 //          }
 //        }
 //
-//        dr = clean
-//
-//        err := mpdDo(func(c *mpd.Client) error {
-//
-//          status,err := c.Status()
-//          if err != nil {
-//            return err
-//          }
-//
-//          plLength,_ := strconv.Atoi(status["playlistlength"])
-//
-//          for _,r := range dr {
-//
-//            startZI := r.start - 1
-//
-//            var endZI int
-//
-//            if r.end == 0 {
-//              endZI = plLength
-//            } else if r.end > 0 {
-//              endZI = r.end
-//            } else {
-//              endZI = -1
-//            }
-//
-//            if endZI < 0 {
-//              err = c.Delete(startZI)
-//            } else {
-//              err = c.Delete(startZI,endZI)
-//            }
-//
-//            if err != nil {
-//              return err
-//            }
-//
-//          }
-//
-//          return nil
-//
-//        },"delete")
-//
+//        conn, err := directDialMPD()
 //        if err != nil {
 //          js["response"] = "error"
 //          js["error"] = err.Error()
-//        } else {
-//          js["response"] = "ok"
+//          out,_ := json.Marshal(js)
+//          return []string{string(out)}
 //        }
+//        defer conn.Close()
+//
+//        w := bufio.NewWriter(conn)
+//        r := bufio.NewReader(conn)
+//
+//        fmt.Fprintln(w,"command_list_begin")
+//
+//        // reverse so ordering is preserved when inserting
+//        for i := len(items)-1; i >= 0; i-- {
+//
+//          uri := items[i].URI
+//          if uri == "" {
+//            continue
+//          }
+//
+//          // append if no pos
+//          if len(items[i].Pos) == 0 {
+//
+////            fmt.Fprintf(w,"add \"%s\"\n",uri)
+//            cmd := (&mpd.Client{}).Command("add %s", uri)
+//            fmt.Fprintln(w, cmd.String())
+//            continue
+//          }
+//
+//          // try numeric position
+//          var posNum int
+//          if err := json.Unmarshal(items[i].Pos,&posNum); err == nil {
+//
+//            if posNum < 0 {
+////              fmt.Fprintf(w,"add \"%s\"\n",uri)
+//              cmd := (&mpd.Client{}).Command("add %s", uri)
+//              fmt.Fprintln(w, cmd.String())
+//            } else {
+//              zi := posNum - 1
+////              fmt.Fprintf(w,"add \"%s\" %d\n",uri,zi)
+//              cmd := (&mpd.Client{}).Command("add %s %d", uri, zi)
+//              fmt.Fprintln(w, cmd.String())
+//            }
+//
+//            continue
+//          }
+//
+//          // try relative string
+//          var posStr string
+//          if err := json.Unmarshal(items[i].Pos,&posStr); err == nil {
+//
+//            if strings.HasPrefix(posStr,"+") || strings.HasPrefix(posStr,"-") {
+////              fmt.Fprintf(w,"add \"%s\" %s\n",uri,posStr)
+//              cmd := (&mpd.Client{}).Command("add %s %s", uri, posStr)
+//              fmt.Fprintln(w, cmd.String())
+//              continue
+//            }
+//
+//            js["response"] = "error"
+//            js["error"] = "invalid relative position"
+//            out,_ := json.Marshal(js)
+//            return []string{string(out)}
+//          }
+//
+//        }
+//
+//        fmt.Fprintln(w,"command_list_end")
+//        w.Flush()
+//
+//        for {
+//
+//          line,err := r.ReadString('\n')
+//          if err != nil {
+//            js["response"] = "error"
+//            js["error"] = err.Error()
+//            out,_ := json.Marshal(js)
+//            return []string{string(out)}
+//          }
+//
+//          dbg("MPD: %s",line)
+//
+//          if strings.HasPrefix(line,"ACK") {
+//            js["response"] = "error"
+//            js["error"] = strings.TrimSpace(line)
+//            out,_ := json.Marshal(js)
+//            return []string{string(out)}
+//          }
+//
+//          if strings.HasPrefix(line,"OK") {
+//            break
+//          }
+//        }
+//
+//        js["response"] = "ok"
 //
 //        out,_ := json.Marshal(js)
 //        return []string{string(out)}
-//
-//      //// case "delete" /////////////////////////////////////////////
-
+//      //// case "add" /////////////////////////////////////////////
 
       case "add":
 
@@ -2456,43 +2454,27 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         w := bufio.NewWriter(conn)
         r := bufio.NewReader(conn)
 
-        fmt.Fprintln(w,"command_list_begin")
+        var abs []AddItem
+        var rel []AddItem
 
-        // reverse so ordering is preserved when inserting
-        for i := len(items)-1; i >= 0; i-- {
+        // classify absolute vs relative
+        for _,it := range items {
 
-          uri := items[i].URI
-          if uri == "" {
+          if len(it.Pos) == 0 {
+            abs = append(abs,it)
             continue
           }
 
-          // append if no pos
-          if len(items[i].Pos) == 0 {
-
-            fmt.Fprintf(w,"add \"%s\"\n",uri)
-            continue
-          }
-
-          // try numeric position
           var posNum int
-          if err := json.Unmarshal(items[i].Pos,&posNum); err == nil {
-
-            if posNum < 0 {
-              fmt.Fprintf(w,"add \"%s\"\n",uri)
-            } else {
-              zi := posNum - 1
-              fmt.Fprintf(w,"add \"%s\" %d\n",uri,zi)
-            }
-
+          if err := json.Unmarshal(it.Pos,&posNum); err == nil {
+            abs = append(abs,it)
             continue
           }
 
-          // try relative string
           var posStr string
-          if err := json.Unmarshal(items[i].Pos,&posStr); err == nil {
-
+          if err := json.Unmarshal(it.Pos,&posStr); err == nil {
             if strings.HasPrefix(posStr,"+") || strings.HasPrefix(posStr,"-") {
-              fmt.Fprintf(w,"add \"%s\" %s\n",uri,posStr)
+              rel = append(rel,it)
               continue
             }
 
@@ -2502,10 +2484,67 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
             return []string{string(out)}
           }
 
+          abs = append(abs,it)
         }
+
+        fmt.Fprintln(w,"command_list_begin")
+
+        // capture playlist length before
+        fmt.Fprintln(w,"status")
+
+        // ---- absolute inserts (reversed) ----
+        for i := len(abs)-1; i >= 0; i-- {
+
+          uri := abs[i].URI
+          if uri == "" {
+            continue
+          }
+
+          if len(abs[i].Pos) == 0 {
+            cmd := (&mpd.Client{}).Command("add %s", uri)
+            fmt.Fprintln(w, cmd.String())
+            continue
+          }
+
+          var posNum int
+          if err := json.Unmarshal(abs[i].Pos,&posNum); err == nil {
+
+            if posNum < 0 {
+              cmd := (&mpd.Client{}).Command("add %s", uri)
+              fmt.Fprintln(w, cmd.String())
+            } else {
+              zi := posNum - 1
+              cmd := (&mpd.Client{}).Command("add %s %d", uri, zi)
+              fmt.Fprintln(w, cmd.String())
+            }
+          }
+        }
+
+        // ---- relative inserts (reversed) ----
+        for i := len(rel)-1; i >= 0; i-- {
+
+          uri := rel[i].URI
+          if uri == "" {
+            continue
+          }
+
+          var posStr string
+          if err := json.Unmarshal(rel[i].Pos,&posStr); err == nil {
+
+            cmd := (&mpd.Client{}).Command("add %s %s", uri, posStr)
+            fmt.Fprintln(w, cmd.String())
+          }
+        }
+
+        // capture playlist length after
+        fmt.Fprintln(w,"status")
 
         fmt.Fprintln(w,"command_list_end")
         w.Flush()
+
+        var plBefore int
+        var plAfter int
+        found := 0
 
         for {
 
@@ -2518,6 +2557,23 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
           }
 
           dbg("MPD: %s",line)
+
+          if strings.HasPrefix(line,"playlistlength:") {
+
+            parts := strings.Split(strings.TrimSpace(line),": ")
+            if len(parts) == 2 {
+
+              n,_ := strconv.Atoi(parts[1])
+
+              if found == 0 {
+                plBefore = n
+              } else {
+                plAfter = n
+              }
+
+              found++
+            }
+          }
 
           if strings.HasPrefix(line,"ACK") {
             js["response"] = "error"
@@ -2532,12 +2588,12 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         }
 
         js["response"] = "ok"
+        js["added"] = plAfter - plBefore
 
         out,_ := json.Marshal(js)
         return []string{string(out)}
+
       //// case "add" /////////////////////////////////////////////
-
-
 
       case "delete":
 
@@ -2547,7 +2603,6 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         }
 
         var dr []delrange
-//        var pllength int
 
         err := mpdDo(func(c *mpd.Client) error {
 
