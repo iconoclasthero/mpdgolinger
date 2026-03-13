@@ -260,35 +260,7 @@ var (
 ) // var
 
 
-/* wswatcher shit
-
-
-//type wsCtx struct {
-//  conn           *websocket.Conn
-//  subscribed     bool
-//  watcherRunning bool
-//}
-
-type wsCtx struct {
-  conns           map[*websocket.Conn]struct{}
-  mu              sync.Mutex
-  watcherRunning  bool
-}
-
-var wsClients = struct{
-  mu    sync.Mutex
-  conns map[*websocket.Conn]struct{}
-}{conns: make(map[*websocket.Conn]struct{})}
-
-type wsMessage map[string]interface{}
-var wsChan = make(chan wsMessage, 100) // buffered to avoid blocking
-
-*/
-
-//type wsCtx struct {
-//  conn *websocket.Conn
-//}
-type     wsCtx    struct {
+type       wsCtx      struct {
      conn             *websocket.Conn
      mu               sync.Mutex
      conns            map[*websocket.Conn]struct{}
@@ -296,11 +268,16 @@ type     wsCtx    struct {
      writeMu          sync.Mutex
 }
 
+type      Request     struct {
+     System string          `json:"system"`
+     Cmd    string          `json:"cmd"`
+     Args   json.RawMessage `json:"args"`
+}
 
-type IdleEvent struct {
-  Subsystem string
-  SongID    string
-  Status    map[string]string
+type     IdleEvent    struct {
+     Subsystem        string
+     SongID           string
+     Status           map[string]string
 }
 
 var idleEvents = make(chan IdleEvent, 32)
@@ -1432,10 +1409,14 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     var js map[string]interface{}
     if err := json.Unmarshal(msgBytes, &js); err == nil {
       log.Printf("[WS] received JSON: %s", msg)
-       // log raw incoming message for debugging
-       log.Printf("[WS] incoming: msg=%s", string(msg))
+      // log raw incoming message for debugging
+      dbg("[WS] incoming: msg=%s", string(msg))
 
-       responses := verbProcessorJSON(js, ctx)
+      var req Request
+      json.Unmarshal(msgBytes, &req)
+
+      responses := verbProcessorJSON(js, req, ctx)
+
       for _, line := range responses {
         if line == "" {
           continue
@@ -1890,7 +1871,7 @@ func wsWatcher(ctx *wsCtx) {
 
 // verbProcessorJSON handles JSON commands from the WebSocket and returns
 // JSON-formatted responses. Does NOT send over the WebSocket — wsHandler does that.
-func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
+func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []string {
 
   // --- validate cmd ---
   cmdIface, ok := js["cmd"]
@@ -2437,6 +2418,127 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
 //        return []string{string(out)}
 //
 //      //// case "delete" /////////////////////////////////////////////
+
+
+      case "add":
+
+        type AddItem struct {
+          URI string          `json:"uri"`
+          Pos json.RawMessage `json:"pos"`
+        }
+
+        var items []AddItem
+
+        // args may be a single URI string
+        var single string
+        if err := json.Unmarshal(req.Args, &single); err == nil {
+          items = []AddItem{{URI: single}}
+        } else {
+
+          // otherwise expect array of objects
+          if err := json.Unmarshal(req.Args, &items); err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+            out,_ := json.Marshal(js)
+            return []string{string(out)}
+          }
+        }
+
+        conn, err := directDialMPD()
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+          out,_ := json.Marshal(js)
+          return []string{string(out)}
+        }
+        defer conn.Close()
+
+        w := bufio.NewWriter(conn)
+        r := bufio.NewReader(conn)
+
+        fmt.Fprintln(w,"command_list_begin")
+
+        // reverse so ordering is preserved when inserting
+        for i := len(items)-1; i >= 0; i-- {
+
+          uri := items[i].URI
+          if uri == "" {
+            continue
+          }
+
+          // append if no pos
+          if len(items[i].Pos) == 0 {
+
+            fmt.Fprintf(w,"add \"%s\"\n",uri)
+            continue
+          }
+
+          // try numeric position
+          var posNum int
+          if err := json.Unmarshal(items[i].Pos,&posNum); err == nil {
+
+            if posNum < 0 {
+              fmt.Fprintf(w,"add \"%s\"\n",uri)
+            } else {
+              zi := posNum - 1
+              fmt.Fprintf(w,"add \"%s\" %d\n",uri,zi)
+            }
+
+            continue
+          }
+
+          // try relative string
+          var posStr string
+          if err := json.Unmarshal(items[i].Pos,&posStr); err == nil {
+
+            if strings.HasPrefix(posStr,"+") || strings.HasPrefix(posStr,"-") {
+              fmt.Fprintf(w,"add \"%s\" %s\n",uri,posStr)
+              continue
+            }
+
+            js["response"] = "error"
+            js["error"] = "invalid relative position"
+            out,_ := json.Marshal(js)
+            return []string{string(out)}
+          }
+
+        }
+
+        fmt.Fprintln(w,"command_list_end")
+        w.Flush()
+
+        for {
+
+          line,err := r.ReadString('\n')
+          if err != nil {
+            js["response"] = "error"
+            js["error"] = err.Error()
+            out,_ := json.Marshal(js)
+            return []string{string(out)}
+          }
+
+          dbg("MPD: %s",line)
+
+          if strings.HasPrefix(line,"ACK") {
+            js["response"] = "error"
+            js["error"] = strings.TrimSpace(line)
+            out,_ := json.Marshal(js)
+            return []string{string(out)}
+          }
+
+          if strings.HasPrefix(line,"OK") {
+            break
+          }
+        }
+
+        js["response"] = "ok"
+
+        out,_ := json.Marshal(js)
+        return []string{string(out)}
+      //// case "add" /////////////////////////////////////////////
+
+
+
       case "delete":
 
         type delrange struct {
@@ -3537,16 +3639,16 @@ func verbProcessorJSON(js map[string]interface{}, ctx *wsCtx) []string {
         // overwriting previous responses.
         // ------------------------------------------------------------
         run := func(cmd string, args interface{}) {
-          req := map[string]interface{}{
+          jsreq := map[string]interface{}{
             "system":"mpd",
             "cmd":cmd,
           }
 
           if args != nil {
-            req["args"] = args
+            jsreq["args"] = args
           }
 
-          resp := verbProcessorJSON(req, ctx)
+          resp := verbProcessorJSON(jsreq, req, ctx)
 
           var tmp []string
           if err := json.Unmarshal([]byte(resp[0]), &tmp); err != nil {
