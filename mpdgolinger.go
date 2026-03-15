@@ -1350,7 +1350,11 @@ var globalWSCtx = &wsCtx{
 func wsHandler(w http.ResponseWriter, r *http.Request) {
   conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
     InsecureSkipVerify: true,
+    CompressionMode: websocket.CompressionContextTakeover, // or websocket.CompressionContextNone
   })
+
+  conn.SetReadLimit(512 * 1024) // 512 KB max frame size
+
   if err != nil {
     log.Printf("[WS] accept failed: %v", err)
     return
@@ -1403,7 +1407,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
       break
     }
 
+log.Printf("[WS] incoming raw size: %d bytes", len(msgBytes))
+
     msg := string(msgBytes)
+
+log.Printf("[WS] incoming decompressed size: %d bytes", len(msg))
 
     // detect JSON messages
     var js map[string]interface{}
