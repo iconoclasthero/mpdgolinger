@@ -1351,6 +1351,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
     InsecureSkipVerify: true,
     CompressionMode: websocket.CompressionContextTakeover, // or websocket.CompressionContextNone
+    CompressionThreshold: 1024,
   })
 
   conn.SetReadLimit(512 * 1024) // 512 KB max frame size
