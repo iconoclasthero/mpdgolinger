@@ -1355,6 +1355,7 @@ log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
     CompressionThreshold: 1024,
   })
 log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
+log.Printf("WS extensions negotiated: %v", conn)
 
   conn.SetReadLimit(512 * 1024) // 512 KB max frame size
 
