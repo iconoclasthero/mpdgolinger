@@ -2451,7 +2451,7 @@ log.Printf("Started case \"add\"")
           }
         }
 
-log.Printf("[MPD add] received %d tracks", len(req.Args))
+log.Printf("[MPD add] received %d tracks", len(items))
 
         conn, err := directDialMPD()
         if err != nil {
@@ -2495,7 +2495,7 @@ log.Printf("Connected to directDialMPD")
             out,_ := json.Marshal(js)
             return []string{string(out)}
           }
-log.Printf("[MPD add] received %d tracks", len(req.Args))
+log.Printf("[MPD add] received %d tracks", len(items))
 
           abs = append(abs,it)
         }
