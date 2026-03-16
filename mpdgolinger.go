@@ -1403,12 +1403,23 @@ log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
   }
 
   // ===== read loop keeps websocket alive =====
-  for {
-    _, msgBytes, err := conn.Read(r.Context())
-    if err != nil {
-      log.Printf("[WS] read error: %v", err)
-      break
-    }
+//  for {
+//    _, msgBytes, err := conn.Read(r.Context())
+//    if err != nil {
+//      log.Printf("[WS] read error: %v", err)
+//      break
+//    }
+
+for {
+  _, rws, err := conn.Reader(r.Context())
+  if err != nil {
+    log.Printf("[WS] read error: %v", err)
+    break
+  }
+
+  msgBytes, _ := io.ReadAll(rws)
+
+  log.Printf("[WS] payload size: %d bytes", len(msgBytes))
 
 log.Printf("[WS] incoming raw size: %d bytes", len(msgBytes))
 
