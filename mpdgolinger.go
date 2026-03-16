@@ -2522,7 +2522,7 @@ log.Printf("abs: %s", abs)
           var posNum int
           if err := json.Unmarshal(abs[i].Pos,&posNum); err == nil {
 
-            if posNum < 0 {
+            if posNum <= 0 {
               cmd := (&mpd.Client{}).Command("add %s", uri)
               fmt.Fprintln(w, cmd.String())
             } else {
