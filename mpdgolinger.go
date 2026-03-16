@@ -1418,7 +1418,18 @@ for {
     break
   }
 
-  msgBytes, _ := io.ReadAll(rws)
+//  msgBytes, _ := io.ReadAll(rws)
+var compressed bytes.Buffer
+tr := io.TeeReader(rws, &compressed)
+
+msgBytes, _ := io.ReadAll(tr)
+
+log.Printf(
+  "[WS] recv payload=%d compressed≈%d ratio≈%.2f",
+  len(msgBytes),
+  compressed.Len(),
+  float64(len(msgBytes))/float64(compressed.Len()),
+)
 
   log.Printf("[WS] payload size: %d bytes", len(msgBytes))
 
