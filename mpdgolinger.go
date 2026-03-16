@@ -1348,11 +1348,13 @@ var globalWSCtx = &wsCtx{
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
+log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
   conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
     InsecureSkipVerify: true,
     CompressionMode: websocket.CompressionContextTakeover, // or websocket.CompressionContextNone
     CompressionThreshold: 1024,
   })
+log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
 
   conn.SetReadLimit(512 * 1024) // 512 KB max frame size
 
