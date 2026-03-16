@@ -2428,7 +2428,6 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
       case "add":
 log.Printf("Started case \"add\"")
-log.Printf("[MPD add] received %d tracks", len(req.Args))
 
         type AddItem struct {
           URI string          `json:"uri"`
@@ -2451,6 +2450,8 @@ log.Printf("[MPD add] received %d tracks", len(req.Args))
             return []string{string(out)}
           }
         }
+
+log.Printf("[MPD add] received %d tracks", len(req.Args))
 
         conn, err := directDialMPD()
         if err != nil {
@@ -2494,6 +2495,7 @@ log.Printf("Connected to directDialMPD")
             out,_ := json.Marshal(js)
             return []string{string(out)}
           }
+log.Printf("[MPD add] received %d tracks", len(req.Args))
 
           abs = append(abs,it)
         }
