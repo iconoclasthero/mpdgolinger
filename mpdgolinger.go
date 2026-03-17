@@ -1348,14 +1348,13 @@ var globalWSCtx = &wsCtx{
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
-log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
   conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
     InsecureSkipVerify: true,
     CompressionMode: websocket.CompressionContextTakeover, // or websocket.CompressionContextNone
-    CompressionThreshold: 1024,
+//    CompressionThreshold: 1024,
   })
-log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
-log.Printf("WS extensions negotiated: %v", conn)
+
+  log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
 
   conn.SetReadLimit(512 * 1024) // 512 KB max frame size
 
@@ -1404,34 +1403,12 @@ log.Printf("WS extensions negotiated: %v", conn)
   }
 
   // ===== read loop keeps websocket alive =====
-//  for {
-//    _, msgBytes, err := conn.Read(r.Context())
-//    if err != nil {
-//      log.Printf("[WS] read error: %v", err)
-//      break
-//    }
-
-for {
-  _, rws, err := conn.Reader(r.Context())
-  if err != nil {
-    log.Printf("[WS] read error: %v", err)
-    break
-  }
-
-//  msgBytes, _ := io.ReadAll(rws)
-var compressed bytes.Buffer
-tr := io.TeeReader(rws, &compressed)
-
-msgBytes, _ := io.ReadAll(tr)
-
-log.Printf(
-  "[WS] recv payload=%d compressed≈%d ratio≈%.2f",
-  len(msgBytes),
-  compressed.Len(),
-  float64(len(msgBytes))/float64(compressed.Len()),
-)
-
-  log.Printf("[WS] payload size: %d bytes", len(msgBytes))
+  for {
+    _, msgBytes, err := conn.Read(r.Context())
+    if err != nil {
+      log.Printf("[WS] read error: %v", err)
+      break
+    }
 
 log.Printf("[WS] incoming raw size: %d bytes", len(msgBytes))
 
