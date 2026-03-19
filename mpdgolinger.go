@@ -1679,8 +1679,11 @@ if songChanged && len(allLogEntries) > 0 {
         lastPlaylistRev = ev.PlaylistRev
 
       msg := map[string]interface{}{
-        "type": "playlist_changed",
-        "playlist_rev": ev.PlaylistRev,
+        "system": ev.Subsystem,
+        "cmd": "changed",
+        "response": map[string]interface{} {
+          "playlist_rev": ev.PlaylistRev,
+        },
       }
       payload, _ := json.Marshal(msg)
       msgs = append(msgs, payload)
