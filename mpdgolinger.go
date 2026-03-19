@@ -139,6 +139,7 @@ type     PlayerV1     struct {
      SongPosition     int      `json:"song_position"`
      SongID           int      `json:"songID"`
      SongLength       int      `json:"song_length"`
+     PlaylistRev      int      `json:"playlist_rev"`
 }
 
 type    LingerV1      struct {
@@ -278,6 +279,7 @@ type     IdleEvent    struct {
      Subsystem        string
      SongID           string
      Status           map[string]string
+     PlaylistRev      int
 }
 
 var idleEvents = make(chan IdleEvent, 32)
@@ -407,6 +409,7 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     songZI                 := atoi(raw["song"])
     dst.Player.SongPosition = songZI + 1
     dst.Player.SongLength   = atoi(raw["playlistlength"])
+    dst.Player.PlaylistRev  = atoi(raw["playlist"])
     elapsed, _             := strconv.ParseFloat(raw["elapsed"], 64)
     duration, _            := strconv.ParseFloat(raw["duration"], 64)
     dst.Player.Elapsed      = elapsed
@@ -1479,9 +1482,12 @@ func wsWatcher(ctx *wsCtx) {
   // persistent state trackers
   var lastAlbumKey string
   var lastSongID string
+  var lastPlaylistRev int
 
-  for range idleEvents {
+//  for range idleEvents {
+  for ev := range idleEvents {
 
+    log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
     // --- fetch normalized status ---
     status, notes, err := MPDtags(nil, "status", "status")
     if err != nil {
@@ -1623,171 +1629,19 @@ func wsWatcher(ctx *wsCtx) {
       continue
     }
 
-////    // --- push to all subscribed connections (safe write) ---
-////    ctx.mu.Lock()
-////    for conn := range ctx.conns {
-////
-////      ctx.writeMu.Lock()
-////      dead := false
-////
-////      write := func(typ websocket.MessageType, payload []byte) bool {
-////        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-////        err := conn.Write(wctx, typ, payload)
-////        cancel()
-////
-////        if err != nil {
-////          log.Printf("[WS] write failed, removing conn: %v", err)
-////          conn.Close(websocket.StatusNormalClosure, "")
-////          dead = true
-////          return false
-////        }
-////        return true
-////      }
-////
-////      // push status
-////      if !write(websocket.MessageText, data) {
-////        ctx.writeMu.Unlock()
-////        delete(ctx.conns, conn)
-////        continue
-////      }
-////
-////      // push notes
-////      for _, note := range notes {
-////        if !write(websocket.MessageText, []byte(note)) {
-////          break
-////        }
-////      }
-////
-//////      // push album art if changed
-//////      if !dead && pushArt {
-//////        if len(img) > 0 {
-//////          if write(websocket.MessageBinary, img) {
-//////            log.Printf("[ART] pushed %d bytes", len(img))
-//////          }
-//////        } else {
-//////          // MUST push empty binary frame to clear stale art on client
-//////          if write(websocket.MessageBinary, []byte{}) {
-//////            log.Printf("[ART] pushed empty frame (clears client art)")
-//////          }
-//////        }
-//////      }
-////
-////      log.Println("[ANTI-SPAGHETTI] before added ctx.mu.Unlock()")
-////      ctx.mu.Unlock()
-////      log.Println("[ANTI-SPAGHETTI] before nested ctx.mu.Lock()")
-//////      ctx.mu.Lock()
-////      log.Println("[ANTI-SPAGHETTI] after cmmented-out nested ctx.mu.Lock()")
-////      for conn := range ctx.conns {
-////          ctx.writeMu.Lock()
-////          dead := false
-////
-////          write := func(typ websocket.MessageType, payload []byte) bool {
-////              wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-////              err := conn.Write(wctx, typ, payload)
-////              cancel()
-////              if err != nil {
-////                  log.Printf("[WS] write failed, removing conn: %v", err)
-////                  conn.Close(websocket.StatusNormalClosure, "")
-////                  dead = true
-////                  return false
-////              }
-////              return true
-////          }
-////
-////          // push album art if needed
-//////          if !dead && pushArt {
-//////              if len(img) > 0 {
-//////                  write(websocket.MessageBinary, img)
-//////              } else {
-//////                  write(websocket.MessageBinary, []byte{})
-//////              }
-//////          }
-////// TEMP TEST: disable album art writes
-////if false && !dead && pushArt {
-////    if len(img) > 0 {
-////        write(websocket.MessageBinary, img)
-////    } else {
-////        write(websocket.MessageBinary, []byte{})
-////    }
-////}
-////
-////          ctx.writeMu.Unlock()
-////      }
-////      ctx.mu.Unlock()
-////
-////      // push log data if any
-//////    if !dead && len(allLogEntries) > 0 {
-////      if songChanged && !dead && len(allLogEntries) > 0 {
-////        for _, entryData := range allLogEntries {
-////          if write(websocket.MessageText, entryData) {
-//////            log.Printf("[LOG] pushed %d bytes", len(entryData))
-////          }
-////        }
-////      }
-////
-////      ctx.writeMu.Unlock()
-////    }
-////    ctx.mu.Unlock()
-////
-////    time.Sleep(100 * time.Millisecond)
-////  }
-////} // func wsWatcher()
-//// --- push to all subscribed connections (safe write) ---
-//ctx.mu.Lock()
-//for conn := range ctx.conns {
-//
-//    ctx.writeMu.Lock()
-//    dead := false
-//
-//    write := func(typ websocket.MessageType, payload []byte) bool {
-//        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-//        err := conn.Write(wctx, typ, payload)
-//        cancel()
-//        if err != nil {
-//            log.Printf("[WS] write failed, removing conn: %v", err)
-//            conn.Close(websocket.StatusNormalClosure, "")
-//            dead = true
-//            return false
-//        }
-//        return true
+    var playlistChanged bool
+    var playlistRev int
+
+//    if ev.Subsystem == "playlist" {
+//      playlistChanged = true
+//      playlistRev = ev.PlaylistRev
 //    }
-//
-//    // push status
-//    if !write(websocket.MessageText, data) {
-//        ctx.writeMu.Unlock()
-//        delete(ctx.conns, conn)
-//        continue
-//    }
-//
-//    // push notes
-//    for _, note := range notes {
-//        if !write(websocket.MessageText, []byte(note)) {
-//            break
-//        }
-//    }
-//
-//    // TEMP TEST: disable album art writes
-//    if !dead && pushArt {
-//        if len(img) > 0 {
-//            write(websocket.MessageBinary, img)
-//        } else {
-//            write(websocket.MessageBinary, []byte{})
-//        }
-//    }
-//
-//    // push log data if any
-//    if songChanged && !dead && len(allLogEntries) > 0 {
-//        for _, entryData := range allLogEntries {
-//            write(websocket.MessageText, entryData)
-//        }
-//    }
-//
-//    ctx.writeMu.Unlock()
-//}
-//ctx.mu.Unlock()
-//}
-//time.Sleep(100 * time.Millisecond)
-//} // func wsWatcher()
+
+    if ev.Subsystem == "playlist" && ev.PlaylistRev != lastPlaylistRev {
+      playlistChanged = true
+      playlistRev = ev.PlaylistRev
+      lastPlaylistRev = ev.PlaylistRev
+    }
 
     // --- push to all subscribed connections ---
     ctx.mu.Lock()
@@ -1819,6 +1673,22 @@ func wsWatcher(ctx *wsCtx) {
             delete(ctx.conns, conn)
             continue
         }
+
+        if playlistChanged {
+          msg := map[string]interface{}{
+            "type": "playlist_changed",
+            "playlist_rev":  playlistRev,
+          }
+
+          payload, _ := json.Marshal(msg)
+
+          if !write(websocket.MessageText, payload) {
+            ctx.writeMu.Unlock()
+            delete(ctx.conns, conn)
+            continue
+          }
+        }
+
 
         // --- NOTES ---
         for _, note := range notes {
@@ -4935,17 +4805,16 @@ func runIdleLoop(w *mpd.Watcher) error {
           // return so outer code treats this as a status error and reconnects
           return err
         }
-        songID := status["songid"]
+        songID    := status["songid"]
         songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
+        plRev, _  := strconv.Atoi(status["playlist"])
 
-
-idleEvents <- IdleEvent{
-  Subsystem: subsystem,
-  SongID:    songID,
-  Status:    status,
-}
-
-
+        idleEvents <- IdleEvent{
+          Subsystem:   subsystem,
+          SongID:      songID,
+          Status:      status,
+          PlaylistRev: plRev,
+        }
 
         // Protect shared FSM state.
         state.mu.Lock()
