@@ -1905,7 +1905,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
   // --- system switch ---
   switch system {   // mpd, player; linger; wesocket//
-  case "mpd", "player":
+  case "mpd", "player", "playlist":
 
     switch cmd {
       case "json-log":
