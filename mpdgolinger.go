@@ -51,7 +51,7 @@ type       State      struct {
      blockOn          bool
      consume          bool
      lastAlbumKey     string
-     timer            TimerV1
+     pauseTimer       TimerV1
 } // type State struct
 
 type   derivedState   struct {
@@ -182,7 +182,7 @@ type     StatusV1     struct {
      Current          AudioV1   `json:"current"`
      Next             AudioV1   `json:"next"`
      Linger           LingerV1  `json:"linger"`
-     Timer            TimerV1   `json:"timer"`
+     PauseTimer       TimerV1   `json:"pause_timer"`
 }
 
 
@@ -449,14 +449,14 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     dst.Linger.LingerX      = atoi(raw["lingerx"])
     dst.Linger.LingerY      = atoi(raw["lingery"])
 
-    // --- timer ---
+    // --- pauseTimer ---
     state.mu.Lock()
-    log.Printf("[c2j] state.timer.Endtime: %s", state.timer.EndTime)
-    dst.Timer = TimerV1{
-      Active:    state.timer.Active,
-      Duration:  state.timer.Duration,
-      EndTime:   state.timer.EndTime,
-      Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
+    dbg("[c2j] state.pauseTimer.Endtime: %s", state.pauseTimer.EndTime)
+    dst.PauseTimer = TimerV1{
+      Active:    state.pauseTimer.Active,
+      Duration:  state.pauseTimer.Duration,
+      EndTime:   state.pauseTimer.EndTime,
+      Remaining: int(math.Max(0, time.Until(state.pauseTimer.EndTime).Seconds())),
     }
     state.mu.Unlock()
 
@@ -1522,29 +1522,29 @@ func wsWatcher(ctx *wsCtx) {
 
 
     switch ev.Subsystem {
-    case "timer":
+    case "pauseTimer":
       var (
         err error
         status map[string]string
         notes []string
       )
-      js := &StatusV1{}  // declare a fresh StatusV1 just for the timer case
+      js := &StatusV1{}  // declare a fresh StatusV1 just for the pauseTimer case
       // fetch MPD status first
       status, notes, err = MPDtags(nil, "status", "status")
       if err != nil {
-        log.Printf("wsWatcher MPDtags error in timer case: %v", err)
+        log.Printf("wsWatcher MPDtags error in pauseTimer case: %v", err)
         continue
       }
 
       if err := convert2json(status, js); err != nil {
-        log.Printf("wsWatcher convert2json error in timer case: %v", err)
+        log.Printf("wsWatcher convert2json error in pauseTimer case: %v", err)
         continue
       }
 
       // also add js to msgs
       data, err := json.Marshal(js)
       if err != nil {
-        log.Printf("[WS TIMER CASE marshal] %v", err)
+        log.Printf("[WS pauseTimer CASE marshal] %v", err)
         break
       }
       msgs = append(msgs, data)
@@ -1560,9 +1560,9 @@ func wsWatcher(ctx *wsCtx) {
       )
       log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
       // --- fetch normalized status ---
-//      status, notes, err := MPDtags(nil, "status", "status")
+//    status, notes, err := MPDtags(nil, "status", "status")
       status, n, err = MPDtags(nil, "status", "status")
-//      status, n, err = MPDtags(...)
+//    status, n, err = MPDtags(...)
       notes = n
       if err != nil {
         log.Printf("wsWatcher MPDtags error: %v", err)
@@ -1580,10 +1580,10 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("wsWatcher marshal error: %v", err)
         continue
       }
-msgs = append(msgs, data)
-for _, note := range notes {
-  msgs = append(msgs, []byte(note))
-}
+      msgs = append(msgs, data)
+      for _, note := range notes {
+        msgs = append(msgs, []byte(note))
+      }
 
       // --- fetch raw MPD song fields for album identity ---
       var albumKey string
@@ -1956,15 +1956,15 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
   }
 
   // --- system switch ---
-  switch system {   // mpd, player, playlist; linger; websocket; pulseaudio; search; timer //
-  case "timer":
+  switch system {   // mpd, player, playlist; linger; websocket; pulseaudio; search; pauseTimer //
+  case "pause_timer":
     state.mu.Lock()
     defer state.mu.Unlock()
 
     switch cmd {
       case "on":
         if ! state.MPDplaying {
-          js["error"] = "MPD timer cannot be set when mpd is not playing"
+          js["error"] = "pause_timer cannot be set when mpd is not playing"
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
@@ -1984,48 +1984,48 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
           return []string{string(out)}
         }
         dbg("The argsSeconds is an integer with value: %d", argsSeconds)
-        state.timer.Active = true
-        state.timer.Duration = argsSeconds
-        state.timer.EndTime = time.Now().Add(time.Duration(argsSeconds) * time.Second)
-        log.Printf("[vPJ] state.timer.EndTime: %s", state.timer.EndTime)
+        state.pauseTimer.Active = true
+        state.pauseTimer.Duration = argsSeconds
+        state.pauseTimer.EndTime = time.Now().Add(time.Duration(argsSeconds) * time.Second)
+        dbg("[vPJ] state.pauseTimer.EndTime: %s", state.pauseTimer.EndTime)
         // Inject event so wsWatcher can pick it up immediately
         select {
-        case idleEvents <- IdleEvent{Subsystem: "timer"}:
+        case idleEvents <- IdleEvent{Subsystem: "pauseTimer"}:
         default:
           // channel full, skip
         }
 
-        js["response"] = fmt.Sprintf("Timer set to %d, update status", argsSeconds)
+        js["response"] = fmt.Sprintf("Pause timer set to %d, update status", argsSeconds)
         out, _ := json.Marshal(js)
         return []string{string(out)}
       case "reset":
         if ! state.MPDplaying {
-          js["error"] = "MPD timer cannot be set when mpd is not playing"
+          js["error"] = "pause_timer cannot be set when mpd is not playing"
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
         if argsIface != nil {
-          js["notes"] = "system:timer cmd:reset & cmd:off do not take arguments"
+          js["notes"] = "system:pause_timer cmd:reset & cmd:off do not take arguments"
         }
-        if state.timer.Duration > 0 {
-          state.timer.Active = true
-          state.timer.EndTime = time.Now().Add(time.Duration(state.timer.Duration) * time.Second)
-          js["response"] = fmt.Sprintf("Timer reset to %d, update status", state.timer.Duration)
+        if state.pauseTimer.Duration > 0 {
+          state.pauseTimer.Active = true
+          state.pauseTimer.EndTime = time.Now().Add(time.Duration(state.pauseTimer.Duration) * time.Second)
+          js["response"] = fmt.Sprintf("Pause timer reset to %d, update status", state.pauseTimer.Duration)
         } else {
           js["response"] = "error"
-          js["error"] = "No existing timer to reset"
+          js["error"] = "No existing pause timer to reset"
         }
         out, _ := json.Marshal(js)
         return []string{string(out)}
       case "off":
         if argsIface != nil {
-          js["notes"] = "system:timer cmd:reset & cmd:off do not take arguments"
+          js["notes"] = "system:pause_timer cmd:reset & cmd:off do not take arguments"
         }
-        state.timer.Duration = 0
-        state.timer.Active = false
-        state.timer.EndTime = time.Time{}
-        state.timer.Remaining = 0
-        js["response"] = "Timer turned off"
+        state.pauseTimer.Duration = 0
+        state.pauseTimer.Active = false
+        state.pauseTimer.EndTime = time.Time{}
+        state.pauseTimer.Remaining = 0
+        js["response"] = "Pause timer turned off"
         out, _ := json.Marshal(js)
         return []string{string(out)}
       default:
@@ -4977,22 +4977,22 @@ func runIdleLoop(w *mpd.Watcher) error {
     case <-ticker.C:
       state.mu.Lock()
 
-      expired := state.timer.Active &&
-                 time.Now().After(state.timer.EndTime)
+      expired := state.pauseTimer.Active &&
+                 time.Now().After(state.pauseTimer.EndTime)
 
       if !expired {
         state.mu.Unlock()
         continue
       }
 
-      log.Printf("[timer] expired")
+      log.Printf("[pauseTimer] expired")
 
       shouldPause := state.MPDplaying
 
-      // clear timer state FIRST (under lock)
-      state.timer.Active = false
-      state.timer.Duration = 0
-      state.timer.EndTime = time.Time{}
+      // clear pauseTimer state FIRST (under lock)
+      state.pauseTimer.Active = false
+      state.pauseTimer.Duration = 0
+      state.pauseTimer.EndTime = time.Time{}
 
       state.mu.Unlock()
 
@@ -5000,10 +5000,10 @@ func runIdleLoop(w *mpd.Watcher) error {
       if shouldPause {
         err := mpdDo(func(c *mpd.Client) error {
           return c.Pause(true)
-        }, "timer-expire-pause")
+        }, "pauseTimer-expire-pause")
 
         if err != nil {
-          log.Printf("[timer] pause failed: %v", err)
+          log.Printf("[pauseTimer] pause failed: %v", err)
         }
       }
 
