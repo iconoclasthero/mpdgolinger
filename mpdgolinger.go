@@ -1482,20 +1482,6 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 func wsWatcher(ctx *wsCtx) {
   log.Println("wsWatcher started")
 
-// inside wsWatcher, top of for loop
-select {
-case <-time.After(0): // non-blocking placeholder
-default:
-}
-if state.timer.Active {
-    select {
-    case idleEvents <- IdleEvent{Subsystem: "timer"}:
-        // injected for wsWatcher
-    default:
-        // channel full, skip
-    }
-}
-
   // add this connection to the set
   ctx.mu.Lock()
   if ctx.conns == nil {
