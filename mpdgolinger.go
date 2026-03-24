@@ -1473,6 +1473,20 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 func wsWatcher(ctx *wsCtx) {
   log.Println("wsWatcher started")
 
+// inside wsWatcher, top of for loop
+select {
+case <-time.After(0): // non-blocking placeholder
+default:
+}
+if state.timer.Active {
+    select {
+    case idleEvents <- IdleEvent{Subsystem: "timer"}:
+        // injected for wsWatcher
+    default:
+        // channel full, skip
+    }
+}
+
   // add this connection to the set
   ctx.mu.Lock()
   if ctx.conns == nil {
@@ -1511,6 +1525,26 @@ func wsWatcher(ctx *wsCtx) {
 
 
     switch ev.Subsystem {
+    case "timer":
+      js := &StatusV1{}  // declare a fresh StatusV1 just for the timer case
+      // build timer info exactly like in StatusV1
+      state.mu.Lock()
+      js.Timer = TimerV1{
+        Active:    state.timer.Active,
+        Duration:  state.timer.Duration,
+        Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
+      }
+      state.mu.Unlock()
+      log.Printf("[WS TIMER CASE] %+v", js.Timer)
+
+      // also add js to msgs
+      data, err := json.Marshal(js)
+      if err != nil {
+        log.Printf("[WS TIMER CASE marshal] %v", err)
+        break
+      }
+      msgs = append(msgs, data)
+
     case "player":
       var (
         err error
@@ -1533,17 +1567,6 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("wsWatcher convert2json error: %v", err)
         continue
       }
-
-state.mu.Lock()
-js.Timer = TimerV1{
-  Active:    state.timer.Active,
-  Duration:  state.timer.Duration,
-  Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
-}
-log.Printf("[WS SET] %+v", js.Timer)
-state.mu.Unlock()
-
-log.Printf("[WS BEFORE MARSHAL] %+v", js.Timer)
 
       data, err = json.Marshal(js)
       if err != nil {
@@ -1714,6 +1737,8 @@ if songChanged && len(allLogEntries) > 0 {
     default:
       continue
     }
+
+
 
 // nothing to send → skip
 if len(msgs) == 0 && !pushArt {
