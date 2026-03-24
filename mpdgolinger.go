@@ -1523,7 +1523,23 @@ func wsWatcher(ctx *wsCtx) {
 
     switch ev.Subsystem {
     case "timer":
+      var (
+        err error
+        status map[string]string
+        notes []string
+      )
       js := &StatusV1{}  // declare a fresh StatusV1 just for the timer case
+      // fetch MPD status first
+      status, notes, err = MPDtags(nil, "status", "status")
+      if err != nil {
+        log.Printf("wsWatcher MPDtags error in timer case: %v", err)
+        continue
+      }
+
+      if err := convert2json(status, js); err != nil {
+        log.Printf("wsWatcher convert2json error in timer case: %v", err)
+        continue
+      }
       // build timer info exactly like in StatusV1
       state.mu.Lock()
       js.Timer = TimerV1{
@@ -1541,6 +1557,9 @@ func wsWatcher(ctx *wsCtx) {
         break
       }
       msgs = append(msgs, data)
+for _, note := range notes {
+  msgs = append(msgs, []byte(note))
+}
 
     case "player":
       var (
