@@ -3332,6 +3332,7 @@ log.Printf("abs: %s", abs)
 
       // Add to verbProcessorJSON switch statement, under system case "mpd", "player":
       case "albumart", "album-art":
+        log.Printf("Entered case albumart")
         var imageBytes []byte
         var mimeType string
 
@@ -3343,7 +3344,7 @@ log.Printf("abs: %s", abs)
           }
 
           file := cur["file"]
-
+          log.Printf("file:%s", file)
           imageBytes, err = c.AlbumArt(file)  // Returns []byte directly
           if err != nil {
             return err
