@@ -454,6 +454,7 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     dst.Timer = TimerV1{
       Active:    state.timer.Active,
       Duration:  state.timer.Duration,
+      EndTime:   state.timer.EndTime,
       Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
     }
     state.mu.Unlock()
