@@ -3345,7 +3345,7 @@ log.Printf("abs: %s", abs)
 
           file := cur["file"]
           log.Printf("file:%s", file)
-          imageBytes, err = c.AlbumArt(file)  // Returns []byte directly
+          imageBytes, err = c.AlbumArt("/library/music/" + file)  // Returns []byte directly
           if err != nil {
             return err
           }
