@@ -27,6 +27,7 @@ import (
   "sync"
   "time"
   "sync/atomic"
+  "math"
   "math/rand"
   "encoding/json"
   "encoding/base64"
@@ -37,57 +38,56 @@ import (
 //const version = "0.03.0"
 
 // State holds daemon state
-type State struct {
-  mu           sync.Mutex
-  paused       bool   // mpdlinger paused?
-  MPDplaying   bool   // mpd playing?
-  count        int    // current position in block
-  blockLimit   int    // temporary override (later)
-  transition   bool   // true between last-song-start and next-song-start
-  lastSongID   string
-  lastSongZI   int
-  baseLimit    int
-  blockOn      bool
-  consume      bool
-  lastAlbumKey string
+type       State      struct {
+     mu               sync.Mutex
+     paused           bool   // mpdlinger paused?
+     MPDplaying       bool   // mpd playing?
+     count            int    // current position in block
+     blockLimit       int    // temporary override (later)
+     transition       bool   // true between last-song-start and next-song-start
+     lastSongID       string
+     lastSongZI       int
+     baseLimit        int
+     blockOn          bool
+     consume          bool
+     lastAlbumKey     string
+     timer            TimerV1
 } // type State struct
 
-type derivedState struct {
-  WriteTime      string
-  SongZI         int
-  SongID         string
-  Playing        int          // mpd state
-  Paused         int          // mpdlingerstate
-  Count          int
-  BaseLimit      int
-  Limit          int
-  BlockLimit     int
-  PID            int
-  LingerXY       int
-  LingerX        int
-  LingerY        int
+type   derivedState   struct {
+     WriteTime        string
+     SongZI           int
+     SongID           string
+     Playing          int          // mpd state
+     Paused           int          // mpdlingerstate
+     Count            int
+     BaseLimit        int
+     Limit            int
+     BlockLimit       int
+     PID              int
+     LingerXY         int
+     LingerX          int
+     LingerY          int
 } // type derivedState struct
 
-type xyState struct {
-     active  bool
-     start   int // songpos X
-     end     int // songpos Y
+type      xyState     struct {
+     active           bool
+     start            int // songpos X
+     end              int // songpos Y
 }
 
-var xy xyState
-
-type mpdEnv struct {
-  mpdHost   string
-  mpdPort   int
-  mpdSocket string
-  mpdPass   string
-  mpdLog    string
+type      mpdEnv      struct {
+     mpdHost          string
+     mpdPort          int
+     mpdSocket        string
+     mpdPass          string
+     mpdLog           string
 }
 
-type configFile struct {
-  path         string
-  data         string
-  exists       bool
+type    configFile    struct {
+     path             string
+     data             string
+     exists           bool
 } // type configFile struct
 
 type     Condition    struct {
@@ -105,76 +105,84 @@ type LogLine          struct {
      Notes            string
 }
 
+type      TimerV1     struct {
+     Active           bool      `json:"active"`    // true if running
+     Duration         int       `json:"duration"`  // original set duration in seconds
+     EndTime          time.Time `json:"-"`         // internal only
+     Remaining        int       `json:"remaining"` // computed for StatusV1
+}
+
 type      AudioV1     struct {
-     Title            string   `json:"title"`
-     Artist           string   `json:"artist"`
-     AlbumArtist      string   `json:"albumartist"`
-     Album            string   `json:"album"`
-     Year             string   `json:"year"`
-     Duration         float64  `json:"duration"`
-     Time             int      `json:"time"`
-     Disc             int      `json:"disc"`
-     Track            int      `json:"track"`
-     MBAlbumID        string   `json:"musicbrainz_albumid"`
-     MBTrackID        string   `json:"musicbrainz_trackid"`
-     MBReleaseTrackID string   `json:"musicbrainz_releasetrackid"`
-     MBArtistID       string   `json:"musicbrainz_artistid"`
-     MBAlbumArtistID  string   `json:"musicbrainz_albumartistid"`
-     MBReleaseGrpID   string   `json:"musicbrainz_releasegroupid"`
-     File             string   `json:"file"`
-     SongPosition     int      `json:"song_position"`
-     SongID           int      `json:"songID"`
+     Title            string    `json:"title"`
+     Artist           string    `json:"artist"`
+     AlbumArtist      string    `json:"albumartist"`
+     Album            string    `json:"album"`
+     Year             string    `json:"year"`
+     Duration         float64   `json:"duration"`
+     Time             int       `json:"time"`
+     Disc             int       `json:"disc"`
+     Track            int       `json:"track"`
+     MBAlbumID        string    `json:"musicbrainz_albumid"`
+     MBTrackID        string    `json:"musicbrainz_trackid"`
+     MBReleaseTrackID string    `json:"musicbrainz_releasetrackid"`
+     MBArtistID       string    `json:"musicbrainz_artistid"`
+     MBAlbumArtistID  string    `json:"musicbrainz_albumartistid"`
+     MBReleaseGrpID   string    `json:"musicbrainz_releasegroupid"`
+     File             string    `json:"file"`
+     SongPosition     int       `json:"song_position"`
+     SongID           int       `json:"songID"`
 }
 
 type     PlayerV1     struct {
-     State            string   `json:"state"`
-     Volume           int      `json:"volume"`
-     Elapsed          float64  `json:"elapsed"`
-     Duration         float64  `json:"duration"`
-     Percent          float64  `json:"percent"`
-     Random           bool     `json:"random"`
-     Consume          bool     `json:"consume"`
-     Repeat           bool     `json:"repeat"`
-     Single           bool     `json:"single"`
-     SongPosition     int      `json:"song_position"`
-     SongID           int      `json:"songID"`
-     SongLength       int      `json:"song_length"`
-     PlaylistRev      int      `json:"playlist_rev"`
+     State            string    `json:"state"`
+     Volume           int       `json:"volume"`
+     Elapsed          float64   `json:"elapsed"`
+     Duration         float64   `json:"duration"`
+     Percent          float64   `json:"percent"`
+     Random           bool      `json:"random"`
+     Consume          bool      `json:"consume"`
+     Repeat           bool      `json:"repeat"`
+     Single           bool      `json:"single"`
+     SongPosition     int       `json:"song_position"`
+     SongID           int       `json:"songID"`
+     SongLength       int       `json:"song_length"`
+     PlaylistRev      int       `json:"playlist_rev"`
 }
 
 type    LingerV1      struct {
-     Song             int      `json:"song"`
-     SongID           int      `json:"songid"`
-     Count            int      `json:"count"`
-     BaseLimit        int      `json:"baselimit"`
-     Limit            int      `json:"limit"`
-     BlockLimit       int      `json:"blocklimit"`
-     Paused           bool     `json:"paused"`
-     LingerXY         bool     `json:"lingerxy"`
-     LingerX          int      `json:"lingerx"`
-     LingerY					int			 `json:"lingery"`
+     Song             int       `json:"song"`
+     SongID           int       `json:"songid"`
+     Count            int       `json:"count"`
+     BaseLimit        int       `json:"baselimit"`
+     Limit            int       `json:"limit"`
+     BlockLimit       int       `json:"blocklimit"`
+     Paused           bool      `json:"paused"`
+     LingerXY         bool      `json:"lingerxy"`
+     LingerX          int       `json:"lingerx"`
+     LingerY					int			  `json:"lingery"`
 }
 
 type    TimestampV1   struct {
-     Epoch            int64    `json:"epoch"`
-     Log              string   `json:"log"`
-     Display          string   `json:"display"`
+     Epoch            int64     `json:"epoch"`
+     Log              string    `json:"log"`
+     Display          string    `json:"display"`
 }
 
 type    LogEntryV1    struct {
-     Timestamps    TimestampV1 `json:"timestamps"`
-     Action           string   `json:"action"`
-     Notes            string   `json:"notes,omitempty"`
-     File             string   `json:"file"`
-     URL              string   `json:"url"`
-     Audio            AudioV1  `json:"audio"`
+     Timestamps     TimestampV1 `json:"timestamps"`
+     Action           string    `json:"action"`
+     Notes            string    `json:"notes,omitempty"`
+     File             string    `json:"file"`
+     URL              string    `json:"url"`
+     Audio            AudioV1   `json:"audio"`
 }
 
 type     StatusV1     struct {
-     Player           PlayerV1 `json:"player"`
-     Current          AudioV1  `json:"current"`
-     Next             AudioV1  `json:"next"`
-     Linger           LingerV1 `json:"linger"`
+     Player           PlayerV1  `json:"player"`
+     Current          AudioV1   `json:"current"`
+     Next             AudioV1   `json:"next"`
+     Linger           LingerV1  `json:"linger"`
+     Timer            TimerV1   `json:"timer"`
 }
 
 
@@ -197,6 +205,7 @@ const (
 
 
 var (
+  xy xyState
   version = "dev"
   // Core daemon state
   state = &State{
@@ -1525,6 +1534,14 @@ func wsWatcher(ctx *wsCtx) {
         continue
       }
 
+state.mu.Lock()
+js.Timer = TimerV1{
+  Active:    state.timer.Active,
+  Duration:  state.timer.Duration,
+  Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
+}
+state.mu.Unlock()
+
       data, err = json.Marshal(js)
       if err != nil {
         log.Printf("wsWatcher marshal error: %v", err)
@@ -1904,7 +1921,77 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
   }
 
   // --- system switch ---
-  switch system {   // mpd, player; linger; wesocket//
+  switch system {   // mpd, player, playlist; linger; websocket; pulseaudio; search; timer //
+  case "timer":
+    state.mu.Lock()
+    defer state.mu.Unlock()
+
+    switch cmd {
+      case "on":
+        if ! state.MPDplaying {
+          js["error"] = "MPD timer cannot be set when mpd is not playing"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+        f, ok := argsIface.(float64)
+        if ! ok {
+          dbg("The argsIface is not a number")
+          js["response"] = "error"
+          js["error"] = "argument must be integer seconds for cmd=on"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+        argsSeconds := int(f)
+        if argsSeconds <= 0 {
+          js["response"] = "error"
+          js["error"] = "duration must be > 0"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+        dbg("The argsSeconds is an integer with value: %d", argsSeconds)
+        state.timer.Active = true
+        state.timer.Duration = argsSeconds
+        state.timer.EndTime = time.Now().Add(time.Duration(argsSeconds) * time.Second)
+        js["response"] = fmt.Sprintf("Timer set to %d, update status", argsSeconds)
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      case "reset":
+        if ! state.MPDplaying {
+          js["error"] = "MPD timer cannot be set when mpd is not playing"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+        if argsIface != nil {
+          js["notes"] = "system:timer cmd:reset & cmd:off do not take arguments"
+        }
+        if state.timer.Duration > 0 {
+          state.timer.Active = true
+          state.timer.EndTime = time.Now().Add(time.Duration(state.timer.Duration) * time.Second)
+          js["response"] = fmt.Sprintf("Timer reset to %d, update status", state.timer.Duration)
+        } else {
+          js["response"] = "error"
+          js["error"] = "No existing timer to reset"
+        }
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      case "off":
+        if argsIface != nil {
+          js["notes"] = "system:timer cmd:reset & cmd:off do not take arguments"
+        }
+        state.timer.Duration = 0
+        state.timer.Active = false
+        state.timer.EndTime = time.Time{}
+        state.timer.Remaining = 0
+        js["response"] = "Timer turned off"
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      default:
+        js["response"] = "error"
+        js["error"] = `Unknown cmd: must be "on", "off", or "reset".`
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+    }
+
   case "mpd", "player", "playlist":
 
     switch cmd {
@@ -4809,6 +4896,10 @@ func runIdleLoop(w *mpd.Watcher) error {
   //   These errors do *not* necessarily stop the Event channel,
   //   so we log them asynchronously for correlation only.
   //
+
+  ticker := time.NewTicker(1 * time.Second)
+  defer ticker.Stop()
+
   go func() {
     for err := range w.Error {
       // keep this very explicit so we can trace EOF vs broken pipe
@@ -4831,6 +4922,40 @@ func runIdleLoop(w *mpd.Watcher) error {
       log.Println("Idle loop received shutdown")
       return nil
 
+    case <-ticker.C:
+      state.mu.Lock()
+
+      expired := state.timer.Active &&
+                 time.Now().After(state.timer.EndTime)
+
+      if !expired {
+        state.mu.Unlock()
+        continue
+      }
+
+      log.Printf("[timer] expired")
+
+      shouldPause := state.MPDplaying
+
+      // clear timer state FIRST (under lock)
+      state.timer.Active = false
+      state.timer.Duration = 0
+      state.timer.EndTime = time.Time{}
+
+      state.mu.Unlock()
+
+      // THEN do MPD work
+      if shouldPause {
+        err := mpdDo(func(c *mpd.Client) error {
+          return c.Pause(true)
+        }, "timer-expire-pause")
+
+        if err != nil {
+          log.Printf("[timer] pause failed: %v", err)
+        }
+      }
+
+      continue
     case subsystem, ok := <-w.Event:
       if !ok {
         return fmt.Errorf("watcher closed")
