@@ -3337,7 +3337,14 @@ log.Printf("abs: %s", abs)
 
         err := mpdDo(func(c *mpd.Client) error {
           var err error
-          imageBytes, err = c.AlbumArt(URI)  // Returns []byte directly
+          cur, err := c.CurrentSong()
+          if err != nil {
+            return err
+          }
+
+          file := cur["file"]
+
+          imageBytes, err = c.AlbumArt(file)  // Returns []byte directly
           if err != nil {
             return err
           }
