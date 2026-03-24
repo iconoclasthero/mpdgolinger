@@ -449,6 +449,15 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
     dst.Linger.LingerX      = atoi(raw["lingerx"])
     dst.Linger.LingerY      = atoi(raw["lingery"])
 
+    // --- timer ---
+    state.mu.Lock()
+    dst.Timer = TimerV1{
+      Active:    state.timer.Active,
+      Duration:  state.timer.Duration,
+      Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
+    }
+    state.mu.Unlock()
+
     return nil
 
   // ---------------- LogEntryV1 ----------------
