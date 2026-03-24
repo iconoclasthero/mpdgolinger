@@ -1975,6 +1975,13 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         state.timer.Active = true
         state.timer.Duration = argsSeconds
         state.timer.EndTime = time.Now().Add(time.Duration(argsSeconds) * time.Second)
+        // Inject event so wsWatcher can pick it up immediately
+        select {
+        case idleEvents <- IdleEvent{Subsystem: "timer"}:
+        default:
+          // channel full, skip
+        }
+
         js["response"] = fmt.Sprintf("Timer set to %d, update status", argsSeconds)
         out, _ := json.Marshal(js)
         return []string{string(out)}
@@ -4979,6 +4986,7 @@ func runIdleLoop(w *mpd.Watcher) error {
       }
 
       continue
+
     case subsystem, ok := <-w.Event:
       if !ok {
         return fmt.Errorf("watcher closed")
