@@ -451,6 +451,7 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
 
     // --- timer ---
     state.mu.Lock()
+    log.Printf("[c2j] state.timer.Endtime: %s", state.timer.EndTime)
     dst.Timer = TimerV1{
       Active:    state.timer.Active,
       Duration:  state.timer.Duration,
@@ -1976,7 +1977,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         state.timer.Active = true
         state.timer.Duration = argsSeconds
         state.timer.EndTime = time.Now().Add(time.Duration(argsSeconds) * time.Second)
-        log.Printf("state.timer.EndTime: %s", state.timer.EndTime)
+        log.Printf("[vPJ] state.timer.EndTime: %s", state.timer.EndTime)
         // Inject event so wsWatcher can pick it up immediately
         select {
         case idleEvents <- IdleEvent{Subsystem: "timer"}:
