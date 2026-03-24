@@ -1976,6 +1976,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         state.timer.Active = true
         state.timer.Duration = argsSeconds
         state.timer.EndTime = time.Now().Add(time.Duration(argsSeconds) * time.Second)
+        log.Printf("state.timer.EndTime: %s", state.timer.EndTime)
         // Inject event so wsWatcher can pick it up immediately
         select {
         case idleEvents <- IdleEvent{Subsystem: "timer"}:
