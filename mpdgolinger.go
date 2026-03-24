@@ -1540,15 +1540,6 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("wsWatcher convert2json error in timer case: %v", err)
         continue
       }
-      // build timer info exactly like in StatusV1
-      state.mu.Lock()
-      js.Timer = TimerV1{
-        Active:    state.timer.Active,
-        Duration:  state.timer.Duration,
-        Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
-      }
-      state.mu.Unlock()
-      log.Printf("[WS TIMER CASE] %+v", js.Timer)
 
       // also add js to msgs
       data, err := json.Marshal(js)
@@ -1557,9 +1548,9 @@ func wsWatcher(ctx *wsCtx) {
         break
       }
       msgs = append(msgs, data)
-for _, note := range notes {
-  msgs = append(msgs, []byte(note))
-}
+      for _, note := range notes {
+        msgs = append(msgs, []byte(note))
+      }
 
     case "player":
       var (
