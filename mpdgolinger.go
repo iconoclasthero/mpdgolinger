@@ -1540,7 +1540,10 @@ js.Timer = TimerV1{
   Duration:  state.timer.Duration,
   Remaining: int(math.Max(0, time.Until(state.timer.EndTime).Seconds())),
 }
+log.Printf("[WS SET] %+v", js.Timer)
 state.mu.Unlock()
+
+log.Printf("[WS BEFORE MARSHAL] %+v", js.Timer)
 
       data, err = json.Marshal(js)
       if err != nil {
