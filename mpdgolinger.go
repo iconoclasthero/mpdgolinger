@@ -3346,20 +3346,38 @@ log.Printf("abs: %s", abs)
       // Add to verbProcessorJSON switch statement, under system case "mpd", "player":
       case "albumart", "album-art":
         log.Printf("Entered case albumart")
-        var imageBytes []byte
-        var mimeType string
+        var (
+          img []byte
+          mimeType string
+          uri string
+        )
 
         err := mpdDo(func(c *mpd.Client) error {
           var err error
-          cur, err := c.CurrentSong()
-          if err != nil {
-            return err
+          if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
+            uri = s
+          } else {
+            cur, err := c.CurrentSong()
+            if err != nil {
+              return err
+            }
+            uri = cur["file"]
           }
-
-          file := cur["file"]
-          log.Printf("file:%s", file)
-//          imageBytes, err = c.AlbumArt(file)  // Returns []byte directly
-          imageBytes, err = c.ReadPicture(file)  // Returns []byte directly
+          log.Printf("uri: %s", uri)
+//          img, err = c.AlbumArt(file)  // Returns []byte directly
+          img, err = c.ReadPicture(uri)  // Returns []byte directly
+          if err != nil || len(img) == 0 {
+            log.Printf("[vPJ] albumart: ReadPicture failed, falling back to AlbumArt for %q", uri)
+            img, err = c.AlbumArt(uri)
+            if err != nil || len(img) == 0 {
+              log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
+              img = nil
+            } else {
+              log.Printf("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
+            }
+          } else {
+            log.Printf("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(img))
+          }
           if err != nil {
             return err
           }
@@ -3368,6 +3386,7 @@ log.Printf("abs: %s", abs)
 
         if err != nil {
           js["response"] = "error"
+          js["uri"] = uri
           js["error"] = fmt.Sprintf("AlbumArt failed: %v", err)
           out, _ := json.Marshal(js)
           return []string{string(out)}
@@ -3375,19 +3394,19 @@ log.Printf("abs: %s", abs)
 
         // Detect MIME type
         mimeType = "image/jpeg"
-        if len(imageBytes) > 3 {
+        if len(img) > 3 {
           // PNG magic bytes: 89 50 4E 47
-          if imageBytes[0] == 0x89 && imageBytes[1] == 0x50 &&
-             imageBytes[2] == 0x4E && imageBytes[3] == 0x47 {
+          if img[0] == 0x89 && img[1] == 0x50 &&
+             img[2] == 0x4E && img[3] == 0x47 {
             mimeType = "image/png"
           }
         }
 
         // Base64 encode
-        base64Data := base64.StdEncoding.EncodeToString(imageBytes)
+        base64Data := base64.StdEncoding.EncodeToString(img)
 
         js["response"] = "ok"
-        js["file"] = URI
+        js["uri"] = uri
         js["data"] = base64Data
         js["mime_type"] = mimeType
 
@@ -4336,16 +4355,16 @@ log.Printf("abs: %s", abs)
             log.Printf("[vPJ] Subscribe: attempting ReadPicture for %q", uri)
             img, err = c.ReadPicture(uri)
             if err != nil || len(img) == 0 {
-                log.Printf("[vPJ] Subscribe: ReadPicture failed, falling back to AlbumArt for %q", uri)
-                img, err = c.AlbumArt(uri)
-                if err != nil || len(img) == 0 {
-                    log.Printf("[vPJ] Subscribe: AlbumArt failed, no image available for %q", uri)
-                    img = nil
-                } else {
-                    log.Printf("[vPJ] Subscribe: AlbumArt succeeded, %d bytes", len(img))
-                }
+              log.Printf("[vPJ] Subscribe: ReadPicture failed, falling back to AlbumArt for %q", uri)
+              img, err = c.AlbumArt(uri)
+              if err != nil || len(img) == 0 {
+                log.Printf("[vPJ] Subscribe: AlbumArt failed, no image available for %q", uri)
+                img = nil
+              } else {
+                log.Printf("[vPJ] Subscribe: AlbumArt succeeded, %d bytes", len(img))
+              }
             } else {
-                log.Printf("[vPJ] Subscribe: ReadPicture succeeded, %d bytes", len(img))
+              log.Printf("[vPJ] Subscribe: ReadPicture succeeded, %d bytes", len(img))
             }
             return nil
           }, "wsWatcher-subscribe-art")
@@ -4359,7 +4378,6 @@ log.Printf("abs: %s", abs)
               log.Printf("[vPJ] pushed empty album art frame to subscriber")
             }
           }
-
         }
 
 //        js["response"] = "subscribed"
