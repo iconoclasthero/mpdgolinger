@@ -30,7 +30,7 @@ import (
   "math"
   "math/rand"
   "encoding/json"
-  "encoding/base64"
+//  "encoding/base64"
   "net/url"
   "sort"
 )
@@ -3402,16 +3402,30 @@ log.Printf("abs: %s", abs)
           }
         }
 
-        // Base64 encode
-        base64Data := base64.StdEncoding.EncodeToString(img)
+//        base64Data := base64.StdEncoding.EncodeToString(img)
 
         js["response"] = "ok"
+        js["size"] = len(img)
         js["uri"] = uri
-        js["data"] = base64Data
+//        js["data"] = base64Data
         js["mime_type"] = mimeType
-
         out, _ := json.Marshal(js)
-        return []string{string(out)}
+
+//        if err == nil {
+          if len(img) > 0 {
+            ctx.conn.Write(context.Background(), websocket.MessageText, out)
+            ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
+            log.Printf("[vPJ] pushed album art (%d bytes) to albumart request", len(img))
+          } else {
+            ctx.conn.Write(context.Background(), websocket.MessageText, out)
+            ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
+            log.Printf("[vPJ] pushed empty album art frame to albumart request")
+          }
+//        }
+
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+        return nil
 
 
       case "seek":
