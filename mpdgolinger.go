@@ -3007,9 +3007,9 @@ log.Printf("abs: %s", abs)
       //// case "play" /////////////////////////////////////////////
 
       // --- pause/togglestate unified ---
-      case "pause", "resume", "togglestate":
+      case "pause", "resume", "togglestate", "toggleplayback":
         var target bool //2083
-        if cmd == "togglestate" {
+        if cmd == "togglestate" || cmd == "toggleplayback" {
           target = !playing
         } else if cmd == "pause" {
           target = false
