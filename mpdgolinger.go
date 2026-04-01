@@ -460,10 +460,15 @@ func refreshPulse() (PulseV1, error) {
   }
 
   cmd := exec.Command("/usr/bin/pactl", "--format=json", "list", "sinks")
-  out, err := cmd.Output()
-  if err != nil {
-    return PulseV1{}, err
-  }
+//  out, err := cmd.Output()
+//  if err != nil {
+//    return PulseV1{}, err
+//  }
+
+out, err := cmd.CombinedOutput()
+if err != nil {
+  return PulseV1{}, fmt.Errorf("pactl failed: %v | %s", err, string(out))
+}
 
   var sinks []sink
   if err := json.Unmarshal(out, &sinks); err != nil {
