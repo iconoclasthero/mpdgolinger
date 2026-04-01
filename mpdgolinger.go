@@ -4353,7 +4353,7 @@ log.Printf("abs: %s", abs)
         case "mute_volume": arg = "mute"
         }
         log.Printf("[vPJ] pulseaudio, arg: %s", arg)
-        log.Printf("[vPJ] pulseaudio exec.Command(\"./pulsevol\", ", arg, ", \"--no-volstatus\", \"--config=", configFlag)
+        log.Printf("[vPJ] pulseaudio exec.Command(\"./pulsevol\", %s, \"--no-volstatus\", \"--config=%s", arg, configFlag)
         outBytes, err := exec.Command("./pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
 //        resp := []string{string(outBytes)}
         log.Printf("[vPJ] puseaudio, outBytes: %s", outBytes)
