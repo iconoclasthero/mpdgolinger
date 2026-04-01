@@ -459,7 +459,7 @@ func refreshPulse() (PulseV1, error) {
     } `json:"volume"`
   }
 
-  cmd := exec.Command("pactl", "--format=json", "list", "sinks")
+  cmd := exec.Command("/usr/bin/pactl", "--format=json", "list", "sinks")
   out, err := cmd.Output()
   if err != nil {
     return PulseV1{}, err
