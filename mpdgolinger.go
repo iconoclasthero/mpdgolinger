@@ -183,8 +183,17 @@ type     StatusV1     struct {
      Next             AudioV1   `json:"next"`
      Linger           LingerV1  `json:"linger"`
      PauseTimer       TimerV1   `json:"pause_timer"`
+     PulseData        PulseV1   `json:"pulse_data"`
 }
 
+
+type      PulseV1     struct {
+     SinkName         string    `json:"sinkname"`
+     Volume           int       `json:"volume"`          // average or first channel
+     Mute             bool      `json:"mute"`
+     Channels    map[string]int `json:"channels"`       // front-left → 23, etc
+     VolString        string    `json:"volstring"`      // for debug, replace with "-"
+}
 
 const (
   defaultSkippedList = ".mpdskip"
@@ -267,6 +276,9 @@ var (
     "limit": true, "block": true, "blocklimit": true, "version": true,
     "next": true, "skip": true, "quit": true, "exit": true,
   }
+
+  PulseData PulseV1
+  pulseMu sync.RWMutex
 ) // var
 
 
@@ -365,6 +377,180 @@ var (
 //} // func testMPDtags
 
 
+//func refreshPulse() (PulseData, error) {
+//  type sink struct {
+//    Name   string `json:"name"`
+//    State  string `json:"state"`
+//    Mute   bool   `json:"mute"`
+//    Volume map[string]struct {
+//      Percent string `json:"value_percent"`
+//    } `json:"volume"`
+//  }
+//
+//  cmd := exec.Command("pactl", "--format=json", "list", "sinks")
+//  out, err := cmd.Output()
+//  if err != nil {
+//    return PulseData{}, err
+//  }
+//
+//  var sinks []sink
+//
+//  if err := json.Unmarshal(out, &sinks); err != nil {
+//    return PulseData{}, err
+//  }
+//
+//  var s *sink
+//
+//  for i := range sinks {
+//    if sinks[i].State == "RUNNING" {
+//      s = &sinks[i]
+//      break
+//    }
+//  }
+//  if s == nil && len(sinks) > 0 {
+//    s = &sinks[0]
+//  }
+//  if s == nil {
+//    return PulseData{}, fmt.Errorf("no sinks found")
+//  }
+//
+//  pd := PulseData{
+//    SinkName: s.Name,
+//    Mute:     s.Mute,
+//    Channels: make(map[string]int),
+//  }
+//
+//  total := 0
+//  count := 0
+//
+//  for ch, v := range s.Volume {
+//    p := strings.TrimSuffix(v.Percent, "%")
+//    val, _ := strconv.Atoi(strings.TrimSpace(p))
+//    pd.Channels[ch] = val
+//    total += val
+//    count++
+//  }
+//
+//  if count > 0 {
+//    pd.Volume = total / count
+//  }
+//
+//  if len(pd.Channels) == 2 {
+//    pd.VolString = fmt.Sprintf(
+//      "Volume: Left %d%% – Right %d%%",
+//      pd.Channels["front-left"],
+//      pd.Channels["front-right"],
+//    )
+//  } else {
+//    pd.VolString = fmt.Sprintf("Volume: %d%%", pd.Volume)
+//  }
+//
+//  return pd, nil
+//} // func refreshPulse
+
+
+func refreshPulse() (PulseV1, error) {
+  type sink struct {
+    Name   string `json:"name"`
+    State  string `json:"state"`
+    Mute   bool   `json:"mute"`
+    Volume map[string]struct {
+      Percent string `json:"value_percent"`
+    } `json:"volume"`
+  }
+
+  cmd := exec.Command("pactl", "--format=json", "list", "sinks")
+  out, err := cmd.Output()
+  if err != nil {
+    return PulseV1{}, err
+  }
+
+  var sinks []sink
+  if err := json.Unmarshal(out, &sinks); err != nil {
+    return PulseV1{}, err
+  }
+
+  var s *sink
+
+  for i := range sinks {
+    if sinks[i].State == "RUNNING" {
+      s = &sinks[i]
+      break
+    }
+  }
+  if s == nil && len(sinks) > 0 {
+    s = &sinks[0]
+  }
+  if s == nil {
+    return PulseV1{}, fmt.Errorf("no sinks found")
+  }
+
+  pd := PulseV1{
+    SinkName: s.Name,
+    Mute:     s.Mute,
+    Channels: make(map[string]int),
+  }
+
+  total := 0
+  count := 0
+
+  for ch, v := range s.Volume {
+    p := strings.TrimSuffix(v.Percent, "%")
+    val, err := strconv.Atoi(strings.TrimSpace(p))
+    if err != nil {
+      continue
+    }
+    pd.Channels[ch] = val
+    total += val
+    count++
+  }
+
+  if count > 0 {
+    pd.Volume = total / count
+  }
+
+  if len(pd.Channels) == 2 {
+    vals := make([]int, 0, 2)
+    for _, v := range pd.Channels {
+      vals = append(vals, v)
+    }
+    pd.VolString = fmt.Sprintf("Volume: %d%% – %d%%", vals[0], vals[1])
+  } else {
+    pd.VolString = fmt.Sprintf("Volume: %d%%", pd.Volume)
+  }
+
+  return pd, nil
+} // func refreshPulse
+
+
+func watchPulse(ctx context.Context, out chan<- PulseV1) {
+  cmd := exec.CommandContext(ctx, "pactl", "subscribe")
+  stdout, err := cmd.StdoutPipe()
+  if err != nil {
+    return
+  }
+
+  if err := cmd.Start(); err != nil {
+    return
+  }
+
+  scanner := bufio.NewScanner(stdout)
+
+  for scanner.Scan() {
+    line := scanner.Text()
+
+    // only care about sink events
+    if !strings.Contains(line, "sink") {
+      continue
+    }
+
+    pd, err := refreshPulse()
+    if err == nil {
+      out <- pd
+    }
+  }
+} // func watchPulse
+
 func audioFromRaw(raw map[string]string, p string) AudioV1 {
   var src string
 //  var dur float64
@@ -459,7 +645,9 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
       Remaining: int(math.Max(0, time.Until(state.pauseTimer.EndTime).Seconds())),
     }
     state.mu.Unlock()
-
+    pulseMu.RLock()
+    dst.PulseData = PulseData
+    pulseMu.RUnlock()
     return nil
 
   // ---------------- LogEntryV1 ----------------
@@ -6782,7 +6970,7 @@ func main() {
   // Shared flags (client + daemon)
   // ------------------------------------------------------------------
   var (
-//      configFlag   string
+//    configFlag   string  // this is shadowing the global needed elsewhere, remove. and rename global?
       startupLimit int
       daemonMode   bool
       showVersion  bool
@@ -7182,6 +7370,27 @@ func main() {
   // Spawn a goroutine to accept clients
   go acceptClients(ln)
 
+
+  pulseChan := make(chan PulseV1, 1)
+
+  ctx, cancel := context.WithCancel(context.Background())
+  defer cancel()
+
+  go watchPulse(ctx, pulseChan)
+
+  go func() {
+    for p := range pulseChan {
+      pulseMu.Lock()
+      PulseData = p
+      pulseMu.Unlock()
+    }
+  }()
+
+  if p, err := refreshPulse(); err == nil {
+    pulseMu.Lock()
+    PulseData = p
+    pulseMu.Unlock()
+  }
 
   go daemonSupervisor()
 
