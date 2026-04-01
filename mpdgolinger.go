@@ -7386,11 +7386,14 @@ func main() {
     }
   }()
 
-  if p, err := refreshPulse(); err == nil {
-    pulseMu.Lock()
-    PulseData = p
-    pulseMu.Unlock()
-  }
+if p, err := refreshPulse(); err == nil {
+  log.Printf("[pulse] initial: %+v", p)
+  pulseMu.Lock()
+  PulseData = p
+  pulseMu.Unlock()
+} else {
+  log.Printf("[pulse] initial ERROR: %v", err)
+}
 
   go daemonSupervisor()
 
