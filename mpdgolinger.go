@@ -460,10 +460,7 @@ func refreshPulse() (PulseV1, error) {
   }
 
 log.Printf("[pulse] XDG_RUNTIME_DIR=%q UID=%d", os.Getenv("XDG_RUNTIME_DIR"), os.Getuid())
-  cmd := exec.Command("/usr/bin/pactl", "--format=json", "list", "sinks")
-cmd.Env = append(os.Environ(),
-  "XDG_RUNTIME_DIR=/run/user/1000",
-)
+  cmd := exec.Command("/usr/bin/pactl", "--server=127.0.0.1:4713", "--format=json", "list", "sinks")
 //  out, err := cmd.Output()
 //  if err != nil {
 //    return PulseV1{}, err
