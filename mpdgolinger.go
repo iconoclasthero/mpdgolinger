@@ -459,6 +459,7 @@ func refreshPulse() (PulseV1, error) {
     } `json:"volume"`
   }
 
+log.Printf("[pulse] XDG_RUNTIME_DIR=%q UID=%d", os.Getenv("XDG_RUNTIME_DIR"), os.Getuid())
   cmd := exec.Command("/usr/bin/pactl", "--format=json", "list", "sinks")
 //  out, err := cmd.Output()
 //  if err != nil {
