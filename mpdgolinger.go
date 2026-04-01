@@ -4353,7 +4353,7 @@ log.Printf("abs: %s", abs)
         case "mute_volume": arg = "mute"
         }
         log.Printf("[vPJ] puseaudio, arg: ", arg)
-        outBytes, err := exec.Command("./pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
+        outBytes, err := exec.Command("/usr/local/bin/pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
 //        resp := []string{string(outBytes)}
         resp := []string{strings.TrimSpace(string(outBytes))}
         if err != nil {
