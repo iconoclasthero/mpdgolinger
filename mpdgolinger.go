@@ -4355,6 +4355,8 @@ log.Printf("abs: %s", abs)
         log.Printf("[vPJ] puseaudio, arg: %s", arg)
         outBytes, err := exec.Command("./pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
 //        resp := []string{string(outBytes)}
+        log.Printf("[vPJ] puseaudio, outBytes: %s", outBytes)
+        log.Printf("[vPJ] pulseauio, err: %s", err)
         resp := []string{strings.TrimSpace(string(outBytes))}
         if err != nil {
           resp = append(resp, fmt.Sprintf("error: %v", err))
