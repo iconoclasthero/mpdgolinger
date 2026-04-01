@@ -3344,8 +3344,8 @@ log.Printf("abs: %s", abs)
         return []string{string(out)}
 
       // Add to verbProcessorJSON switch statement, under system case "mpd", "player":
-      case "albumart", "album-art":
-        log.Printf("Entered case albumart")
+      case "albumart":
+        dbg("Entered case albumart")
         var (
           img []byte
           mimeType string
@@ -3363,8 +3363,7 @@ log.Printf("abs: %s", abs)
             }
             uri = cur["file"]
           }
-          log.Printf("uri: %s", uri)
-//          img, err = c.AlbumArt(file)  // Returns []byte directly
+          log.Printf("[vPJ] albumart uri requested: %s", uri)
           img, err = c.ReadPicture(uri)  // Returns []byte directly
           if err != nil || len(img) == 0 {
             log.Printf("[vPJ] albumart: ReadPicture failed, falling back to AlbumArt for %q", uri)
@@ -3373,10 +3372,10 @@ log.Printf("abs: %s", abs)
               log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
               img = nil
             } else {
-              log.Printf("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
+              dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
             }
           } else {
-            log.Printf("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(img))
+            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(img))
           }
           if err != nil {
             return err
@@ -3402,16 +3401,14 @@ log.Printf("abs: %s", abs)
           }
         }
 
-//        base64Data := base64.StdEncoding.EncodeToString(img)
-
+//      base64Data := base64.StdEncoding.EncodeToString(img)
         js["response"] = "ok"
         js["size"] = len(img)
         js["uri"] = uri
-//        js["data"] = base64Data
+//      js["data"] = base64Data
         js["mime_type"] = mimeType
         out, _ := json.Marshal(js)
 
-//        if err == nil {
           if len(img) > 0 {
             ctx.conn.Write(context.Background(), websocket.MessageText, out)
             ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
@@ -3421,12 +3418,97 @@ log.Printf("abs: %s", abs)
             ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
             log.Printf("[vPJ] pushed empty album art frame to albumart request")
           }
-//        }
-
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
         return nil
 
+/*
+      case "album-art":
+        type AlbumArtRequest struct {
+          Type string `json:"type,omitempty"` // "base64", "blob", "binary"
+          URI  string `json:"uri,omitempty"`  // optional file path
+        }
+
+       var reqArgs AlbumArtRequest
+       var raw string
+       var items []json.RawMessage
+
+       // Try unmarshaling as a string first
+       if err := json.Unmarshal(req.Args, &raw); err == nil {
+          switch raw {
+          case "base64", "blob", "binary":
+            reqArgs.Type = raw
+          default:
+            if strings.Contains(raw, string(os.PathSeparator)) {
+              reqArgs.Type = "blob"   // default type
+              reqArgs.URI = raw
+            } else {
+              js["response"] = "error"
+              js["error"] = fmt.Sprintf("Invalid album art arg string: %s", raw)
+              out, _ := json.Marshal(js)
+              return []string{string(out)}
+            }
+          }
+        } else if err := json.Unmarshal(req.Args, &reqArgs); err == nil {
+          // object case, optional URI
+          if reqArgs.Type == "" {
+            reqArgs.Type = "blob"
+          }
+        } else if err := json.Unmarshal(req.Args, &items); err == nil {
+          // array of objects case
+          if len(items) > 0 {
+            if err := json.Unmarshal(items[0], &reqArgs); err != nil {
+              js["response"] = "error"
+              js["error"] = err.Error()
+              out, _ := json.Marshal(js)
+              return []string{string(out)}
+            }
+            if reqArgs.Type == "" {
+              reqArgs.Type = "blob"
+            }
+          }
+        } else {
+          // nothing specified, use defaults
+          reqArgs.Type = "blob"
+        }
+
+        // At this point, you have:
+        // reqArgs.Type = "base64"|"blob"|"binary"
+        // reqArgs.URI = optional file path ("" if none)
+        // Then just branch your code:
+        var binary bool
+        switch reqArgs.Type {
+        case "base64":
+          binary = false
+        case "blob", "binary":
+          binary = true
+        default:
+          js["response"] = "error"
+          js["error"] = "Unknown type: " + reqArgs.Type
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        // Now load the file if URI is set, or default behavior
+        var data []byte
+        if reqArgs.URI != "" {
+          var err error
+          data, err = os.ReadFile(reqArgs.URI)
+          if err != nil {
+            js["response"] = "error"
+            js["error"] = fmt.Sprintf("Failed to read file %s: %v", reqArgs.URI, err)
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+          }
+        }
+
+        if !binary && len(data) > 0 {
+          dataStr := base64.StdEncoding.EncodeToString(data)
+          js["data"] = dataStr
+        } else if binary && len(data) > 0 {
+          js["data"] = data // send raw blob
+        } else {
+          // no file, default blob/base64 behavior
+        }
+*/
 
       case "seek":
         var relative bool
@@ -4270,6 +4352,7 @@ log.Printf("abs: %s", abs)
         case "down_volume": arg = "-5"
         case "mute_volume": arg = "mute"
         }
+        log.Printf("[vPJ] puseaudio, arg: ", arg)
         outBytes, err := exec.Command("./pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
 //        resp := []string{string(outBytes)}
         resp := []string{strings.TrimSpace(string(outBytes))}
