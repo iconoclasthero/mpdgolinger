@@ -6782,7 +6782,7 @@ func main() {
   // Shared flags (client + daemon)
   // ------------------------------------------------------------------
   var (
-      configFlag   string
+//      configFlag   string
       startupLimit int
       daemonMode   bool
       showVersion  bool
