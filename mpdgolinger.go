@@ -4535,7 +4535,8 @@ log.Printf("abs: %s", abs)
 
         log.Printf("[vPJ] pulseaudio volume set=%d", vol)
 
-        js["response"] = fmt.Sprintf("volume set to %d", vol)
+//        js["response"] = fmt.Sprintf("volume set to %d", vol)
+        js["response"] = vol
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
