@@ -189,10 +189,13 @@ type     StatusV1     struct {
 
 type      PulseV1     struct {
      SinkName         string    `json:"sinkname"`
-     Volume           int       `json:"volume"`          // average or first channel
+     Volume           int       `json:"volume"`         // average or first channel
      Mute             bool      `json:"mute"`
      Channels    map[string]int `json:"channels"`       // front-left → 23, etc
      VolString        string    `json:"volstring"`      // for debug, replace with "-"
+     PulsePath        string    `json:"pulse_path"`     // for debug
+     PulseServer      string    `json:"server"`         // for debug
+     PulsePort        int       `json:"port"`           // for debug
 }
 
 const (
@@ -210,6 +213,9 @@ const (
   defaultDaemonPort  = 6559
   defaultIgnoredList = ".mpdignore"
   defaultMPDpassword = ""
+  defaultPulseServer = "127.0.0.1"
+  defaultPulsePort   = 4713
+  defaultPulsePath   = "/usr/bin/pactl"
 ) // const
 
 
@@ -279,6 +285,9 @@ var (
 
   PulseData PulseV1
   pulseMu sync.RWMutex
+  pulseServer = defaultPulseServer
+  pulsePort = defaultPulsePort
+  pulsePath = defaultPulsePath
 ) // var
 
 
@@ -377,78 +386,6 @@ var (
 //} // func testMPDtags
 
 
-//func refreshPulse() (PulseData, error) {
-//  type sink struct {
-//    Name   string `json:"name"`
-//    State  string `json:"state"`
-//    Mute   bool   `json:"mute"`
-//    Volume map[string]struct {
-//      Percent string `json:"value_percent"`
-//    } `json:"volume"`
-//  }
-//
-//  cmd := exec.Command("pactl", "--format=json", "list", "sinks")
-//  out, err := cmd.Output()
-//  if err != nil {
-//    return PulseData{}, err
-//  }
-//
-//  var sinks []sink
-//
-//  if err := json.Unmarshal(out, &sinks); err != nil {
-//    return PulseData{}, err
-//  }
-//
-//  var s *sink
-//
-//  for i := range sinks {
-//    if sinks[i].State == "RUNNING" {
-//      s = &sinks[i]
-//      break
-//    }
-//  }
-//  if s == nil && len(sinks) > 0 {
-//    s = &sinks[0]
-//  }
-//  if s == nil {
-//    return PulseData{}, fmt.Errorf("no sinks found")
-//  }
-//
-//  pd := PulseData{
-//    SinkName: s.Name,
-//    Mute:     s.Mute,
-//    Channels: make(map[string]int),
-//  }
-//
-//  total := 0
-//  count := 0
-//
-//  for ch, v := range s.Volume {
-//    p := strings.TrimSuffix(v.Percent, "%")
-//    val, _ := strconv.Atoi(strings.TrimSpace(p))
-//    pd.Channels[ch] = val
-//    total += val
-//    count++
-//  }
-//
-//  if count > 0 {
-//    pd.Volume = total / count
-//  }
-//
-//  if len(pd.Channels) == 2 {
-//    pd.VolString = fmt.Sprintf(
-//      "Volume: Left %d%% – Right %d%%",
-//      pd.Channels["front-left"],
-//      pd.Channels["front-right"],
-//    )
-//  } else {
-//    pd.VolString = fmt.Sprintf("Volume: %d%%", pd.Volume)
-//  }
-//
-//  return pd, nil
-//} // func refreshPulse
-
-
 func refreshPulse() (PulseV1, error) {
   type sink struct {
     Name   string `json:"name"`
@@ -459,11 +396,13 @@ func refreshPulse() (PulseV1, error) {
     } `json:"volume"`
   }
 
-  cmd := exec.Command("/usr/bin/pactl", "--server=127.0.0.1:4713", "--format=json", "list", "sinks")
+  serverFlag := fmt.Sprintf("--server=%s:%d", pulseServer, pulsePort)
+//  cmd := exec.Command("/usr/bin/pactl", "--server=127.0.0.1:4713", "--format=json", "list", "sinks")
+  cmd := exec.Command(pulsePath, serverFlag, "--format=json", "list", "sinks")
 
   out, err := cmd.CombinedOutput()
   if err != nil {
-    return PulseV1{}, fmt.Errorf("pactl failed: %v | %s", err, string(out))
+    return PulseV1{}, fmt.Errorf("pulse failed: %v | %s", err, string(out))
   }
 
   var sinks []sink
@@ -490,6 +429,9 @@ func refreshPulse() (PulseV1, error) {
     SinkName: s.Name,
     Mute:     s.Mute,
     Channels: make(map[string]int),
+    PulseServer: pulseServer,
+    PulsePort: pulsePort,
+    PulsePath: pulsePath,
   }
 
   total := 0
@@ -525,7 +467,8 @@ func refreshPulse() (PulseV1, error) {
 
 
 func watchPulse(ctx context.Context, out chan<- PulseV1) {
-  cmd := exec.CommandContext(ctx, "/usr/bin/pactl", "--server=127.0.0.1:4713", "subscribe")
+  serverFlag := fmt.Sprintf("--server=%s:%d", pulseServer, pulsePort)
+  cmd := exec.CommandContext(ctx, pulsePath, serverFlag, "subscribe")
   stdout, err := cmd.StdoutPipe()
   if err != nil {
     return
@@ -4534,6 +4477,61 @@ log.Printf("abs: %s", abs)
 
   case "pulseaudio":
     switch cmd {
+      case "set_volume":
+        var vol int
+        hasArg := false
+
+        if args, ok := argsIface.([]interface{}); ok && len(args) > 0 {
+          switch v := args[0].(type) {
+          case float64:
+            vol = int(v)
+            hasArg = true
+          case string:
+            if x, err := strconv.Atoi(v); err == nil {
+              vol = x
+              hasArg = true
+            }
+          }
+        }
+
+        if !hasArg {
+          js["response"] = "error"
+          js["error"] = "pulseaudio set_volume requires a value"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        if err != nil || vol < 0 {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("invalid set_volume value provided: %s", vol)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        volStr := fmt.Sprintf("%d%%", vol)
+        serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
+        _, err := exec.Command(
+          PulseData.PulsePath,
+          serverFlag,
+          "set-sink-volume",
+          PulseData.SinkName,
+          volStr,
+        ).CombinedOutput()
+
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("pulse command vailed: %s", err)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        log.Printf("[vPJ] pulseaudio volume set=%d", vol)
+
+        js["response"] = fmt.Sprintf("volume set to %d", vol)
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
+
       case "up_volume", "down_volume", "mute_volume":
         arg := ""
         switch cmd {
