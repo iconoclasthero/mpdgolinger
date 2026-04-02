@@ -429,9 +429,9 @@ func refreshPulse() (PulseV1, error) {
     SinkName: s.Name,
     Mute:     s.Mute,
     Channels: make(map[string]int),
+    PulsePath: pulsePath,
     PulseServer: pulseServer,
     PulsePort: pulsePort,
-    PulsePath: pulsePath,
   }
 
   total := 0
@@ -4493,6 +4493,8 @@ log.Printf("abs: %s", abs)
             }
           }
         }
+
+        log.Printf("[vPJ] pulseaudio set_volume vol: %d", vol)
 
         if !hasArg {
           js["response"] = "error"
