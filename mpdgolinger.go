@@ -4511,7 +4511,7 @@ log.Printf("abs: %s", abs)
 
         if errParse != nil || vol < 0 {
           js["response"] = "error"
-          js["error"] = fmt.Sprintf("invalid set_volume value provided: %d", vol)
+          js["error"] = fmt.Sprintf("invalid set_volume value provided: %s", argsIface)
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
