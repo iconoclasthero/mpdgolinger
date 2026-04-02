@@ -4486,19 +4486,14 @@ log.Printf("abs: %s", abs)
 
         hasArg := false
 
-//        if args, ok := argsIface.([]interface{}); ok && len(args) > 0 {
-//          switch v := args[0].(type) {
         switch v := argsIface.(type) {
           case float64:
             vol = int(v)
             hasArg = true
           case string:
             vol, errParse = strconv.Atoi(v)
-//            if errParse == nil {
-              hasArg = true
-//            }
-          }
-//        }
+            hasArg = true
+        }
 
         log.Printf("[vPJ] pulseaudio set_volume vol: %d", vol)
 
@@ -4511,14 +4506,14 @@ log.Printf("abs: %s", abs)
 
         if errParse != nil || vol < 0 {
           js["response"] = "error"
-          js["error"] = fmt.Sprintf("invalid set_volume value provided: %s", argsIface)
+          js["error"] = fmt.Sprintf("invalid set_volume value provided: %v", argsIface)
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
         volStr := fmt.Sprintf("%d%%", vol)
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
-        _, errPulse = exec.Command(
+        outBytes, errPulse := exec.Command(
           PulseData.PulsePath,
           serverFlag,
           "set-sink-volume",
@@ -4528,14 +4523,14 @@ log.Printf("abs: %s", abs)
 
         if errPulse != nil {
           js["response"] = "error"
-          js["error"] = fmt.Sprintf("pulse command failed: %s", errPulse)
+          js["error"] = fmt.Sprintf("pulse command failed: %v|", errPulse, strings.TrimSpace(string(outBytes)))
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
         log.Printf("[vPJ] pulseaudio volume set=%d", vol)
 
-//        js["response"] = fmt.Sprintf("volume set to %d", vol)
+//      js["response"] = fmt.Sprintf("volume set to %d", vol)
         js["response"] = vol
         out, _ := json.Marshal(js)
         return []string{string(out)}
@@ -7394,14 +7389,14 @@ func main() {
     }
   }()
 
-if p, err := refreshPulse(); err == nil {
-  log.Printf("[pulse] initial: %+v", p)
-  pulseMu.Lock()
-  PulseData = p
-  pulseMu.Unlock()
-} else {
-  log.Printf("[pulse] initial ERROR: %v", err)
-}
+  if p, err := refreshPulse(); err == nil {
+    log.Printf("[pulse] initial: %+v", p)
+    pulseMu.Lock()
+    PulseData = p
+    pulseMu.Unlock()
+  } else {
+    log.Printf("[pulse] initial ERROR: %v", err)
+  }
 
   go daemonSupervisor()
 
