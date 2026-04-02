@@ -4481,8 +4481,9 @@ log.Printf("abs: %s", abs)
         var vol int
         hasArg := false
 
-        if args, ok := argsIface.([]interface{}); ok && len(args) > 0 {
-          switch v := args[0].(type) {
+//        if args, ok := argsIface.([]interface{}); ok && len(args) > 0 {
+//          switch v := args[0].(type) {
+        switch v := argsIface.(type) {
           case float64:
             vol = int(v)
             hasArg = true
@@ -4492,7 +4493,7 @@ log.Printf("abs: %s", abs)
               hasArg = true
             }
           }
-        }
+//        }
 
         log.Printf("[vPJ] pulseaudio set_volume vol: %d", vol)
 
