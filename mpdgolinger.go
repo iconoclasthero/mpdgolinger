@@ -4478,7 +4478,12 @@ log.Printf("abs: %s", abs)
   case "pulseaudio":
     switch cmd {
       case "set_volume":
-        var vol int
+        var (
+          vol int
+          errParse error
+          errPulse error
+        )
+
         hasArg := false
 
 //        if args, ok := argsIface.([]interface{}); ok && len(args) > 0 {
@@ -4488,8 +4493,8 @@ log.Printf("abs: %s", abs)
             vol = int(v)
             hasArg = true
           case string:
-            if x, err := strconv.Atoi(v); err == nil {
-              vol = x
+            vol, errParse = strconv.Atoi(v)
+            if errParse == nil {
               hasArg = true
             }
           }
@@ -4504,16 +4509,16 @@ log.Printf("abs: %s", abs)
           return []string{string(out)}
         }
 
-        if err != nil || vol < 0 {
+        if errParse != nil || vol < 0 {
           js["response"] = "error"
-          js["error"] = fmt.Sprintf("invalid set_volume value provided: %s", vol)
+          js["error"] = fmt.Sprintf("invalid set_volume value provided: %d", vol)
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
         volStr := fmt.Sprintf("%d%%", vol)
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
-        _, err := exec.Command(
+        _, errPulse = exec.Command(
           PulseData.PulsePath,
           serverFlag,
           "set-sink-volume",
@@ -4521,9 +4526,9 @@ log.Printf("abs: %s", abs)
           volStr,
         ).CombinedOutput()
 
-        if err != nil {
+        if errPulse != nil {
           js["response"] = "error"
-          js["error"] = fmt.Sprintf("pulse command vailed: %s", err)
+          js["error"] = fmt.Sprintf("pulse command failed: %s", errPulse)
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
