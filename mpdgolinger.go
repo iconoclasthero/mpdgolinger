@@ -4494,9 +4494,9 @@ log.Printf("abs: %s", abs)
             hasArg = true
           case string:
             vol, errParse = strconv.Atoi(v)
-            if errParse == nil {
-              hasArg = true
-            }
+//            if errParse == nil {
+//              hasArg = true
+//            }
           }
 //        }
 
