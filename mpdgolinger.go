@@ -1660,7 +1660,7 @@ func wsWatcher(ctx *wsCtx) {
 
     switch ev.Subsystem {
     case "pulseaudio":
-      log.Printf("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
+      log.Printf("[wW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
       pd := ev.PulseData
 //      if pd == nil {
 //        continue
@@ -1676,8 +1676,13 @@ func wsWatcher(ctx *wsCtx) {
         "response": pd,
       }
 
+      log.Printf("[wW] pulseaudio case, adding msg: %v", msg)
+
       data, _ := json.Marshal(msg)
       msgs = append(msgs, data)
+
+      log.Printf("[wW] pulseaudio case ending; msgs: %v", msgs)
+
 
     case "pauseTimer":
       var (
