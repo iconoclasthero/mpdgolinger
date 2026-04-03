@@ -4466,8 +4466,10 @@ log.Printf("abs: %s", abs)
       case "set_volume":
         var (
           vol int
+          volStr string
           errParse error
           errPulse error
+          relative bool
         )
 
         hasArg := false
@@ -4477,7 +4479,14 @@ log.Printf("abs: %s", abs)
             vol = int(v)
             hasArg = true
           case string:
-            vol, errParse = strconv.Atoi(v)
+            if strings.HasPrefix(v, "-") || strings.HasPrefix(v, "+") {
+              if _, errParse = strconv.Atoi(v); errParse == nil {
+                volStr = v+"%"
+                relative = true
+              }
+            } else {
+              vol, errParse = strconv.Atoi(v)
+            }
             hasArg = true
         }
 
@@ -4490,14 +4499,16 @@ log.Printf("abs: %s", abs)
           return []string{string(out)}
         }
 
-        if errParse != nil || vol < 0 {
+        if errParse != nil || ( vol < 0 && ! relative ) {
           js["response"] = "error"
           js["error"] = fmt.Sprintf("invalid set_volume value provided: %v", argsIface)
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
-        volStr := fmt.Sprintf("%d%%", vol)
+        if ! relative {
+          volStr = fmt.Sprintf("%d%%", vol)
+        }
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
         outBytes, errPulse := exec.Command(
           PulseData.PulsePath,
