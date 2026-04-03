@@ -1672,7 +1672,7 @@ func wsWatcher(ctx *wsCtx) {
 
       msg := map[string]interface{}{
         "system": "pulseaudio",
-        "cmd":    "set_volume",
+        "cmd":    "changed",
         "response": pd,
       }
 
