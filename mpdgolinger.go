@@ -4525,6 +4525,11 @@ log.Printf("abs: %s", abs)
           return []string{string(out)}
         }
 
+        if relative {
+          vol = PulseData.Volume
+        }
+
+
         log.Printf("[vPJ] pulseaudio volume set=%d", vol)
 
 //      js["response"] = fmt.Sprintf("volume set to %d", vol)
