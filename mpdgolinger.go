@@ -310,6 +310,7 @@ type     IdleEvent    struct {
      SongID           string
      Status           map[string]string
      PlaylistRev      int
+     PulseData        PulseV1
 }
 
 var idleEvents = make(chan IdleEvent, 32)
@@ -491,6 +492,10 @@ func watchPulse(ctx context.Context, out chan<- PulseV1) {
     pd, err := refreshPulse()
     if err == nil {
       out <- pd
+      idleEvents <- IdleEvent{
+        Subsystem: "pulseaudio",
+        PulseData:  pd,
+      }
     }
   }
 } // func watchPulse
@@ -1654,6 +1659,25 @@ func wsWatcher(ctx *wsCtx) {
 
 
     switch ev.Subsystem {
+    case "pulseaudio":
+      pd := ev.PulseData
+//      if pd == nil {
+//        continue
+//      }
+
+      pulseMu.Lock()
+      PulseData = pd
+      pulseMu.Unlock()
+
+      msg := map[string]interface{}{
+        "system": "pulseaudio",
+        "cmd":    "changed",
+        "response": pd,
+      }
+
+      data, _ := json.Marshal(msg)
+      msgs = append(msgs, data)
+
     case "pauseTimer":
       var (
         err error
