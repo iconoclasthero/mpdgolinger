@@ -1660,6 +1660,7 @@ func wsWatcher(ctx *wsCtx) {
 
     switch ev.Subsystem {
     case "pulseaudio":
+      log.Printf("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
       pd := ev.PulseData
 //      if pd == nil {
 //        continue
