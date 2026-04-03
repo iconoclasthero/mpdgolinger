@@ -4526,7 +4526,7 @@ log.Printf("abs: %s", abs)
         }
 
         if relative {
-          time.Sleep(200 * time.Millisecond)
+          time.Sleep(20 * time.Millisecond)
           vol = PulseData.Volume
         }
 
