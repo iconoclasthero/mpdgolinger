@@ -1907,118 +1907,78 @@ if songChanged && len(allLogEntries) > 0 {
       continue
     }
 
-
-
-// nothing to send → skip
-if len(msgs) == 0 && !pushArt {
-  continue
-}
+    // nothing to send → skip
+    if len(msgs) == 0 && !pushArt {
+      continue
+    }
 
     // --- push to all subscribed connections ---
     ctx.mu.Lock()
 
     for conn := range ctx.conns {
+      log.Printf("[wW] primary for push loop: %v", conn)
 
-        ctx.writeMu.Lock()
-        dead := false
+      ctx.writeMu.Lock()
+      dead := false
 
-        write := func(typ websocket.MessageType, payload []byte) bool {
-            wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-            defer cancel()
+      write := func(typ websocket.MessageType, payload []byte) bool {
+        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+        defer cancel()
 
-            err := conn.Write(wctx, typ, payload)
-            if err != nil {
-                log.Printf("[WS] write failed, removing conn: %v", err)
-                conn.Close(websocket.StatusNormalClosure, "")
-                dead = true
-                return false
-            }
-            return true
+        err := conn.Write(wctx, typ, payload)
+        if err != nil {
+          log.Printf("[wW] write failed, removing conn: %v", err)
+          conn.Close(websocket.StatusNormalClosure, "")
+          dead = true
+          return false
         }
+        return true
+      }
 
-        dbg("broadcast start conn=%p", conn)
+      dbg("broadcast start conn=%p", conn)
 
-        // --- STATUS ---
-//        if !write(websocket.MessageText, data) {
-//            ctx.writeMu.Unlock()
-//            delete(ctx.conns, conn)
-//            continue
-//        }
+      for _, m := range msgs {
+        if !write(websocket.MessageText, m) {
+          break
+        }
+      }
 
-for _, m := range msgs {
-  if !write(websocket.MessageText, m) {
-    break
-  }
-}
-//        if playlistChanged {
-//          msg := map[string]interface{}{
-//            "type": "playlist_changed",
-//            "playlist_rev":  playlistRev,
-//          }
-//
-//          payload, _ := json.Marshal(msg)
-//
-//          if !write(websocket.MessageText, payload) {
-//            ctx.writeMu.Unlock()
-//            delete(ctx.conns, conn)
-//            continue
-//          }
-//        }
+      if dead {
+        ctx.writeMu.Unlock()
+        delete(ctx.conns, conn)
+        continue
+      }
 
+      // --- ALBUM ART ---
+      if pushArt {
+        dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
 
-        // --- NOTES ---
-//        for _, note := range notes {
-//            if !write(websocket.MessageText, []byte(note)) {
-//                break
-//            }
-//        }
-
-        if dead {
+        if len(img) > 0 {
+          if !write(websocket.MessageBinary, img) {
             ctx.writeMu.Unlock()
             delete(ctx.conns, conn)
             continue
-        }
-
-        // --- ALBUM ART ---
-        if pushArt {
-            dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
-
-            if len(img) > 0 {
-                if !write(websocket.MessageBinary, img) {
-                    ctx.writeMu.Unlock()
-                    delete(ctx.conns, conn)
-                    continue
-                }
-                dbg("album art pushed (%d bytes)", len(img))
-            } else {
-                // empty frame clears stale client art
-                if !write(websocket.MessageBinary, []byte{}) {
-                    ctx.writeMu.Unlock()
-                    delete(ctx.conns, conn)
-                    continue
-                }
-                dbg("empty album art frame pushed")
-            }
-        }
-
-        // --- LOG ENTRIES ---
-//        if songChanged && len(allLogEntries) > 0 {
-//            dbg("pushing %d log entries", len(allLogEntries))
-//            for _, entry := range allLogEntries {
-//                if !write(websocket.MessageText, entry) {
-//                    break
-//                }
-//            }
-//        }
-
-        ctx.writeMu.Unlock()
-
-        if dead {
+          }
+          dbg("album art pushed (%d bytes)", len(img))
+        } else {
+          // empty frame clears stale client art
+          if !write(websocket.MessageBinary, []byte{}) {
+            ctx.writeMu.Unlock()
             delete(ctx.conns, conn)
             continue
+          }
+          dbg("empty album art frame pushed")
         }
+      }
 
-        dbg("broadcast complete conn=%p", conn)
+      ctx.writeMu.Unlock()
+
+      if dead {
+        delete(ctx.conns, conn)
+        continue
+      }
+
+      dbg("broadcast complete conn=%p", conn)
     }
 
     ctx.mu.Unlock()
