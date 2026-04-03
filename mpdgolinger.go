@@ -467,7 +467,7 @@ func refreshPulse() (PulseV1, error) {
 } // func refreshPulse
 
 
-func watchPulse(ctx context.Context, out chan<- PulseV1) {
+func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
   serverFlag := fmt.Sprintf("--server=%s:%d", pulseServer, pulsePort)
   cmd := exec.CommandContext(ctx, pulsePath, serverFlag, "subscribe")
   stdout, err := cmd.StdoutPipe()
@@ -498,7 +498,7 @@ func watchPulse(ctx context.Context, out chan<- PulseV1) {
       }
     }
   }
-} // func watchPulse
+} // func pulseWatcher
 
 func audioFromRaw(raw map[string]string, p string) AudioV1 {
   var src string
@@ -4526,9 +4526,9 @@ log.Printf("abs: %s", abs)
         }
 
         if relative {
+          time.Sleep(10 * time.Millisecond)
           vol = PulseData.Volume
         }
-
 
         log.Printf("[vPJ] pulseaudio volume set=%d", vol)
 
@@ -7381,7 +7381,7 @@ func main() {
   ctx, cancel := context.WithCancel(context.Background())
   defer cancel()
 
-  go watchPulse(ctx, pulseChan)
+  go pulseWatcher(ctx, pulseChan)
 
   go func() {
     for p := range pulseChan {
