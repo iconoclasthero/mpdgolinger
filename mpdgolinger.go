@@ -1660,7 +1660,7 @@ func wsWatcher(ctx *wsCtx) {
 
     switch ev.Subsystem {
     case "pulseaudio":
-      log.Printf("[wW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
+      dbg("[wW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
       pd := ev.PulseData
 //      if pd == nil {
 //        continue
@@ -1672,7 +1672,7 @@ func wsWatcher(ctx *wsCtx) {
 
       msg := map[string]interface{}{
         "system": "pulseaudio",
-        "cmd":    "changed",
+        "cmd":    "set_volume",
         "response": pd,
       }
 
@@ -1680,9 +1680,6 @@ func wsWatcher(ctx *wsCtx) {
 
       data, _ := json.Marshal(msg)
       msgs = append(msgs, data)
-
-      log.Printf("[wW] pulseaudio case ending; msgs: %v", msgs)
-
 
     case "pauseTimer":
       var (
@@ -1790,7 +1787,6 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
         if albumKey == "" || albumKey != lastAlbumKey {
           log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-  //        img, err = c.AlbumArt(uri)
           img, err = c.ReadPicture(uri)
           log.Printf("[ART] After ReadPicture(%s), len(img)=%d", uri, len(img))
           if err != nil || len(img) == 0 {
@@ -1855,9 +1851,8 @@ func wsWatcher(ctx *wsCtx) {
             }
 
             allLogEntries = append(allLogEntries, entryData)
-//          log.Printf("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
+            dbg("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
           }
-//msgs = append(msgs, allLogEntries...)
         } else {
           log.Printf("[LOG] songChanged=%v; not sending log", songChanged)
         }
@@ -1869,9 +1864,10 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("wsWatcher mpdDo error: %v", err)
         continue
       }
-if songChanged && len(allLogEntries) > 0 {
-  msgs = append(msgs, allLogEntries...)
-}
+      if songChanged && len(allLogEntries) > 0 {
+        msgs = append(msgs, allLogEntries...)
+      }
+
     case "playlist":
 
 //      if ev.Subsystem == "playlist" && ev.PlaylistRev != lastPlaylistRev {
@@ -1916,7 +1912,7 @@ if songChanged && len(allLogEntries) > 0 {
     ctx.mu.Lock()
 
     for conn := range ctx.conns {
-      log.Printf("[wW] primary for push loop: %v", conn)
+      dbg("[wW] primary for push loop: %v", conn)
 
       ctx.writeMu.Lock()
       dead := false
