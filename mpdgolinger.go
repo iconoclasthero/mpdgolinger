@@ -4559,127 +4559,31 @@ log.Printf("abs: %s", abs)
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
-// new pulseaudio
-
-/* case pulseaudio
-      case "set_volume":
-
-        switch v := argsIface.(type) {
-          case float64:
-            vol = int(v)
-            hasArg = true
-          case string:
-            if strings.HasPrefix(v, "-") || strings.HasPrefix(v, "+") {
-              if _, errParse = strconv.Atoi(v); errParse == nil {
-                cmdStr = v+"%"
-                relative = true
-              }
-            } else {
-              vol, errParse = strconv.Atoi(v)
-            }
-            hasArg = true
-        }
-
-        log.Printf("[vPJ] pulseaudio set_volume vol: %d", vol)
-
-        if !hasArg {
-          js["response"] = "error"
-          js["error"] = "pulseaudio set_volume requires a value"
-          out, _ := json.Marshal(js)
-          return []string{string(out)}
-        }
-
-        if errParse != nil || ( vol < 0 && ! relative ) {
-          js["response"] = "error"
-          js["error"] = fmt.Sprintf("invalid set_volume value provided: %v", argsIface)
-          out, _ := json.Marshal(js)
-          return []string{string(out)}
-        }
-
-        if ! relative {
-          cmdStr = fmt.Sprintf("%d%%", vol)
-        }
-        serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
-        outBytes, errPulse = exec.Command(
-          PulseData.PulsePath,
-          serverFlag,
-          "set-sink-volume",
-          PulseData.SinkName,
-          cmdStr,
-        ).CombinedOutput()
-
-        if errPulse != nil {
-          js["response"] = "error"
-          js["error"] = fmt.Sprintf("pulse command failed: %v|", errPulse, strings.TrimSpace(string(outBytes)))
-          out, _ := json.Marshal(js)
-          return []string{string(out)}
-        }
-
-        if relative {
-          time.Sleep(10 * time.Millisecond)
-          vol = PulseData.Volume
-        }
-
-        log.Printf("[vPJ] pulseaudio volume set=%d", vol)
-
-//      js["response"] = fmt.Sprintf("volume set to %d", vol)
-        js["response"] = vol
-        out, _ := json.Marshal(js)
-        return []string{string(out)}
-
-      case "mute_volume":
-        if argsIface != "" && argsIface != nil {
-          js["error"] = fmt.Sprintf("cmd does not take an argument: %v", argsIface)
-        }
-
-        cmdStr = "mute"
-
-        serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
-        outBytes, errPulse = exec.Command(
-          PulseData.PulsePath,
-          serverFlag,
-          "set-sink-volume",
-          PulseData.SinkName,
-          cmdStr,
-        ).CombinedOutput()
-
-        if errPulse != nil {
-          js["response"] = "error"
-          js["error"] = fmt.Sprintf("pulse command failed: %v|", errPulse, strings.TrimSpace(string(outBytes)))
-          out, _ := json.Marshal(js)
-          return []string{string(out)}
-        }
-
-        time.Sleep(10 * time.Millisecond)
-
-        log.Printf("[vPJ] pulseaudio muted")
-
-        js["response"] = PulseData
-        out, _ := json.Marshal(js)
-        return []string{string(out)}
-// case pulseaudio */
+// depricated
 
       case "up_volume", "down_volume":
         arg := ""
         switch cmd {
         case "up_volume": arg = "+5"
         case "down_volume": arg = "-5"
-        case "mute_volume": arg = "mute"
         }
-//        log.Printf("[vPJ] pulseaudio, arg: %s", arg)
-//        log.Printf("[vPJ] pulseaudio exec.Command(\"./pulsevol\", %s, \"--no-volstatus\", \"--config=%s", arg, configFlag)
-        log.Printf("[vPJ] pulseaduio configFlag=%s", configFlag)
+        log.Printf("[vPJ] pulsevol configFlag=%s", configFlag)
         outBytes, err := exec.Command("./pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
-//        resp := []string{string(outBytes)}
-        log.Printf("[vPJ] puseaudio, outBytes: %s", outBytes)
-        log.Printf("[vPJ] pulseauio, err: %s", err)
+        log.Printf("[vPJ] pulsevol, outBytes: %s", outBytes)
+        log.Printf("[vPJ] pulsevol, err: %s", err)
         resp := []string{strings.TrimSpace(string(outBytes))}
         if err != nil {
           resp = append(resp, fmt.Sprintf("error: %v", err))
+          js["error"] = err
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
         }
+        js["note"] = `This command is depricated; use e.g., '{..."cmd":"set_volume","args":"±5"}'`
         js["response"] = resp
         out, _ := json.Marshal(js)
         return []string{string(out)}
+
+// depricated
 
       default: // of system case "pulseaudio" switch cmd
         js["response"] = "error"
