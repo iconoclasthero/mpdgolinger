@@ -4470,9 +4470,8 @@ log.Printf("abs: %s", abs)
           errParse error
           errPulse error
           relative bool
+          hasArg bool
         )
-
-        hasArg := false
 
         switch v := argsIface.(type) {
           case float64:
@@ -4537,6 +4536,13 @@ log.Printf("abs: %s", abs)
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
+      case "get_volume":
+        if argsIface != "" {
+          js["error"] = fmt.Sprintf("cmd does not take an argument: %v", argsIface)
+        }
+        js["response"] = PulseData
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
 
       case "up_volume", "down_volume", "mute_volume":
         arg := ""
