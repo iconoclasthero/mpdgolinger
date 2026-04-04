@@ -485,7 +485,7 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
     line := scanner.Text()
 
     // only care about sink events
-    if !strings.Contains(line, "sink") && !strings.Contains(line, "client"){
+    if !strings.Contains(line, "sink") {
       continue
     }
 
