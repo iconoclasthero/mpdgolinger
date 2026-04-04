@@ -491,7 +491,6 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
 
     pd, err := refreshPulse()
     if err == nil {
-      log.Printf("pulse event")
       out <- pd
       idleEvents <- IdleEvent{
         Subsystem: "pulseaudio",
@@ -4464,7 +4463,7 @@ log.Printf("abs: %s", abs)
 // new pulseaudio
   case "pulseaudio":
     switch cmd {
-      case "set_volume", "mute_volume", "get_volume":
+      case "set_volume", "mute_volume":
         var (
           vol int
           pulseWord string
@@ -4519,8 +4518,6 @@ log.Printf("abs: %s", abs)
         } else if cmd == "mute_volume" {
           pulseWord = "set-sink-mute"
           cmdStr    = "toggle"
-        } else {
-          pulseWord = "get-sink-volume"
         }
 
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
@@ -4535,20 +4532,33 @@ log.Printf("abs: %s", abs)
 
         outBytes, errPulse = exec.Command( PulseData.PulsePath, pulseArgs... ).CombinedOutput()
 
+        log.Printf("[vPJ] pulseaudio: %v", pulseArgs)
+
         if errPulse != nil {
           js["response"] = "error"
-          js["error"] = fmt.Sprintf("pulse command failed: %v|", errPulse, strings.TrimSpace(string(outBytes)))
+          js["error"] = fmt.Sprintf("pulse command failed: %v|%v", errPulse, strings.TrimSpace(string(outBytes)))
+          log.Printf("[vPJ] pulseaudio error: %v", js["error"])
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
-        log.Printf("[vPJ] pulseaudio: %v", pulseArgs)
-        log.Printf("[vPJ] outBytes: %v", outBytes)
 
-//        js["response"] = vol
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
+        if js["notes"] != nil {
+          js["response"] = "warning"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
         return nil
+
+      case "get_volume":
+        if argsIface != "" && argsIface != nil {
+          js["error"] = fmt.Sprintf("cmd does not take an argument: %v", argsIface)
+        }
+        js["response"] = PulseData
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
 // new pulseaudio
 
 /* case pulseaudio
@@ -4614,14 +4624,6 @@ log.Printf("abs: %s", abs)
 
 //      js["response"] = fmt.Sprintf("volume set to %d", vol)
         js["response"] = vol
-        out, _ := json.Marshal(js)
-        return []string{string(out)}
-
-      case "get_volume":
-        if argsIface != "" && argsIface != nil {
-          js["error"] = fmt.Sprintf("cmd does not take an argument: %v", argsIface)
-        }
-        js["response"] = PulseData
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
