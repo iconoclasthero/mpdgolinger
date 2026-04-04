@@ -4463,7 +4463,7 @@ log.Printf("abs: %s", abs)
 // new pulseaudio
   case "pulseaudio":
     switch cmd {
-      case "set_volume", "mute_volume", "DOWN_VOLUME", "down_volumme", "up_volume", "UP_VOLUME":
+      case "set_volume", "mute_volume", "DOWN_VOLUME", "down_volume", "up_volume", "UP_VOLUME":
         var (
           vol int
           pulseWord string
@@ -4533,6 +4533,7 @@ log.Printf("abs: %s", abs)
             val = "1"
           }
           cmdStr = sign + val
+          log.Printf("[vPJ] pulseaudio cmdStr: %s", cmdStr)
         }
 
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
