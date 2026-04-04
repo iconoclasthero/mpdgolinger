@@ -4523,13 +4523,16 @@ log.Printf("abs: %s", abs)
         }
 
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
-        outBytes, errPulse = exec.Command(
-          PulseData.PulsePath,
+        pulseArgs := []string{
           serverFlag,
           pulseWord,
           PulseData.SinkName,
-          cmdStr,
-        ).CombinedOutput()
+        }
+        if cmdStr != "" {
+          pulseArgs = append(pulseArgs, cmdStr)
+        }
+
+        outBytes, errPulse = exec.Command( PulseData.PulsePath, pulseArgs... ).CombinedOutput()
 
         if errPulse != nil {
           js["response"] = "error"
