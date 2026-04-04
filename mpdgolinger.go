@@ -4460,18 +4460,94 @@ log.Printf("abs: %s", abs)
         out, _ := json.Marshal(js)
         return []string{string(out)}
     } // switch cmd
-
+// new pulseaudio
   case "pulseaudio":
     switch cmd {
-      case "set_volume":
+      case "set_volume", "mute_volume", "get_volume":
         var (
           vol int
-          volStr string
+          pulseWord string
+          cmdStr string
           errParse error
           errPulse error
           relative bool
           hasArg bool
+          outBytes []byte
         )
+        if cmd != "set_volume" && argsIface != "" && argsIface != nil {
+          js["notes"] = fmt.Sprintf("cmd does not take an argument: %v", argsIface)
+        }
+
+        if cmd == "set_volume" {
+          pulseWord = "set-sink-volume"
+          switch v := argsIface.(type) {
+            case float64:
+              vol = int(v)
+              hasArg = true
+            case string:
+              if strings.HasPrefix(v, "-") || strings.HasPrefix(v, "+") {
+                if _, errParse = strconv.Atoi(v); errParse == nil {
+                  cmdStr = v+"%"
+                  relative = true
+                }
+              } else {
+                vol, errParse = strconv.Atoi(v)
+              }
+              hasArg = true
+          }
+
+          log.Printf("[vPJ] pulseaudio set_volume vol: %d", vol)
+
+          if !hasArg {
+            js["response"] = "error"
+            js["error"] = "pulseaudio set_volume requires a value"
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+          }
+
+          if errParse != nil || ( vol < 0 && ! relative ) {
+            js["response"] = "error"
+            js["error"] = fmt.Sprintf("invalid set_volume value provided: %v", argsIface)
+            out, _ := json.Marshal(js)
+            return []string{string(out)}
+          }
+
+          if ! relative {
+            cmdStr = fmt.Sprintf("%d%%", vol)
+          }
+        } else if cmd == "mute_volume" {
+          pulseWord = "set-sink-mute"
+          cmdStr    = "toggle"
+        } else {
+          pulseWord = "get-sink-volume"
+        }
+
+        serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
+        outBytes, errPulse = exec.Command(
+          PulseData.PulsePath,
+          serverFlag,
+          pulseWord,
+          PulseData.SinkName,
+          cmdStr,
+        ).CombinedOutput()
+
+        if errPulse != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("pulse command failed: %v|", errPulse, strings.TrimSpace(string(outBytes)))
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        log.Printf("[vPJ] pulseaudio %s %s %s", pulseWord, PulseData.SinkName, cmdStr)
+
+//        js["response"] = vol
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+        return nil
+// new pulseaudio
+
+/* case pulseaudio
+      case "set_volume":
 
         switch v := argsIface.(type) {
           case float64:
@@ -4480,7 +4556,7 @@ log.Printf("abs: %s", abs)
           case string:
             if strings.HasPrefix(v, "-") || strings.HasPrefix(v, "+") {
               if _, errParse = strconv.Atoi(v); errParse == nil {
-                volStr = v+"%"
+                cmdStr = v+"%"
                 relative = true
               }
             } else {
@@ -4506,15 +4582,15 @@ log.Printf("abs: %s", abs)
         }
 
         if ! relative {
-          volStr = fmt.Sprintf("%d%%", vol)
+          cmdStr = fmt.Sprintf("%d%%", vol)
         }
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
-        outBytes, errPulse := exec.Command(
+        outBytes, errPulse = exec.Command(
           PulseData.PulsePath,
           serverFlag,
           "set-sink-volume",
           PulseData.SinkName,
-          volStr,
+          cmdStr,
         ).CombinedOutput()
 
         if errPulse != nil {
@@ -4537,14 +4613,46 @@ log.Printf("abs: %s", abs)
         return []string{string(out)}
 
       case "get_volume":
-        if argsIface != "" {
+        if argsIface != "" && argsIface != nil {
           js["error"] = fmt.Sprintf("cmd does not take an argument: %v", argsIface)
         }
         js["response"] = PulseData
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
-      case "up_volume", "down_volume", "mute_volume":
+      case "mute_volume":
+        if argsIface != "" && argsIface != nil {
+          js["error"] = fmt.Sprintf("cmd does not take an argument: %v", argsIface)
+        }
+
+        cmdStr = "mute"
+
+        serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
+        outBytes, errPulse = exec.Command(
+          PulseData.PulsePath,
+          serverFlag,
+          "set-sink-volume",
+          PulseData.SinkName,
+          cmdStr,
+        ).CombinedOutput()
+
+        if errPulse != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("pulse command failed: %v|", errPulse, strings.TrimSpace(string(outBytes)))
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        time.Sleep(10 * time.Millisecond)
+
+        log.Printf("[vPJ] pulseaudio muted")
+
+        js["response"] = PulseData
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+// case pulseaudio */
+
+      case "up_volume", "down_volume":
         arg := ""
         switch cmd {
         case "up_volume": arg = "+5"
