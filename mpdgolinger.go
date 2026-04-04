@@ -4463,7 +4463,7 @@ log.Printf("abs: %s", abs)
 // new pulseaudio
   case "pulseaudio":
     switch cmd {
-      case "set_volume", "mute_volume":
+      case "set_volume", "mute_volume", "DOWN_VOLUME", "down_volumme", "up_volume", "UP_VOLUME":
         var (
           vol int
           pulseWord string
@@ -4518,6 +4518,21 @@ log.Printf("abs: %s", abs)
         } else if cmd == "mute_volume" {
           pulseWord = "set-sink-mute"
           cmdStr    = "toggle"
+        } else {
+          var sign string
+          var val string
+          pulseWord = "set-sink-volume"
+          if strings.HasPrefix(strings.ToLower(cmd), "down") {
+            sign = "-"
+          } else {
+            sign = "+"
+          }
+          if cmd == strings.ToUpper(cmd) {
+            val = "5"
+          } else {
+            val = "1"
+          }
+          cmdStr = sign + val
         }
 
         serverFlag := fmt.Sprintf("--server=%s:%d", PulseData.PulseServer, PulseData.PulsePort)
@@ -4561,11 +4576,11 @@ log.Printf("abs: %s", abs)
 
 // depricated
 
-      case "up_volume", "down_volume":
+/*      case "up_volume", "down_volume", "UP_VOLUME", "DOWN_VOLUME":
         arg := ""
         switch cmd {
-        case "up_volume": arg = "+5"
-        case "down_volume": arg = "-5"
+        case "up_volume": arg = "+1"
+        case "down_volume": arg = "-1"
         }
         log.Printf("[vPJ] pulsevol configFlag=%s", configFlag)
         outBytes, err := exec.Command("./pulsevol", arg, "--no-volstatus", "--config="+configFlag).CombinedOutput()
@@ -4582,7 +4597,7 @@ log.Printf("abs: %s", abs)
         js["response"] = resp
         out, _ := json.Marshal(js)
         return []string{string(out)}
-
+*/
 // depricated
 
       default: // of system case "pulseaudio" switch cmd
