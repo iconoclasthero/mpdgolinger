@@ -491,6 +491,7 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
 
     pd, err := refreshPulse()
     if err == nil {
+      log.Printf("pulse event")
       out <- pd
       idleEvents <- IdleEvent{
         Subsystem: "pulseaudio",
