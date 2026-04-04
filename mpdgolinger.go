@@ -4543,6 +4543,7 @@ log.Printf("abs: %s", abs)
         }
 
         log.Printf("[vPJ] pulseaudio: %v", pulseArgs)
+        log.Printf("[vPJ] outBytes: %v", outBytes)
 
 //        js["response"] = vol
 //        out, _ := json.Marshal(js)
