@@ -4541,7 +4541,7 @@ log.Printf("abs: %s", abs)
           return []string{string(out)}
         }
 
-        log.Printf("[vPJ] pulseaudio %s %s %s", pulseWord, PulseData.SinkName, cmdStr)
+        log.Printf("[vPJ] pulseaudio: %v", pulseArgs)
 
 //        js["response"] = vol
 //        out, _ := json.Marshal(js)
