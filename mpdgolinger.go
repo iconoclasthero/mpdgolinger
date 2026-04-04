@@ -4528,9 +4528,9 @@ log.Printf("abs: %s", abs)
             sign = "+"
           }
           if cmd == strings.ToUpper(cmd) {
-            val = "5"
+            val = "5%"
           } else {
-            val = "1"
+            val = "1%"
           }
           cmdStr = sign + val
           log.Printf("[vPJ] pulseaudio cmdStr: %s", cmdStr)
