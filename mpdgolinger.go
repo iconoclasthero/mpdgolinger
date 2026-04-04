@@ -4578,7 +4578,7 @@ log.Printf("abs: %s", abs)
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
-        js["note"] = `This command is depricated; use e.g., \'{..."cmd":"set_volume","args":"±5"\'`
+        js["note"] = "This command is depricated; use e.g., {...\"cmd\":\"set_volume\",\"args\":\"±5\""
         js["response"] = resp
         out, _ := json.Marshal(js)
         return []string{string(out)}
