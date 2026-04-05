@@ -3298,17 +3298,40 @@ log.Printf("abs: %s", abs)
         return []string{string(out)}
 
       case "ignore":
-        if URI != "" {
-          err := mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(ignoredList, URI) }, "JSON-ignore-addIgnored")
-          if err != nil {
-            js["response"] = "error"
-            js["error"] = err.Error()
-          } else {
-            js["response"] = fmt.Sprintf("Added to %s playlist: %s", ignoredList, URI)
-          }
-        } else {
+        p, ok := argsIface.(string)
+        ext := filepath.Ext(p)
+        if !ok && argsIface != nil {
           js["response"] = "error"
-          js["error"] = "Ignore failed: MPD returned no URI to add to ignored playlist"
+          js["error"] = "Argument must be a valid path"
+        } else if ok && filepath.IsAbs(p) {
+          URI = strings.TrimPrefix(p, defaultLibPrefix)
+          if URI == p {
+            js["response"] = "error"
+            js["error"] = fmt.Sprintf("Absolute path provided must be %s/...", defaultLibPrefix + "/")
+          }
+        } else if ok && ext != "" && ext != "." {
+          URI = p
+        } else if ok {                // here we reject "args":""
+          js["response"] = "error"
+          js["error"] = "Argument must be a valid path"
+        }
+
+        if js["error"] == nil {
+          if URI != "" {    // if we didn't reset URI above then it will still be the on we got from MPS earier
+            log.Printf("Adding %s to %s...", URI, ignoredList)
+            err := mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(ignoredList, URI) }, "JSON-ignore-addIgnored")
+            if err != nil {
+              js["response"] = "error"
+              js["error"] = err.Error()
+              log.Printf("Failed to add %s: %v", URI, err)
+            } else {
+              js["response"] = fmt.Sprintf("Added to %s playlist: %s", ignoredList, URI)
+              log.Printf("%v", js["response"])
+            }
+          } else {
+            js["response"] = "error"
+            js["error"] = "Ignore failed: MPD returned no URI to add to ignored playlist"
+          }
         }
 
         out, _ := json.Marshal(js)
