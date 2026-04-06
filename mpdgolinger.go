@@ -2156,6 +2156,12 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
   case "mpd", "player", "playlist":
 
     switch cmd {
+      case "pause_timer":
+        js["response"] = "error"
+        js["error"] = "Usage: '{system:pause_timer, cmd:(on|off|reset), args:seconds}'"
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
       case "json-log":
         log.Printf("vPJ: received json-log command")
         nlines := 24 // default
