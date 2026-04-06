@@ -3336,11 +3336,10 @@ log.Printf("abs: %s", abs)
             }
             log.Printf("Adding %s to %s...", URI, ignoredList)
             mpderr := mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(ignoredList, URI) }, "JSON-ignore-addIgnored")
-            log.Printf("%v", mpderr)
             if mpderr != nil {
               js["response"] = "error"
-              js["error"] = mpderr.Error()
-              log.Printf("Failed to add %s: %v", URI, mpderr)
+              js["error"] = fmt.Sprintf("Failed to add %s: %v", URI, mpderr.Error())
+              log.Printf("%v", js["error"])
             } else {
               for i := 0; i < 10; i++ {
                 time.Sleep(500 * time.Millisecond)
