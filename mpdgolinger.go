@@ -2158,7 +2158,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
     switch cmd {
       case "pause_timer":
         js["response"] = "error"
-        js["error"] = "Usage: '{system:pause_timer, cmd:(on|off|reset), args:seconds}'"
+        js["error"] = "Usage: '{system:pause_timer, cmd:<on|off|reset>, args:<seconds>}'"
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
@@ -3310,10 +3310,10 @@ log.Printf("abs: %s", abs)
           js["response"] = "error"
           js["error"] = "Argument must be a valid path"
         } else if ok && filepath.IsAbs(p) {
-          URI = strings.TrimPrefix(p, defaultLibPrefix)
+          URI = strings.TrimPrefix(p, defaultLibPrefix + string(os.PathSeparator))
           if URI == p {
             js["response"] = "error"
-            js["error"] = fmt.Sprintf("Absolute path provided must be %s/...", defaultLibPrefix + "/")
+            js["error"] = fmt.Sprintf("Absolute path provided must be %s%s...", defaultLibPrefix, string(os.PathSeparator))
           }
         } else if ok && ext != "" && ext != "." {
           URI = p
@@ -3324,15 +3324,38 @@ log.Printf("abs: %s", abs)
 
         if js["error"] == nil {
           if URI != "" {    // if we didn't reset URI above then it will still be the on we got from MPS earier
+            var (
+              before int64
+              after int64
+            )
+//            ignorePath := filepath.Dir(URI)
+            mpdignorePath := filepath.Join(defaultLibPrefix, filepath.Dir(URI), ".mpdignore")
+            fileInfo, err := os.Stat(mpdignorePath)
+            if err == nil {
+              before = fileInfo.Size()
+            }
             log.Printf("Adding %s to %s...", URI, ignoredList)
-            err := mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(ignoredList, URI) }, "JSON-ignore-addIgnored")
-            if err != nil {
+            mpderr := mpdDo(func(c *mpd.Client) error { return c.PlaylistAdd(ignoredList, URI) }, "JSON-ignore-addIgnored")
+            log.Printf("%v", mpderr)
+            if mpderr != nil {
               js["response"] = "error"
-              js["error"] = err.Error()
-              log.Printf("Failed to add %s: %v", URI, err)
+              js["error"] = mpderr.Error()
+              log.Printf("Failed to add %s: %v", URI, mpderr)
             } else {
-              js["response"] = fmt.Sprintf("Added to %s playlist: %s", ignoredList, URI)
-              log.Printf("%v", js["response"])
+              for i := 0; i < 10; i++ {
+                time.Sleep(500 * time.Millisecond)
+                if fileInfo, err := os.Stat(mpdignorePath); err == nil {
+                  after = fileInfo.Size()
+                  if after > before { break }
+                }
+              }
+              if after > before {
+                js["response"] = fmt.Sprintf("Added to %s playlist: %s", ignoredList, URI)
+                log.Printf("%v", js["response"])
+              } else {
+                js["response"] = "error"
+                js["error"] = fmt.Sprintf("Failed to detect a change to %s; investigate ignore service.", mpdignorePath)
+              }
             }
           } else {
             js["response"] = "error"
