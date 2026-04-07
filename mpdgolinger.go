@@ -1453,7 +1453,6 @@ func wsWatcher(ctx *wsCtx) {
   // persistent state trackers
   var lastAlbumKey string
   var lastSongID int
-  var lastSongURI string
   var lastPlaylistRev int
 
 //  for range idleEvents {
@@ -1575,14 +1574,11 @@ func wsWatcher(ctx *wsCtx) {
         album := song["Album"]
         albumArtist := song["AlbumArtist"]
         songID := atoi(song["Id"])
-        songURI := song["file"]
 
         if lastSongID == 0 || songID != lastSongID {
           log.Printf("[SONG] songID changed: %d → %d", lastSongID, songID)
-          dbg("[SONG] songURI changed: %s → %s", lastSongURI, songURI)
           songChanged = true
           lastSongID = songID
-          lastSongURI = songURI
         }
 
         switch {
@@ -5150,7 +5146,6 @@ func runIdleLoop(w *mpd.Watcher) error {
         songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
         plRev, _  := strconv.Atoi(status["playlist"])
 
-        log.Printf("---------------------------->SONGID = %d", songID)
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
           SongID:      songID,
@@ -5232,18 +5227,11 @@ func runIdleLoop(w *mpd.Watcher) error {
         prevCount := state.count
         prevTransition := state.transition
         if songID != state.lastSongID {
-          log.Printf("STATE.LASTSONGID = %d", state.lastSongID)
           state.prevSongID = state.lastSongID
-          log.Printf("STATE.LASTSONGID = %d", state.lastSongID)
-
           state.prevSongURI = state.lastSongURI
-          log.Printf("STATE.SONGURI     = %s", songURI)
-          log.Printf("STATE.PREVSONGURI = %s", state.prevSongURI)
-          log.Printf("STATE.LASTSONGURI = %s", state.lastSongURI)
         }
         state.lastSongID = songID
         state.lastSongURI = songURI
-        log.Printf("state.lastSongURI = %s", state.lastSongURI)
 
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
@@ -7117,20 +7105,18 @@ func main() {
     state.count = 0
     state.lastSongID = 0
     state.lastSongZI = 0
-    state.lastSongURI = "empty"
+    state.lastSongURI = ""
   } else {
     status, err := client.Status()
-    current, err := client.CurrentSong()
     if err != nil {
       log.Printf("Status error at startup: %v", err)
       state.count = 0
       state.lastSongID = 0
       state.lastSongZI = 0
-      state.lastSongURI = "empty"
+      state.lastSongURI = ""
     } else {
       state.lastSongID, _ = strconv.Atoi(status["songid"])
       state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
-      state.lastSongURI = (current["file"])
       switch status["state"] {                            // This doesn't look right: why is count being asigned this way?
         case "pause", "stop":                             // Especially when paused??
           state.count = 0
