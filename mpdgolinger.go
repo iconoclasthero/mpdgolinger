@@ -1970,7 +1970,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         // Step 2: attemt to add and play the prevSongURI because the prevSongID no longer exists in playlist
         } else {
           errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
-          responses = append(responses, fmt.Sprintf("previous songID (%d)not in current playlist; attempting to readd previous songURI", state.prevSongID))
+          responses = append(responses, fmt.Sprintf("previous songID (%d) not in current playlist; attempting to readd previous songURI", state.prevSongID))
           var prevSongID int
           if errAdd := mpdDo(func(c *mpd.Client) error {
             var err error
@@ -1980,9 +1980,11 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
             errors = append(errors, fmt.Sprintf("AddID failed for previous songURI (%s): %s", state.prevSongURI, errAdd))
           } else {
             if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(prevSongID) }, "JSON-previous-new-PlayID"); err == nil {
-              responses = append(responses, fmt.Sprintf("Playing readded prevSongURI: %s", state.prevSongURI))
-              // since we succeeded in playing nee new ID, clear the errors:
+              // since we succeeded in playing nee new ID, clear the errors and move other responses to notes:
               errors = []string{}
+              js["notes"] = responses
+              responses = []string{}
+              responses = append(responses, fmt.Sprintf("Playing readded prevSongURI: %s", state.prevSongURI))
             } else {
               responses = append(responses, fmt.Sprintf("Unable to play newly-added prevSongID: %d", prevSongID))
               errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
