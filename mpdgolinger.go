@@ -5225,6 +5225,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         if songID != state.lastSongID {
           state.prevSongID = state.lastSongID
           state.prevSongURI = state.lastSongURI
+          log.Printf("STATE.PREVSONGURI = %s", state.prevSongURI)
         }
         state.lastSongID = songID
         state.lastSongURI = songURI
