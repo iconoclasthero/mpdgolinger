@@ -1453,6 +1453,7 @@ func wsWatcher(ctx *wsCtx) {
   // persistent state trackers
   var lastAlbumKey string
   var lastSongID int
+  var lastSongURI string
   var lastPlaylistRev int
 
 //  for range idleEvents {
@@ -1574,11 +1575,14 @@ func wsWatcher(ctx *wsCtx) {
         album := song["Album"]
         albumArtist := song["AlbumArtist"]
         songID := atoi(song["Id"])
+        songURI := song["file"]
 
         if lastSongID == 0 || songID != lastSongID {
-          log.Printf("[SONG] songID changed: %q → %q", lastSongID, songID)
+          log.Printf("[SONG] songID changed: %d → %d", lastSongID, songID)
+          log.Printf("[SONG] songURI changed: %d → %d", lastSongURI, songURI)
           songChanged = true
           lastSongID = songID
+          lastSongURI = songURI
         }
 
         switch {
