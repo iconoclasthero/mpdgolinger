@@ -7117,7 +7117,7 @@ func main() {
     state.count = 0
     state.lastSongID = 0
     state.lastSongZI = 0
-    state.lastSongURI = ""
+    state.lastSongURI = "empty"
   } else {
     status, err := client.Status()
     if err != nil {
@@ -7125,7 +7125,7 @@ func main() {
       state.count = 0
       state.lastSongID = 0
       state.lastSongZI = 0
-      state.lastSongURI = ""
+      state.lastSongURI = "empty"
     } else {
       state.lastSongID, _ = strconv.Atoi(status["songid"])
       state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
