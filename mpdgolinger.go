@@ -7120,6 +7120,7 @@ func main() {
     state.lastSongURI = "empty"
   } else {
     status, err := client.Status()
+    current, err := client.CurrentSong()
     if err != nil {
       log.Printf("Status error at startup: %v", err)
       state.count = 0
@@ -7129,6 +7130,7 @@ func main() {
     } else {
       state.lastSongID, _ = strconv.Atoi(status["songid"])
       state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
+      state.lastSongURI = (current["file"])
       switch status["state"] {                            // This doesn't look right: why is count being asigned this way?
         case "pause", "stop":                             // Especially when paused??
           state.count = 0
