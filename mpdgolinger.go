@@ -5143,7 +5143,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           return err
         }
         songURI   := current["file"]
-        log.Printf("SONGURI = %s", songURI)
+        log.Printf("---------------------------->SONGURI = %s", songURI)
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
           SongID:      songID,
