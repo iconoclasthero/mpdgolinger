@@ -5185,6 +5185,9 @@ func runIdleLoop(w *mpd.Watcher) error {
         // If the user pauses the linger functionality (and state.paused is true):
         if state.paused {
           if songID != state.lastSongID {
+            state.prevSongID = state.lastSongID
+            state.prevSongURI = state.lastSongURI
+
             state.lastSongID = songID
             state.lastSongURI = songURI
             state.count++ // keep counting while paused (matches bash behavior)
