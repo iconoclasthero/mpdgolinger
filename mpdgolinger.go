@@ -1960,9 +1960,15 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
         js["response"] = fmt.Sprintf("state.prevSongID = %d; state.prevSongURI = %s", state.prevSongID, state.prevSongURI)
 
+        // Step 0: if prevSongID = 0 && state.prevSongURI = "" then it's not going to work and we're not polling the log
+        if state.prevSongID == 0 && state.prevSongURI == "" {
+          responses = append(responses, "error")
+          errors = append(errors, "There is no previous songID or songURI available, unable to play the previous song.")
+
         // Step 1: attempt to change to prevSongID
-        if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(state.prevSongID) }, "JSON-previous-PlayID"); err == nil {
+        } else if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(state.prevSongID) }, "JSON-previous-PlayID"); err == nil {
           responses = append(responses, fmt.Sprintf("Playing state.prevSongID: %d", state.prevSongID))
+        // Step 2: attemt to add and play the prevSongURI because the prevSongID no longer exists in playlist
         } else {
           errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
           responses = append(responses, fmt.Sprintf("Unable to locate state.prevSongID: %d", state.prevSongID))
@@ -1975,8 +1981,9 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
             errors = append(errors, fmt.Sprintf("AddID failed: %s", errAdd))
           } else {
             if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(newPrevSongID) }, "JSON-previous-new-PlayID"); err == nil {
-              responses = append(responses, fmt.Sprintf("Unable to play newPrevSongID: %d", newPrevSongID))
+              responses = append(responses, fmt.Sprintf("Playing readded prevSongURI: ", state.prevSongURI))
             } else {
+              responses = append(responses, fmt.Sprintf("Unable to play newPrevSongID: %d", newPrevSongID))
               errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
             }
           }
