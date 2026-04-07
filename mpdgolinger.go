@@ -1954,7 +1954,34 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
   case "mpd", "player", "playlist":
     switch cmd {
       case "previous", "lastsong":
+//        var newPrevSongID int
+        responses := []string{}
+        errors := []string{}
+
         js["response"] = fmt.Sprintf("state.prevSongID = %d; state.prevSongURI = %s", state.prevSongID, state.prevSongURI)
+
+        // Step 1: attempt to change to prevSongID
+        if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(state.prevSongID) }, "JSON-previous-PlayID"); err != nil {
+          errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
+        } else {
+          responses = append(responses, fmt.Sprintf("Unable to locate state.prevSongID: %d", state.prevSongID))
+          var newPrevSongID int
+          if errAdd := mpdDo(func(c *mpd.Client) error {
+            var err error
+            newPrevSongID, err = c.AddID(state.prevSongURI, songZI)
+            return err
+          }, "JSON-previous-AddID"); errAdd != nil {
+            errors = append(errors, fmt.Sprintf("AddID failed: %s", errAdd))
+          } else {
+            if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(newPrevSongID) }, "JSON-previous-new-PlayID"); err == nil {
+              responses = append(responses, fmt.Sprintf("Unable to play newPrevSongID: %d", newPrevSongID))
+            } else {
+              errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
+            }
+          }
+        }
+        js["response"] = responses
+        js["error"] = errors
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
@@ -7108,6 +7135,7 @@ func main() {
     state.lastSongURI = ""
   } else {
     status, err := client.Status()
+    current, err := client.CurrentSong()
     if err != nil {
       log.Printf("Status error at startup: %v", err)
       state.count = 0
@@ -7117,6 +7145,7 @@ func main() {
     } else {
       state.lastSongID, _ = strconv.Atoi(status["songid"])
       state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
+      state.lastSongURI, _ = current["file"]
       switch status["state"] {                            // This doesn't look right: why is count being asigned this way?
         case "pause", "stop":                             // Especially when paused??
           state.count = 0
