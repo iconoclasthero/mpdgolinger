@@ -1963,7 +1963,9 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         if state.prevSongID == 0 && state.prevSongURI == "" {
           responses = append(responses, "error")
           errors = append(errors, "There is no previous songID or songURI available, unable to play the previous song.")
-
+        } else if state.prevSongURI == URI {
+          responses = append(responses, "error")
+          errors = append(errors, "Cannot go back any further than one song due to random.")
         // Step 1: attempt to change to prevSongID
         } else if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(state.prevSongID) }, "JSON-previous-PlayID"); err == nil {
           responses = append(responses, fmt.Sprintf("Playing state.prevSongID: %d", state.prevSongID))
