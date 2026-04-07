@@ -90,6 +90,7 @@ type   derivedState   struct {
      WriteTime        string
      SongZI           int
      SongID           int
+     SongURI          string
      Playing          int          // mpd state
      Paused           int          // mpdlingerstate
      Count            int
@@ -1053,7 +1054,7 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
     if state.blockOn && state.blockLimit > 0 {
       limit = state.blockLimit
     }
-    ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+    ds := deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
     state.mu.Unlock()
     dbg("DBG xy.active=%v\n", xy.active)
 
@@ -1980,6 +1981,11 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
   case "mpd", "player", "playlist":
     switch cmd {
+      case "previous", "lastsong":
+        js["response"] = fmt.Sprintf("state.lastSongID = %d; state.lastSongURI = %s", state.lastSongID, state.lastSongURI)
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
       case "pause_timer":
         js["response"] = "error"
         js["error"] = "Usage: '{system:pause_timer, cmd:<on|off|reset>, args:<seconds>}'"
@@ -3932,7 +3938,7 @@ log.Printf("abs: %s", abs)
         }
 
         state.transition = state.count >= limit
-        deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+        deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
 
         state.mu.Unlock()
 
@@ -3979,7 +3985,7 @@ log.Printf("abs: %s", abs)
           limit = state.blockLimit
         }
 
-        deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+        deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
 
         state.mu.Unlock()
 
@@ -4044,7 +4050,7 @@ log.Printf("abs: %s", abs)
           limit = state.blockLimit
         }
 
-        deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+        deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
 
         state.mu.Unlock()
 
@@ -5210,7 +5216,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           } else {
             log.Printf("Paused: idle event, song unchanged")
           }
-          deriveStateLocked(songZI, songID, limit)  // <--- write after increment to update state count while paused
+          deriveStateLocked(songZI, songID, songURI, limit)  // <--- write after increment to update state count while paused
 
 //          state.mu.Unlock()
 //          return nil
@@ -5238,6 +5244,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         prevCount := state.count
         prevTransition := state.transition
         state.lastSongID = songID
+        state.lastSongURI = songURI
 
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
@@ -5337,7 +5344,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         )
 
         // Write out to the statefile
-        deriveStateLocked(songZI, songID, limit)
+        deriveStateLocked(songZI, songID, songURI, limit)
 
         // Log the song again *after* state changes and random toggles.
         // This lets us confirm whether MPD advanced tracks as expected.
@@ -5567,7 +5574,7 @@ func verbProcessor(csv string) []string {
       if state.blockOn && state.blockLimit > 0 {
         limit = state.blockLimit
       }
-      ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+      ds := deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
       state.mu.Unlock()
 
       // append lines to responses slice
@@ -5597,7 +5604,7 @@ func verbProcessor(csv string) []string {
 
       // --- update persistent state ---
       state.mu.Lock()
-      deriveStateLocked(state.lastSongZI, state.lastSongID, state.baseLimit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, state.baseLimit)
       state.mu.Unlock()
 
       // --- first batch: status + current song ---
@@ -5690,7 +5697,7 @@ func verbProcessor(csv string) []string {
 
       // --- update persistent mpdlinger state ---
       state.mu.Lock()
-      deriveStateLocked(state.lastSongZI, state.lastSongID, state.baseLimit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, state.baseLimit)
       state.mu.Unlock()
 
       // --- first batch: status + current song ---
@@ -5943,7 +5950,7 @@ func verbProcessor(csv string) []string {
         state.paused, expired, state.count, limit, state.transition)
       state.mu.Lock()
       state.paused = true
-      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
       state.mu.Unlock()
       resp = "Paused"
 
@@ -6033,7 +6040,7 @@ func verbProcessor(csv string) []string {
       }
 
       state.transition = state.count >= limit
-      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
       state.mu.Unlock()
 
       err = mpdDo(func(c *mpd.Client) error {
@@ -6061,7 +6068,7 @@ func verbProcessor(csv string) []string {
       if state.blockOn && state.blockLimit > 0 && state.blockLimit != state.baseLimit {
         limit = state.blockLimit
       }
-      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
       state.mu.Unlock()
 
       log.Printf("STATE CHANGE: [IPC] persistent limit set=%d (effective=%d)",
@@ -6097,7 +6104,7 @@ func verbProcessor(csv string) []string {
         limit = state.blockLimit
       }
 
-      deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+      deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
       state.mu.Unlock()
 
       err := mpdDo(func(c *mpd.Client) error {
@@ -6276,13 +6283,14 @@ func verbProcessor(csv string) []string {
 
 
   state.mu.Lock()
-  songID := state.lastSongID
-  songZI := state.lastSongZI
-  limit := state.baseLimit
+  songID  := state.lastSongID
+  songZI  := state.lastSongZI
+  songURI := state.lastSongURI
+  limit   := state.baseLimit
   if state.blockOn && state.blockLimit > 0 {
     limit = state.blockLimit
   }
-  deriveStateLocked(songZI, songID, limit)
+  deriveStateLocked(songZI, songID, songURI, limit)
   state.mu.Unlock()
 
   return responses
@@ -6377,7 +6385,7 @@ func acceptClients(ln net.Listener) {
 
 
 // deriveStateLocked writes the current state to disk (state.mu must be held)
-func deriveStateLocked(songZI int, songID int, limit int) *derivedState {
+func deriveStateLocked(songZI int, songID int, songURI string, limit int) *derivedState {
   // state.mu MUST already be held
   now := time.Now().Format(time.RFC3339Nano)
 
@@ -6385,6 +6393,7 @@ func deriveStateLocked(songZI int, songID int, limit int) *derivedState {
     WriteTime:  now,
     SongZI:     songZI,
     SongID:     songID,
+    SongURI:    songURI,
     Paused:     btoi(state.paused),
     Count:      state.count,
     BaseLimit:  state.baseLimit,
@@ -6418,7 +6427,7 @@ func deriveStateLocked(songZI int, songID int, limit int) *derivedState {
   os.Rename(tmp, statePath)
 
   return ds
-} // func writeStateLocked(songID string, limit int)
+} // func deriveStateLocked(songID string, limit int)
 
 
 // formatState formats a derivedState struct into key=value lines
@@ -6449,7 +6458,7 @@ func sendStatus(w io.Writer) {
     limit = state.blockLimit
   }
 
-  ds := deriveStateLocked(state.lastSongZI, state.lastSongID, limit)
+  ds := deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
   state.mu.Unlock()
 
   formatState(w, ds)
@@ -7109,6 +7118,7 @@ func main() {
     state.count = 0
     state.lastSongID = 0
     state.lastSongZI = 0
+    state.lastSongURI = ""
   } else {
     status, err := client.Status()
     if err != nil {
@@ -7116,6 +7126,7 @@ func main() {
       state.count = 0
       state.lastSongID = 0
       state.lastSongZI = 0
+      state.lastSongURI = ""
     } else {
       state.lastSongID, _ = strconv.Atoi(status["songid"])
       state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
@@ -7150,7 +7161,7 @@ func main() {
 
   if stateEnabled {
     state.mu.Lock()
-    deriveStateLocked(state.lastSongZI, state.lastSongID, state.baseLimit)
+    deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, state.baseLimit)
     state.mu.Unlock()
   }
 
