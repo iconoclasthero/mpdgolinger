@@ -1579,7 +1579,7 @@ func wsWatcher(ctx *wsCtx) {
 
         if lastSongID == 0 || songID != lastSongID {
           log.Printf("[SONG] songID changed: %d → %d", lastSongID, songID)
-          log.Printf("[SONG] songURI changed: %d → %d", lastSongURI, songURI)
+          dbg("[SONG] songURI changed: %s → %s", lastSongURI, songURI)
           songChanged = true
           lastSongID = songID
           lastSongURI = songURI
