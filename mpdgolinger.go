@@ -1954,7 +1954,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
   case "mpd", "player", "playlist":
     switch cmd {
       case "previous", "lastsong":
-//        var newPrevSongID int
+//        var prevSongID int
         responses := []string{}
         errors := []string{}
 
@@ -1972,18 +1972,20 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         } else {
           errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
           responses = append(responses, fmt.Sprintf("Unable to locate state.prevSongID: %d", state.prevSongID))
-          var newPrevSongID int
+          var prevSongID int
           if errAdd := mpdDo(func(c *mpd.Client) error {
             var err error
-            newPrevSongID, err = c.AddID(state.prevSongURI, songZI)
+            prevSongID, err = c.AddID(state.prevSongURI, songZI)
             return err
           }, "JSON-previous-AddID"); errAdd != nil {
             errors = append(errors, fmt.Sprintf("AddID failed: %s", errAdd))
           } else {
-            if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(newPrevSongID) }, "JSON-previous-new-PlayID"); err == nil {
-              responses = append(responses, fmt.Sprintf("Playing readded prevSongURI: ", state.prevSongURI))
+            if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(prevSongID) }, "JSON-previous-new-PlayID"); err == nil {
+              responses = append(responses, fmt.Sprintf("Playing readded prevSongURI: %s", state.prevSongURI))
+              // since we succeeded in playing nee new ID, clear the errors:
+              errors = []string{}
             } else {
-              responses = append(responses, fmt.Sprintf("Unable to play newPrevSongID: %d", newPrevSongID))
+              responses = append(responses, fmt.Sprintf("Unable to play newly-added prevSongID: %d", prevSongID))
               errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
             }
           }
