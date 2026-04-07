@@ -5130,6 +5130,13 @@ func runIdleLoop(w *mpd.Watcher) error {
         // If this fails, the connection is already bad and the
         // supervisor must reconnect.
         //
+        current, err := c.CurrentSong()
+        if err != nil {
+          return err
+        }
+        songURI   := current["file"]
+        log.Printf("---------------------------->SONGURI = %s", songURI)
+
         status, err := c.Status()
         if err != nil {
           // return so outer code treats this as a status error and reconnects
@@ -5139,12 +5146,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
         plRev, _  := strconv.Atoi(status["playlist"])
 
-        current, err := c.CurrentSong()
-        if err != nil {
-          return err
-        }
-        songURI   := current["file"]
-        log.Printf("---------------------------->SONGURI = %s", songURI)
+        log.Printf("---------------------------->SONGID = %s", songID)
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
           SongID:      songID,
