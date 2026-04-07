@@ -5146,7 +5146,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
         plRev, _  := strconv.Atoi(status["playlist"])
 
-        log.Printf("---------------------------->SONGID = %s", songID)
+        log.Printf("---------------------------->SONGID = %d", songID)
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
           SongID:      songID,
@@ -5231,8 +5231,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           log.Printf("STATE.LASTSONGID = %d", state.lastSongID)
           state.prevSongID = state.lastSongID
           log.Printf("STATE.LASTSONGID = %d", state.lastSongID)
-        }
-        if songURI != state.lastSongURI {
+
           state.prevSongURI = state.lastSongURI
           log.Printf("STATE.SONGURI     = %s", songURI)
           log.Printf("STATE.PREVSONGURI = %s", state.prevSongURI)
