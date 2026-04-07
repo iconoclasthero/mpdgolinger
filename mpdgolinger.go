@@ -5192,6 +5192,7 @@ func runIdleLoop(w *mpd.Watcher) error {
             state.lastSongURI = songURI
             state.count++ // keep counting while paused (matches bash behavior)
             log.Printf("Paused: song advanced, count=%d (limit=%d)", state.count, limit)
+            log.Printf("Paused: state.lastSongURI=%s", state.lastSongURI)
           } else {
             log.Printf("Paused: idle event, song unchanged")
           }
@@ -5230,6 +5231,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         }
         state.lastSongID = songID
         state.lastSongURI = songURI
+        log.Printf("state.lastSongURI = %s", state.lastSongURI)
 
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
