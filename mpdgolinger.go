@@ -46,39 +46,10 @@ type       State      struct {
      blockLimit       int    // temporary override (later)
      transition       bool   // true between last-song-start and next-song-start
      lastSongID       int
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-//BEFORE CHANGING TO AN INT!!!
-
-//BEFORE CHANGING TO AN INT!!!
-
-
-
-
-
      lastSongZI       int
      lastSongURI      string
+     prevSongID       int
+     prevSongURI      string
      baseLimit        int
      blockOn          bool
      consume          bool
@@ -1982,7 +1953,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
   case "mpd", "player", "playlist":
     switch cmd {
       case "previous", "lastsong":
-        js["response"] = fmt.Sprintf("state.lastSongID = %d; state.lastSongURI = %s", state.lastSongID, state.lastSongURI)
+        js["response"] = fmt.Sprintf("state.prevSongID = %d; state.prevSongURI = %s", state.prevSongID, state.prevSongURI)
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
