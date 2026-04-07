@@ -1961,9 +1961,10 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         js["response"] = fmt.Sprintf("state.prevSongID = %d; state.prevSongURI = %s", state.prevSongID, state.prevSongURI)
 
         // Step 1: attempt to change to prevSongID
-        if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(state.prevSongID) }, "JSON-previous-PlayID"); err != nil {
-          errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
+        if err := mpdDo(func(c *mpd.Client) error { return c.PlayID(state.prevSongID) }, "JSON-previous-PlayID"); err == nil {
+          responses = append(responses, fmt.Sprintf("Playing state.prevSongID: %d", state.prevSongID))
         } else {
+          errors = append(errors, fmt.Sprintf("PlayID failed: %s", err))
           responses = append(responses, fmt.Sprintf("Unable to locate state.prevSongID: %d", state.prevSongID))
           var newPrevSongID int
           if errAdd := mpdDo(func(c *mpd.Client) error {
