@@ -5160,6 +5160,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         songID, _ := strconv.Atoi(status["songid"])
         songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
         plRev, _  := strconv.Atoi(status["playlist"])
+        songURI   := status["file"]
 
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
@@ -5203,6 +5204,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         if state.paused {
           if songID != state.lastSongID {
             state.lastSongID = songID
+            state.lastSongURI = songURI
             state.count++ // keep counting while paused (matches bash behavior)
             log.Printf("Paused: song advanced, count=%d (limit=%d)", state.count, limit)
           } else {
