@@ -5166,7 +5166,12 @@ func runIdleLoop(w *mpd.Watcher) error {
         songID, _ := strconv.Atoi(status["songid"])
         songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
         plRev, _  := strconv.Atoi(status["playlist"])
-        songURI   := status["file"]
+
+        current, err := c.CurrentSong()
+        if err != nil {
+          return err
+        }
+        songURI   := current["file"]
 
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
