@@ -318,6 +318,7 @@ type      Request     struct {
 type     IdleEvent    struct {
      Subsystem        string
      SongID           int
+     SongURI          string
      Status           map[string]string
      PlaylistRev      int
      PulseData        PulseV1
@@ -5147,6 +5148,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
           SongID:      songID,
+          SongURI:     songURI,
           Status:      status,
           PlaylistRev: plRev,
         }
