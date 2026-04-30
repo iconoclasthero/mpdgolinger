@@ -1900,7 +1900,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         durf, _ := strconv.ParseFloat(status["duration"], 64)
         elf, _ := strconv.ParseFloat(status["elapsed"], 64)
 
-        remaining := int(durf-elf)
+        remaining := int(math.Round(durf - elf))
         if remaining <= 0 {
           remaining = 1
         }
