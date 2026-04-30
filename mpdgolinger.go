@@ -1878,6 +1878,45 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
     defer state.mu.Unlock()
 
     switch cmd {
+      case "end":
+        if !state.MPDplaying {
+          js["error"] = "pause_timer cannot be set when mpd is not playing"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        var status mpd.Attrs
+        if err := mpdDo(func(c *mpd.Client) error {
+          var err error
+          status, err = c.Status()
+          return err
+        }, "JSON-pauseTimer-end-Status"); err != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("failed to get mpd status: %s", err)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        durf, _ := strconv.ParseFloat(status["duration"], 64)
+        elf, _ := strconv.ParseFloat(status["elapsed"], 64)
+
+        remaining := int(durf-elf) + 1
+        if remaining <= 0 {
+          remaining = 1
+        }
+
+        state.pauseTimer.Active = true
+        state.pauseTimer.Duration = remaining
+        state.pauseTimer.EndTime = time.Now().Add(time.Duration(remaining) * time.Second)
+
+        select {
+        case idleEvents <- IdleEvent{Subsystem: "pauseTimer"}:
+        default:
+        }
+
+        js["response"] = fmt.Sprintf("Pause timer set to end of track (%d sec)", remaining)
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
       case "on":
         if ! state.MPDplaying {
           js["error"] = "pause_timer cannot be set when mpd is not playing"
@@ -1953,6 +1992,23 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
   case "mpd", "player", "playlist":
     switch cmd {
+      case "start_mpdzmq":
+        cmd := exec.Command("pgrep", "nginx")
+
+        // Run the command and capture the output
+        output, err := cmd.Output()
+        if err != nil {
+          // pgrep exits with 1 if no processes match
+          js["error"]=fmt.Sprintf("Error or no processes found: %s\n", err)
+        }
+
+        // Convert output bytes to string
+        pids := string(output)
+
+        js["response"] = pids
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+
       case "previous", "lastsong":
         responses := []string{}
         errors := []string{}
