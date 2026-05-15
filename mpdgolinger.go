@@ -216,6 +216,7 @@ const (
   defaultDaemonIP    = "localhost"
   defaultDaemonPort  = 6559
   defaultIgnoredList = ".mpdignore"
+  defaultNoCoverList = ".noCoverList"
   defaultMPDpassword = ""
   defaultPulseServer = "127.0.0.1"
   defaultPulsePort   = 4713
@@ -259,7 +260,7 @@ var (
 
   skippedList string = ""  // no flag implemented
   ignoredList string = defaultIgnoredList
-
+  noCoverList string = defaultNoCoverList
 
   // IPC socket
   socketPath = defaultSocketPath
@@ -1605,6 +1606,9 @@ func wsWatcher(ctx *wsCtx) {
             img, err = c.AlbumArt(uri)
             if err != nil || len(img) == 0 {
               log.Printf("[ART] AlbumArt(%s) failed, image apparently unavailable.", uri)
+              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+                log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
+              }
 
               // mediainfo on the file
               cmd := exec.Command("mediainfo", uri)
@@ -3426,6 +3430,9 @@ log.Printf("abs: %s", abs)
             img, err = c.AlbumArt(uri)
             if err != nil || len(img) == 0 {
               log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
+              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+                log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
+              }
               img = nil
             } else {
               dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
@@ -4527,6 +4534,9 @@ log.Printf("abs: %s", abs)
               img, err = c.AlbumArt(uri)
               if err != nil || len(img) == 0 {
                 log.Printf("[vPJ] Subscribe: AlbumArt failed, no image available for %q", uri)
+                if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+                  log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
+                }
                 img = nil
               } else {
                 log.Printf("[vPJ] Subscribe: AlbumArt succeeded, %d bytes", len(img))
