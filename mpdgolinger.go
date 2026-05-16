@@ -3410,6 +3410,8 @@ log.Printf("abs: %s", abs)
           img []byte
           mimeType string
           uri string
+          ErrNoResponse = fmt.Errorf("no response")
+//          ErrNoResponse = errors.New("no response")
 //          fixArt bool
         )
 
@@ -3425,7 +3427,7 @@ log.Printf("abs: %s", abs)
             if err = c.PlaylistAdd(noCoverList, uri); err != nil {
               log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
             }
-            return nil
+            return ErrNoResponse
           } else if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
             uri = s
           } else {
@@ -3457,6 +3459,10 @@ log.Printf("abs: %s", abs)
           }
           return nil
         }, "JSON-albumart")
+
+        if err == ErrNoResponse {
+          return nil
+        }
 
         if err != nil {
           js["response"] = "error"
