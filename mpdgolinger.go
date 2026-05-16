@@ -3415,7 +3415,7 @@ log.Printf("abs: %s", abs)
 
         err := mpdDo(func(c *mpd.Client) error {
           var err error
-          if s, ok := argsIface.(string); ok && s == "fix" {
+          if s, ok := argsIface.(string); ok && s == "fix_art" {
             cur, err := c.CurrentSong()
             if err != nil {
               return err
