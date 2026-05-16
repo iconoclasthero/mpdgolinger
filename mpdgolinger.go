@@ -3410,11 +3410,23 @@ log.Printf("abs: %s", abs)
           img []byte
           mimeType string
           uri string
+//          fixArt bool
         )
 
         err := mpdDo(func(c *mpd.Client) error {
           var err error
-          if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
+          if s, ok := argsIface.(string); ok && s == "fix" {
+            cur, err := c.CurrentSong()
+            if err != nil {
+              return err
+            }
+            uri = cur["file"]
+//            fixArt = true
+            if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
+            }
+            return nil
+          } else if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
             uri = s
           } else {
             cur, err := c.CurrentSong()
