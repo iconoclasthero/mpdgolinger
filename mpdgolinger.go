@@ -217,6 +217,7 @@ const (
   defaultDaemonPort  = 6559
   defaultIgnoredList = ".mpdignore"
   defaultNoCoverList = ".noCoverList"
+  defaultFixArtList  = ".fixArtList"
   defaultMPDpassword = ""
   defaultPulseServer = "127.0.0.1"
   defaultPulsePort   = 4713
@@ -261,7 +262,7 @@ var (
   skippedList string = ""  // no flag implemented
   ignoredList string = defaultIgnoredList
   noCoverList string = defaultNoCoverList
-
+  fixArtList  string = defaultFixArtList
   // IPC socket
   socketPath = defaultSocketPath
 
@@ -3424,8 +3425,8 @@ log.Printf("abs: %s", abs)
             }
             uri = cur["file"]
 //            fixArt = true
-            if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
+            if err = c.PlaylistAdd(fixArtList, uri); err != nil {
+              log.Printf("[vPJ] failed adding %q to %s: %v", uri, fixArtList, err)
             }
             return ErrNoResponse
           } else if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
