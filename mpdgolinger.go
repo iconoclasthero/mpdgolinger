@@ -16,6 +16,9 @@ import (
   "net"
   "net/http"
   "io"
+  "image"
+	_ "image/jpeg"
+	_ "image/png"
   "os"
   "os/signal"
   "os/exec"
@@ -3408,7 +3411,17 @@ log.Printf("abs: %s", abs)
       case "albumart":
         dbg("Entered case albumart")
         var (
+          smallRPlist string = ".smallRPlist"
+          smallAAlist string = ".smallAAlist"
+          noEmbedList string = ".noEmbedList"
+          noAAlist    string = ".noAAlist"
           img []byte
+          imgAA []byte  // image from AlbumArt
+          imgRP []byte  // image from ReadPicture
+          cfgAA image.Config
+          cfgRP image.Config
+          errAA error
+          errRP error
           mimeType string
           uri string
           ErrNoResponse = fmt.Errorf("no response")
@@ -3438,23 +3451,70 @@ log.Printf("abs: %s", abs)
             }
             uri = cur["file"]
           }
-          log.Printf("[vPJ] albumart uri requested: %s", uri)
-          img, err = c.ReadPicture(uri)  // Returns []byte directly
-          if err != nil || len(img) == 0 {
-            log.Printf("[vPJ] albumart: ReadPicture failed, falling back to AlbumArt for %q", uri)
-            img, err = c.AlbumArt(uri)
-            if err != nil || len(img) == 0 {
-              log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
-              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-                log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
-              }
-              img = nil
-            } else {
-              dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
+//          log.Printf("[vPJ] albumart uri requested: %s", uri)
+//          img, err = c.ReadPicture(uri)  // Returns []byte directly
+//          if err != nil || len(img) == 0 {
+//            log.Printf("[vPJ] albumart: ReadPicture failed, falling back to AlbumArt for %q", uri)
+//            img, err = c.AlbumArt(uri)
+//            if err != nil || len(img) == 0 {
+//              log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
+//              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+//                log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
+//              }
+//              img = nil
+//            } else {
+//              dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
+//            }
+//          } else {
+//            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(img))
+//          }
+          imgRP, errRP = c.ReadPicture(uri)  // Returns []byte directly
+          imgAA, errAA = c.AlbumArt(uri)
+          if errRP != nil || len(imgRP) == 0 {
+            log.Printf("[vPJ] albumart: ReadPicture failed for %q", uri)
+            if err = c.PlaylistAdd(noEmbedList, uri); err != nil {
+              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noEmbedList, err)
             }
           } else {
-            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(img))
+            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(imgRP))
+            cfgRP, _, errRP = image.DecodeConfig(bytes.NewReader(imgRP))
           }
+
+          if errAA != nil || len(imgAA) == 0 {
+            log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
+            if err = c.PlaylistAdd(noAAlist, uri); err != nil {
+              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noAAlist, err)
+            }
+          } else {
+            dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(imgAA))
+            cfgAA, _, errAA = image.DecodeConfig(bytes.NewReader(imgAA))
+          }
+
+          if errAA != nil && errRP != nil {
+            if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
+            }
+            img = nil
+          }
+
+          if cfgAA.Width + cfgAA.Height > cfgRP.Width + cfgRP.Height {
+            img = imgAA
+          } else {
+            img = imgRP
+          }
+
+          if cfgAA.Width <= 500 || cfgAA.Height <= 500 {
+            if err = c.PlaylistAdd(smallAAlist, uri); err != nil {
+              log.Printf("[vPJ] failed adding %q to %s: %v", uri, smallAAlist, err)
+            }
+          }
+
+          if cfgRP.Width <= 500 || cfgRP.Height <= 500 {
+            if err = c.PlaylistAdd(smallRPlist, uri); err != nil {
+              log.Printf("[vPJ] failed adding %q to %s: %v", uri, smallRPlist, err)
+            }
+          }
+
           if err != nil {
             return err
           }
