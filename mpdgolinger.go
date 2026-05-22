@@ -3498,13 +3498,17 @@ log.Printf("abs: %s", abs)
           }
 
           if errAA != nil || errRP != nil {
-            return fmt.Errorf("decode failure reached comparison: errAA=%v errRP=%v", errAA, errRP)
+            log.Printf("decode failure reached comparison: errAA=%v errRP=%v", errAA, errRP)
           }
 
           if cfgAA.Width + cfgAA.Height > cfgRP.Width + cfgRP.Height {
-            img = imgAA
-          } else {
+            if errAA == nil {
+              img = imgAA
+            }
+          } else if errRP == nil {
             img = imgRP
+          } else if errAA == nil {
+            img = imgAA
           }
 
           if cfgAA.Width <= 500 || cfgAA.Height <= 500 {
