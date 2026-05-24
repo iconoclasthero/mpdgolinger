@@ -205,6 +205,16 @@ type      PulseV1     struct {
      PulsePort        int       `json:"port"`           // for debug
 }
 
+type AlbumArtResult   struct {
+     Img              []byte
+     MimeType         string
+     Source           string
+     Width            int
+     Height           int
+     HasEmbed         bool
+     HasAlbumArt      bool
+}
+
 const (
   defaultSkippedList = ".mpdskip"
   defaultMPDhost     = "localhost"
@@ -220,6 +230,10 @@ const (
   defaultDaemonPort  = 6559
   defaultIgnoredList = ".mpdignore"
   defaultNoCoverList = ".noCoverList"
+  defaultSmallRPlist = ".smallRPlist"
+  defaultSmallAAlist = ".smallAAlist"
+  defaultNoEmbedList = ".noEmbedList"
+  defaultNoAAlist    = ".noAAlist"
   defaultFixArtList  = ".fixArtList"
   defaultMPDpassword = ""
   defaultPulseServer = "127.0.0.1"
@@ -266,7 +280,12 @@ var (
   ignoredList string = defaultIgnoredList
   noCoverList string = defaultNoCoverList
   fixArtList  string = defaultFixArtList
-  // IPC socket
+  smallRPlist string = defaultSmallRPlist
+  smallAAlist string = defaultSmallAAlist
+  noEmbedList string = defaultNoEmbedList
+  noAAlist    string = defaultNoAAlist
+
+// IPC socket
   socketPath = defaultSocketPath
 
   // TCP listener for TCP client connections
@@ -1164,7 +1183,142 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
 
 } // func MPDtags()
 
+func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
+	var (
+		imgAA  []byte
+		imgRP  []byte
+		cfgAA  image.Config
+		cfgRP  image.Config
+		errAA  error
+		errRP  error
+		result AlbumArtResult
+	)
 
+	// --- ReadPicture ---
+	imgRP, errRP = c.ReadPicture(uri)
+	if errRP != nil || len(imgRP) == 0 {
+		log.Printf("[ART] ReadPicture failed for %q", uri)
+
+		if err := c.PlaylistAdd(noEmbedList, uri); err != nil {
+			log.Printf("[ART] failed adding %q to %s: %v",
+				uri, noEmbedList, err)
+		}
+	} else {
+		cfgRP, _, errRP = image.DecodeConfig(bytes.NewReader(imgRP))
+		if errRP != nil {
+			log.Printf("[ART] ReadPicture decode failed for %q: %v",
+				uri, errRP)
+		} else {
+			log.Printf("[ART] ReadPicture succeeded for %q (%dx%d, %d bytes)",
+				uri, cfgRP.Width, cfgRP.Height, len(imgRP))
+
+			result.HasEmbed = true
+
+			if cfgRP.Width <= 500 || cfgRP.Height <= 500 {
+				if err := c.PlaylistAdd(smallRPlist, uri); err != nil {
+					log.Printf("[ART] failed adding %q to %s: %v",
+						uri, smallRPlist, err)
+				}
+			}
+		}
+	}
+
+	// --- AlbumArt ---
+	imgAA, errAA = c.AlbumArt(uri)
+	if errAA != nil || len(imgAA) == 0 {
+		log.Printf("[ART] AlbumArt failed for %q", uri)
+
+		if err := c.PlaylistAdd(noAAlist, uri); err != nil {
+			log.Printf("[ART] failed adding %q to %s: %v",
+				uri, noAAlist, err)
+		}
+	} else {
+		cfgAA, _, errAA = image.DecodeConfig(bytes.NewReader(imgAA))
+		if errAA != nil {
+			log.Printf("[ART] AlbumArt decode failed for %q: %v",
+				uri, errAA)
+		} else {
+			log.Printf("[ART] AlbumArt succeeded for %q (%dx%d, %d bytes)",
+				uri, cfgAA.Width, cfgAA.Height, len(imgAA))
+
+			result.HasAlbumArt = true
+
+			if cfgAA.Width <= 500 || cfgAA.Height <= 500 {
+				if err := c.PlaylistAdd(smallAAlist, uri); err != nil {
+					log.Printf("[ART] failed adding %q to %s: %v",
+						uri, smallAAlist, err)
+				}
+			}
+		}
+	}
+
+	// --- total failure ---
+	if errAA != nil && errRP != nil {
+		log.Printf("[ART] no album art available for %q", uri)
+
+		if err := c.PlaylistAdd(noCoverList, uri); err != nil {
+			log.Printf("[ART] failed adding %q to %s: %v",
+				uri, noCoverList, err)
+		}
+
+		// mediainfo dump
+		cmd := exec.Command("mediainfo", uri)
+		out, _ := cmd.CombinedOutput()
+		log.Printf("[ART] mediainfo output:\n%s", out)
+
+		// directory listing
+		dir := path.Dir(uri)
+		cmd = exec.Command("ls", "-l", dir)
+		out, _ = cmd.CombinedOutput()
+		log.Printf("[ART] dir listing:\n%s", out)
+
+		return nil, nil
+	}
+
+	// --- choose best image ---
+	rpScore := cfgRP.Width + cfgRP.Height
+	aaScore := cfgAA.Width + cfgAA.Height
+
+	if errAA == nil && aaScore > rpScore {
+		result.Img = imgAA
+		result.Width = cfgAA.Width
+		result.Height = cfgAA.Height
+		result.Source = "AlbumArt"
+	} else if errRP == nil {
+		result.Img = imgRP
+		result.Width = cfgRP.Width
+		result.Height = cfgRP.Height
+		result.Source = "ReadPicture"
+	} else if errAA == nil {
+		result.Img = imgAA
+		result.Width = cfgAA.Width
+		result.Height = cfgAA.Height
+		result.Source = "AlbumArt"
+	}
+
+	// --- mime detection ---
+	result.MimeType = "image/jpeg"
+
+	if len(result.Img) > 3 {
+		if result.Img[0] == 0x89 &&
+			result.Img[1] == 0x50 &&
+			result.Img[2] == 0x4E &&
+			result.Img[3] == 0x47 {
+
+			result.MimeType = "image/png"
+		}
+	}
+
+	log.Printf("[ART] selected %s for %q (%dx%d, %d bytes)",
+		result.Source,
+		uri,
+		result.Width,
+		result.Height,
+		len(result.Img),
+	)
+
+	return &result, nil
+} // func getBestAlbumArt()
 
 func mpdLogParse(numEntries int) []LogLine {
   // mpdLogParse reads the MPD log newest-first.
@@ -3408,41 +3562,194 @@ log.Printf("abs: %s", abs)
         return []string{string(out)}
 
       // Add to verbProcessorJSON switch statement, under system case "mpd", "player":
+//      case "albumart":
+//        dbg("Entered case albumart")
+//        var (
+//          img []byte
+//          imgAA []byte  // image from AlbumArt
+//          imgRP []byte  // image from ReadPicture
+//          cfgAA image.Config
+//          cfgRP image.Config
+//          errAA error
+//          errRP error
+//          mimeType string
+//          uri string
+//          ErrNoResponse = fmt.Errorf("no response")
+////          ErrNoResponse = errors.New("no response")
+////          fixArt bool
+//        )
+//
+//        err := mpdDo(func(c *mpd.Client) error {
+//          var err error
+//          if s, ok := argsIface.(string); ok && s == "fix_art" {
+//            cur, err := c.CurrentSong()
+//            if err != nil {
+//              return err
+//            }
+//            uri = cur["file"]
+////            fixArt = true
+//            if err = c.PlaylistAdd(fixArtList, uri); err != nil {
+//              log.Printf("[vPJ] failed adding %q to %s: %v", uri, fixArtList, err)
+//            }
+//            return ErrNoResponse
+//          } else if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
+//            uri = s
+//          } else {
+//            cur, err := c.CurrentSong()
+//            if err != nil {
+//              return err
+//            }
+//            uri = cur["file"]
+//          }
+////          log.Printf("[vPJ] albumart uri requested: %s", uri)
+////          img, err = c.ReadPicture(uri)  // Returns []byte directly
+////          if err != nil || len(img) == 0 {
+////            log.Printf("[vPJ] albumart: ReadPicture failed, falling back to AlbumArt for %q", uri)
+////            img, err = c.AlbumArt(uri)
+////            if err != nil || len(img) == 0 {
+////              log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
+////              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+////                log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
+////              }
+////              img = nil
+////            } else {
+////              dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
+////            }
+////          } else {
+////            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(img))
+////          }
+//          imgRP, errRP = c.ReadPicture(uri)  // Returns []byte directly
+//          imgAA, errAA = c.AlbumArt(uri)
+//          if errRP != nil || len(imgRP) == 0 {
+//            log.Printf("[vPJ] albumart: ReadPicture failed for %q", uri)
+//            if err = c.PlaylistAdd(noEmbedList, uri); err != nil {
+//              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noEmbedList, err)
+//            }
+//          } else {
+//            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(imgRP))
+//            cfgRP, _, errRP = image.DecodeConfig(bytes.NewReader(imgRP))
+//          }
+//
+//          if errAA != nil || len(imgAA) == 0 {
+//            log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
+//            if err = c.PlaylistAdd(noAAlist, uri); err != nil {
+//              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noAAlist, err)
+//            }
+//          } else {
+//            dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(imgAA))
+//            cfgAA, _, errAA = image.DecodeConfig(bytes.NewReader(imgAA))
+//          }
+//
+//          if errAA != nil && errRP != nil {
+//            if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+//              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
+//            }
+//            img = nil
+//          }
+//
+//          if errAA != nil || errRP != nil {
+//            log.Printf("decode failure reached comparison: errAA=%v errRP=%v", errAA, errRP)
+//          }
+//
+//          if cfgAA.Width + cfgAA.Height > cfgRP.Width + cfgRP.Height {
+//            if errAA == nil {
+//              img = imgAA
+//            }
+//          } else if errRP == nil {
+//            img = imgRP
+//          } else if errAA == nil {
+//            img = imgAA
+//          }
+//
+//          if cfgAA.Width <= 500 || cfgAA.Height <= 500 {
+//            if err = c.PlaylistAdd(smallAAlist, uri); err != nil {
+//              log.Printf("[vPJ] failed adding %q to %s: %v", uri, smallAAlist, err)
+//            }
+//          }
+//
+//          if cfgRP.Width <= 500 || cfgRP.Height <= 500 {
+//            if err = c.PlaylistAdd(smallRPlist, uri); err != nil {
+//              log.Printf("[vPJ] failed adding %q to %s: %v", uri, smallRPlist, err)
+//            }
+//          }
+//
+//          if err != nil {
+//            return err
+//          }
+//          return nil
+//        }, "JSON-albumart")
+//
+//        if err == ErrNoResponse {
+//          return nil
+//        }
+//
+//        if err != nil {
+//          js["response"] = "error"
+//          js["uri"] = uri
+//          js["error"] = fmt.Sprintf("AlbumArt failed: %v", err)
+//          out, _ := json.Marshal(js)
+//          return []string{string(out)}
+//        }
+//
+//        // Detect MIME type
+//        mimeType = "image/jpeg"
+//        if len(img) > 3 {
+//          // PNG magic bytes: 89 50 4E 47
+//          if img[0] == 0x89 && img[1] == 0x50 &&
+//             img[2] == 0x4E && img[3] == 0x47 {
+//            mimeType = "image/png"
+//          }
+//        }
+//
+////      base64Data := base64.StdEncoding.EncodeToString(img)
+//        js["response"] = "ok"
+//        js["size"] = len(img)
+//        js["uri"] = uri
+////      js["data"] = base64Data
+//        js["mime_type"] = mimeType
+//        out, _ := json.Marshal(js)
+//
+//          if len(img) > 0 {
+//            ctx.conn.Write(context.Background(), websocket.MessageText, out)
+//            ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
+//            log.Printf("[vPJ] pushed album art (%d bytes) to albumart request", len(img))
+//          } else {
+//            ctx.conn.Write(context.Background(), websocket.MessageText, out)
+//            ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
+//            log.Printf("[vPJ] pushed empty album art frame to albumart request")
+//          }
+//        return nil
       case "albumart":
         dbg("Entered case albumart")
+
         var (
-          smallRPlist string = ".smallRPlist"
-          smallAAlist string = ".smallAAlist"
-          noEmbedList string = ".noEmbedList"
-          noAAlist    string = ".noAAlist"
           img []byte
-          imgAA []byte  // image from AlbumArt
-          imgRP []byte  // image from ReadPicture
-          cfgAA image.Config
-          cfgRP image.Config
-          errAA error
-          errRP error
           mimeType string
           uri string
           ErrNoResponse = fmt.Errorf("no response")
-//          ErrNoResponse = errors.New("no response")
-//          fixArt bool
         )
 
         err := mpdDo(func(c *mpd.Client) error {
           var err error
+
+          // --- special fix_art mode ---
           if s, ok := argsIface.(string); ok && s == "fix_art" {
             cur, err := c.CurrentSong()
             if err != nil {
               return err
             }
+
             uri = cur["file"]
-//            fixArt = true
+
             if err = c.PlaylistAdd(fixArtList, uri); err != nil {
               log.Printf("[vPJ] failed adding %q to %s: %v", uri, fixArtList, err)
             }
+
             return ErrNoResponse
-          } else if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
+          }
+
+          // --- resolve uri ---
+          if s, ok := argsIface.(string); ok && strings.Contains(s, string(os.PathSeparator)) {
             uri = s
           } else {
             cur, err := c.CurrentSong()
@@ -3451,81 +3758,19 @@ log.Printf("abs: %s", abs)
             }
             uri = cur["file"]
           }
-//          log.Printf("[vPJ] albumart uri requested: %s", uri)
-//          img, err = c.ReadPicture(uri)  // Returns []byte directly
-//          if err != nil || len(img) == 0 {
-//            log.Printf("[vPJ] albumart: ReadPicture failed, falling back to AlbumArt for %q", uri)
-//            img, err = c.AlbumArt(uri)
-//            if err != nil || len(img) == 0 {
-//              log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
-//              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-//                log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
-//              }
-//              img = nil
-//            } else {
-//              dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(img))
-//            }
-//          } else {
-//            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(img))
-//          }
-          imgRP, errRP = c.ReadPicture(uri)  // Returns []byte directly
-          imgAA, errAA = c.AlbumArt(uri)
-          if errRP != nil || len(imgRP) == 0 {
-            log.Printf("[vPJ] albumart: ReadPicture failed for %q", uri)
-            if err = c.PlaylistAdd(noEmbedList, uri); err != nil {
-              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noEmbedList, err)
-            }
-          } else {
-            dbg("[vPJ] albumart: ReadPicture succeeded, %d bytes", len(imgRP))
-            cfgRP, _, errRP = image.DecodeConfig(bytes.NewReader(imgRP))
-          }
 
-          if errAA != nil || len(imgAA) == 0 {
-            log.Printf("[vPJ] albumart: AlbumArt failed, no image available for %q", uri)
-            if err = c.PlaylistAdd(noAAlist, uri); err != nil {
-              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noAAlist, err)
-            }
-          } else {
-            dbg("[vPJ] albumart: AlbumArt succeeded, %d bytes", len(imgAA))
-            cfgAA, _, errAA = image.DecodeConfig(bytes.NewReader(imgAA))
-          }
-
-          if errAA != nil && errRP != nil {
-            if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-              log.Printf("[vPJ] failed adding %q to %s: %v", uri, noCoverList, err)
-            }
-            img = nil
-          }
-
-          if errAA != nil || errRP != nil {
-            log.Printf("decode failure reached comparison: errAA=%v errRP=%v", errAA, errRP)
-          }
-
-          if cfgAA.Width + cfgAA.Height > cfgRP.Width + cfgRP.Height {
-            if errAA == nil {
-              img = imgAA
-            }
-          } else if errRP == nil {
-            img = imgRP
-          } else if errAA == nil {
-            img = imgAA
-          }
-
-          if cfgAA.Width <= 500 || cfgAA.Height <= 500 {
-            if err = c.PlaylistAdd(smallAAlist, uri); err != nil {
-              log.Printf("[vPJ] failed adding %q to %s: %v", uri, smallAAlist, err)
-            }
-          }
-
-          if cfgRP.Width <= 500 || cfgRP.Height <= 500 {
-            if err = c.PlaylistAdd(smallRPlist, uri); err != nil {
-              log.Printf("[vPJ] failed adding %q to %s: %v", uri, smallRPlist, err)
-            }
-          }
-
+          // --- unified album art pipeline ---
+          art, err := getBestAlbumArt(c, uri)
           if err != nil {
             return err
           }
+
+          if art != nil {
+            img = art.Img
+          } else {
+            img = nil
+          }
+
           return nil
         }, "JSON-albumart")
 
@@ -3541,35 +3786,37 @@ log.Printf("abs: %s", abs)
           return []string{string(out)}
         }
 
-        // Detect MIME type
+        // --- MIME detection ---
         mimeType = "image/jpeg"
         if len(img) > 3 {
-          // PNG magic bytes: 89 50 4E 47
-          if img[0] == 0x89 && img[1] == 0x50 &&
-             img[2] == 0x4E && img[3] == 0x47 {
+          if img[0] == 0x89 &&
+            img[1] == 0x50 &&
+            img[2] == 0x4E &&
+            img[3] == 0x47 {
             mimeType = "image/png"
           }
         }
 
-//      base64Data := base64.StdEncoding.EncodeToString(img)
+        // --- response JSON ---
         js["response"] = "ok"
         js["size"] = len(img)
         js["uri"] = uri
-//      js["data"] = base64Data
         js["mime_type"] = mimeType
+
         out, _ := json.Marshal(js)
 
-          if len(img) > 0 {
-            ctx.conn.Write(context.Background(), websocket.MessageText, out)
-            ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
-            log.Printf("[vPJ] pushed album art (%d bytes) to albumart request", len(img))
-          } else {
-            ctx.conn.Write(context.Background(), websocket.MessageText, out)
-            ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
-            log.Printf("[vPJ] pushed empty album art frame to albumart request")
-          }
-        return nil
+        // --- websocket push ---
+        if len(img) > 0 {
+          ctx.conn.Write(context.Background(), websocket.MessageText, out)
+          ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
+          log.Printf("[vPJ] pushed album art (%d bytes) to albumart request", len(img))
+        } else {
+          ctx.conn.Write(context.Background(), websocket.MessageText, out)
+          ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
+          log.Printf("[vPJ] pushed empty album art frame to albumart request")
+        }
 
+        return nil
 
 
 /*    DO NOT DELETE THIS IS A AWORK IN PROGRESS TO INCLUDE A BASE64 OPTION!
