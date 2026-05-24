@@ -1753,35 +1753,64 @@ func wsWatcher(ctx *wsCtx) {
           albumKey = strconv.Itoa(songID)
         }
 
+//        // fetch art ONLY if album changed
+//        log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
+//        if albumKey == "" || albumKey != lastAlbumKey {
+//          log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
+//          img, err = c.ReadPicture(uri)
+//          log.Printf("[ART] After ReadPicture(%s), len(img)=%d", uri, len(img))
+//          if err != nil || len(img) == 0 {
+//            log.Printf("[ART] ReadPicture(%s) failed, trying fallback.", uri)
+//            img, err = c.AlbumArt(uri)
+//            if err != nil || len(img) == 0 {
+//              log.Printf("[ART] AlbumArt(%s) failed, image apparently unavailable.", uri)
+//              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+//                log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
+//              }
+//
+//              // mediainfo on the file
+//              cmd := exec.Command("mediainfo", uri)
+//              out, _ := cmd.CombinedOutput()
+//              log.Printf("[ART] mediainfo output:\n%s", out)
+//
+//              // ls of the directory containing the file
+//              dir := path.Dir(uri)
+//              cmd = exec.Command("ls", "-l", dir)
+//              out, _ = cmd.CombinedOutput()
+//              log.Printf("[ART] dir listing:\n%s", out)
+//
+//              img = nil
+//            }
+//          }
+//          lastAlbumKey = albumKey
+//          state.mu.Lock()
+//          state.lastAlbumKey = lastAlbumKey
+//          state.mu.Unlock()
+//
+//          pushArt = true
+//        } else {
+//          log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
+//          pushArt = false
+//        }
+
         // fetch art ONLY if album changed
         log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
+
         if albumKey == "" || albumKey != lastAlbumKey {
           log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-          img, err = c.ReadPicture(uri)
-          log.Printf("[ART] After ReadPicture(%s), len(img)=%d", uri, len(img))
-          if err != nil || len(img) == 0 {
-            log.Printf("[ART] ReadPicture(%s) failed, trying fallback.", uri)
-            img, err = c.AlbumArt(uri)
-            if err != nil || len(img) == 0 {
-              log.Printf("[ART] AlbumArt(%s) failed, image apparently unavailable.", uri)
-              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-                log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
-              }
 
-              // mediainfo on the file
-              cmd := exec.Command("mediainfo", uri)
-              out, _ := cmd.CombinedOutput()
-              log.Printf("[ART] mediainfo output:\n%s", out)
-
-              // ls of the directory containing the file
-              dir := path.Dir(uri)
-              cmd = exec.Command("ls", "-l", dir)
-              out, _ = cmd.CombinedOutput()
-              log.Printf("[ART] dir listing:\n%s", out)
-
-              img = nil
-            }
+          art, err := getBestAlbumArt(c, uri)
+          if err != nil {
+            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
+            img = nil
+          } else if art != nil {
+            img = art.Img
+            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
+          } else {
+            log.Printf("[ART] no album art available for %q", uri)
+            img = nil
           }
+
           lastAlbumKey = albumKey
           state.mu.Lock()
           state.lastAlbumKey = lastAlbumKey
