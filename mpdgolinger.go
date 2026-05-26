@@ -1267,7 +1267,10 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 		log.Printf("[ART] mediainfo output:\n%s", out)
 
 		// directory listing
-		dir := path.Dir(musicLibPrefix + "/" + uri)
+		dir := path.Dir(uri)
+    if ! filepath.IsAbs(dir) {
+      dir = filepath.Join(musicLibPrefix, dir)
+    }
 		cmd = exec.Command("ls", "-l", dir)
 		out, _ = cmd.CombinedOutput()
 		log.Printf("[ART] dir listing:\n%s", out)
