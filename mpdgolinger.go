@@ -19,6 +19,7 @@ import (
   "image"
 	_ "image/jpeg"
 	_ "image/png"
+  _ "golang.org/x/image/webp"
   "os"
   "os/signal"
   "os/exec"
