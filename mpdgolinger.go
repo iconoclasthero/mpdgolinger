@@ -2077,6 +2077,33 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
   // --- system switch ---
   switch system {   // mpd, player, playlist; linger; websocket; pulseaudio; search; pauseTimer //
+  case "artwork":
+
+  switch cmd {
+
+    case "resolve":
+
+      type ArtworkArgs struct {
+        Path string `json:"path"`
+      }
+
+      var a ArtworkArgs
+
+      if err := json.Unmarshal(req.Args, &a); err != nil {
+        js["response"] = "error"
+        js["error"] = err.Error()
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
+      js["response"] = "ok"
+      js["path"] = a.Path
+
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+  }
+  return nil
+
   case "pause_timer":
     state.mu.Lock()
     defer state.mu.Unlock()
