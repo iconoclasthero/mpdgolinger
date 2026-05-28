@@ -5130,8 +5130,8 @@ log.Printf("abs: %s", abs)
 //              ctx.conn.Write(context.Background(), websocket.MessageText, []byte(entry))
 //            }
 //          }
-
           // --- push logs immediately on subscribe ---
+
           resp := verbProcessor("json-log")
 
           for _, entry := range resp {
@@ -5140,7 +5140,14 @@ log.Printf("abs: %s", abs)
             }
 
             jsLog := clone(js)
-            jsLog["response"] = entry
+
+            var parsed any
+            if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
+              // fallback: keep raw string if it is not JSON
+              jsLog["response"] = entry
+            } else {
+              jsLog["response"] = parsed
+            }
 
             b, err := json.Marshal(jsLog)
             if err != nil {
