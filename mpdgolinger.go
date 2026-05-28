@@ -5111,8 +5111,9 @@ log.Printf("abs: %s", abs)
           jsStatus := clone(js)
           jsStatus["response"] = &StatusV1{}
 
-          if err := convert2json(status, jsStatus); err == nil {
-            log.Printf("[DBG] convert2json succeeded")
+          err2 := convert2json(status, jsStatus)
+          log.Println("[DBG] convert2json err:", err2)
+          if err2 == nil {
             data, err := json.Marshal(jsStatus)
             if err == nil {
               ctx.conn.Write(context.Background(), websocket.MessageText, data)
