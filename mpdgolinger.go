@@ -2118,7 +2118,7 @@ case "resolve":
 //  // pass artwork.go result straight through
 //  return []string{string(outBytes)}
 
-  cmd := exec.Command("go", "run", "/home/bvargo/bin/gits/mpdgolinger/artwork.go")
+  cmd := exec.Command("go", "run", "./artwork.go")
 
   cmd.Stdin = bytes.NewReader(b)
 
