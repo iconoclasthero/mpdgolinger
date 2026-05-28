@@ -2103,23 +2103,6 @@ case "resolve":
 
   b, _ := json.Marshal(in)
 
-//  cmd := exec.Command("go", "run", "artwork.go")
-//  cmd.Stdin = strings.NewReader(string(b))
-//
-//  outBytes, err := cmd.Output()
-//  if err != nil {
-//    js["response"] = "error"
-//    js["error"] = err.Error()
-//    js["stderr"] = string(outBytes)
-//    out, _ := json.Marshal(js)
-//    return []string{string(out)}
-//  }
-//
-//  // pass artwork.go result straight through
-//  return []string{string(outBytes)}
-
-//  cmd := exec.Command("go", "run", "/opt/mgl/artwork.go")
-
 cmd := exec.Command("go", "run", ".")
 cmd.Dir = "/opt/mgl"
 
@@ -2139,7 +2122,21 @@ cmd.Dir = "/opt/mgl"
     return []string{string(out)}
   }
 
-  return []string{stdout.String()}
+var resp any
+
+if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+  js["response"] = "error"
+  js["error"] = err.Error()
+  js["stdout"] = stdout.String()
+
+  out, _ := json.Marshal(js)
+  return []string{string(out)}
+}
+
+js["response"] = resp
+
+out, _ := json.Marshal(js)
+return []string{string(out)}
 }
   return nil
 
