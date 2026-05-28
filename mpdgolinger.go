@@ -2103,20 +2103,40 @@ case "resolve":
 
   b, _ := json.Marshal(in)
 
-  cmd := exec.Command("go", "run", "artwork.go")
-  cmd.Stdin = strings.NewReader(string(b))
+//  cmd := exec.Command("go", "run", "artwork.go")
+//  cmd.Stdin = strings.NewReader(string(b))
+//
+//  outBytes, err := cmd.Output()
+//  if err != nil {
+//    js["response"] = "error"
+//    js["error"] = err.Error()
+//    js["stderr"] = string(outBytes)
+//    out, _ := json.Marshal(js)
+//    return []string{string(out)}
+//  }
+//
+//  // pass artwork.go result straight through
+//  return []string{string(outBytes)}
 
-  outBytes, err := cmd.Output()
+  cmd := exec.Command("go", "run", "artwork.go")
+
+  cmd.Stdin = bytes.NewReader(b)
+
+  var stdout, stderr bytes.Buffer
+  cmd.Stdout = &stdout
+  cmd.Stderr = &stderr
+
+  err := cmd.Run()
   if err != nil {
     js["response"] = "error"
     js["error"] = err.Error()
-    js["stderr"] = string(outBytes)
+    js["stderr"] = stderr.String()
+    js["stdout"] = stdout.String()
     out, _ := json.Marshal(js)
     return []string{string(out)}
   }
 
-  // pass artwork.go result straight through
-  return []string{string(outBytes)}
+  return []string{stdout.String()}
 }
   return nil
 
