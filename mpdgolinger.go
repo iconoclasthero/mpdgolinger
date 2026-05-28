@@ -12,6 +12,7 @@ import (
   "bufio"
   "bytes"
   "fmt"
+  "hash/fnv"
   "log"
   "net"
   "net/http"
@@ -210,6 +211,8 @@ type AlbumArtResult   struct {
      Img              []byte
      MimeType         string
      Source           string
+     Size             int
+     Hash             string
      Width            int
      Height           int
      HasEmbed         bool
@@ -775,6 +778,12 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 
 /* ---------------- utils ---------------- */
 
+func fnv1a(data []byte) string {
+  h := fnv.New64a()
+  h.Write(data)
+  return fmt.Sprintf("%x", h.Sum64())
+}
+
 func isoLocalEpoch(iso string) int64 {
     // Parse ISO 8601 string
     t, err := time.Parse("2006-01-02T15:04:05", iso)
@@ -1313,6 +1322,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 	result.MimeType = "image/jpeg"
 
 	if len(result.Img) > 3 {
+    // PNG
 		if result.Img[0] == 0x89 &&
 			result.Img[1] == 0x50 &&
 			result.Img[2] == 0x4E &&
@@ -1320,11 +1330,21 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 
 			result.MimeType = "image/png"
 		}
+    // WEBP (RIFF....WEBP)
+    if string(result.Img[0:4]) == "RIFF" &&
+      string(result.Img[8:12]) == "WEBP" {
+
+      result.MimeType = "image/webp"
+    }
 	}
+
+  result.Size = len(result.Img)
+  result.Hash = fnv1a(result.Img)
 
 	log.Printf("[ART] selected %s for %q (%dx%d, %d bytes)",
 		result.Source,
 		uri,
+    result.Hash,
 		result.Width,
 		result.Height,
 		len(result.Img),
@@ -4891,6 +4911,172 @@ log.Printf("abs: %s", abs)
 
   case "websocket":
     switch cmd {
+//      case "subscribe":
+//        // mark watcher as running
+//        if !ctx.watcherRunning {
+//          ctx.watcherRunning = true
+//          go wsWatcher(ctx)
+//          log.Println("[vPJ] wsWatcher started for connection %p", ctx.conn)
+//        }
+//
+//        ctx.writeMu.Lock()
+//        defer ctx.writeMu.Unlock()
+//
+//        // push subscribed first
+//        js["response"] = "subscribed"
+//        out, _ := json.Marshal(js)
+//        ctx.conn.Write(context.Background(), websocket.MessageText, out)
+//
+//        // then push status, logs, and finally binary album art
+//        // --- immediate push on subscribe ---
+//        status, notes, err := MPDtags(nil, "status", "status")
+//        if err == nil {
+//          js := &StatusV1{}
+//          if err := convert2json(status, js); err == nil {
+//            data, err := json.Marshal(js)
+//            if err == nil {
+//              ctx.conn.Write(context.Background(), websocket.MessageText, data)
+//              log.Println("[vPJ] pushed initial confirmation to subscriber")
+//
+//              // send notes if any
+//              for _, note := range notes {
+//                ctx.conn.Write(context.Background(), websocket.MessageText, []byte(note))
+//                log.Printf("[vPJ] pushed note on subscribe event: %q", note)
+//              }
+//            }
+//          }
+//
+//          // --- push logs immediately on subscribe ---
+//          resp := verbProcessor("json-log")
+//          for _, entry := range resp {
+//            if entry != "" {
+//              ctx.conn.Write(context.Background(), websocket.MessageText, []byte(entry))
+//            }
+////          log.Printf("[vPJ] pushed log entry to subscriber")
+//          }
+//
+////          // to push as one log frame rather than n=24 frames:
+////          // filter empty entries first
+////          var logs []map[string]interface{}
+////          for _, entry := range resp {
+////            if entry != "" {
+////              var log map[string]interface{}
+////              if err:= json.Unmarshal([]byte(entry), &log); err == nil {
+////                logs = append(logs, log)
+////              }
+////            }
+////          }
+////
+////          // marshal as one JSON array
+////          if len(logs) > 0 {
+////            combined, err := json.Marshal(logs)
+////            if err == nil {
+////              ctx.conn.Write(context.Background(), websocket.MessageText, combined)
+////              log.Printf("[vPJ] pushed %d log entries in one frame", len(logs))
+////            }
+////          }
+////          // end of log accumulation
+//
+//
+////          // --- immediate push of album art with ReadPicture fallback ---
+////          var img []byte
+////          err := mpdDo(func(c *mpd.Client) error {
+////            song, err := c.CurrentSong()
+////            if err != nil {
+////              log.Printf("[vPJ] Subscribe: CurrentSong error: %v", err)
+////              return err
+////            }
+////
+////            uri := song["file"]
+////            log.Printf("[vPJ] Subscribe: attempting ReadPicture for %q", uri)
+////            img, err = c.ReadPicture(uri)
+////            if err != nil || len(img) == 0 {
+////              log.Printf("[vPJ] Subscribe: ReadPicture failed, falling back to AlbumArt for %q", uri)
+////              img, err = c.AlbumArt(uri)
+////              if err != nil || len(img) == 0 {
+////                log.Printf("[vPJ] Subscribe: AlbumArt failed, no image available for %q", uri)
+////                if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+////                  log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
+////                }
+////                img = nil
+////              } else {
+////                log.Printf("[vPJ] Subscribe: AlbumArt succeeded, %d bytes", len(img))
+////              }
+////            } else {
+////              log.Printf("[vPJ] Subscribe: ReadPicture succeeded, %d bytes", len(img))
+////            }
+////            return nil
+////          }, "wsWatcher-subscribe-art")
+////
+////          if err == nil {
+////            if len(img) > 0 {
+////              ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
+////              log.Printf("[vPJ] pushed album art (%d bytes) to subscriber", len(img))
+////            } else {
+////              ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
+////              log.Printf("[vPJ] pushed empty album art frame to subscriber")
+////            }
+////          }
+////        }
+////
+//////        js["response"] = "subscribed"
+//////        out, _ := json.Marshal(js)
+////        return nil //[]string{string(out)}
+//          // --- immediate push of album art using unified pipeline ---
+//          var img []byte
+//
+//          err := mpdDo(func(c *mpd.Client) error {
+//            song, err := c.CurrentSong()
+//            if err != nil {
+//              log.Printf("[vPJ] Subscribe: CurrentSong error: %v", err)
+//              return err
+//            }
+//
+//            uri := song["file"]
+//
+//            log.Printf("[vPJ] Subscribe: fetching album art via unified pipeline for %q", uri)
+//
+//            art, err := getBestAlbumArt(c, uri)
+//            if err != nil {
+//              log.Printf("[vPJ] Subscribe: getBestAlbumArt error for %q: %v", uri, err)
+//              return err
+//            }
+//
+//            if art != nil && art.Size > 0 {
+//              jsArt := clone(js)
+//              jsArt["response"] = map[string]any{
+//                "hash":   art.Hash,
+//                "mime":   art.MimeType,
+//                "size":   art.Size,
+//                "width":  art.Width,
+//                "height": art.Height,
+//              }
+//
+//              b, _ := json.Marshal(jsArt)
+//              img = art.Img
+//              log.Printf("[vPJ] Subscribe: selected %s art (%d bytes)", art.Source, art.Size)
+//            } else {
+//              log.Printf("[vPJ] Subscribe: no album art available for %q", uri)
+//              img = nil
+//            }
+//
+//            return nil
+//          }, "wsWatcher-subscribe-art")
+//
+//          if err == nil {
+//            if art.Size > 0 {
+//              ctx.conn.Write(context.Background(), websocket.MessageText, b)
+//              ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
+//              log.Printf("[vPJ] pushed album art (%d bytes) to subscriber", art.Size)
+//            } else {
+//              ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
+//              log.Printf("[vPJ] pushed empty album art frame to subscriber")
+//            }
+//          }
+//        }
+//
+//        return nil //[]string{string(out)}
+
       case "subscribe":
         // mark watcher as running
         if !ctx.watcherRunning {
@@ -4902,18 +5088,29 @@ log.Printf("abs: %s", abs)
         ctx.writeMu.Lock()
         defer ctx.writeMu.Unlock()
 
+        clone := func(in map[string]any) map[string]any {
+          out := make(map[string]any, len(in))
+          for k, v := range in {
+            out[k] = v
+          }
+          return out
+        }
+
         // push subscribed first
-        js["response"] = "subscribed"
-        out, _ := json.Marshal(js)
+        jsSubscribe := clone(js)
+        jsSubscribe["response"] = "subscribed"
+        out, _ := json.Marshal(jsSubscribe)
         ctx.conn.Write(context.Background(), websocket.MessageText, out)
 
         // then push status, logs, and finally binary album art
         // --- immediate push on subscribe ---
         status, notes, err := MPDtags(nil, "status", "status")
         if err == nil {
-          js := &StatusV1{}
-          if err := convert2json(status, js); err == nil {
-            data, err := json.Marshal(js)
+          jsStatus := clone(js)
+          jsStatus["response"] = &StatusV1{}
+
+          if err := convert2json(status, jsStatus); err == nil {
+            data, err := json.Marshal(jsStatus)
             if err == nil {
               ctx.conn.Write(context.Background(), websocket.MessageText, data)
               log.Println("[vPJ] pushed initial confirmation to subscriber")
@@ -4932,79 +5129,14 @@ log.Printf("abs: %s", abs)
             if entry != "" {
               ctx.conn.Write(context.Background(), websocket.MessageText, []byte(entry))
             }
-//          log.Printf("[vPJ] pushed log entry to subscriber")
           }
 
-//          // to push as one log frame rather than n=24 frames:
-//          // filter empty entries first
-//          var logs []map[string]interface{}
-//          for _, entry := range resp {
-//            if entry != "" {
-//              var log map[string]interface{}
-//              if err:= json.Unmarshal([]byte(entry), &log); err == nil {
-//                logs = append(logs, log)
-//              }
-//            }
-//          }
-//
-//          // marshal as one JSON array
-//          if len(logs) > 0 {
-//            combined, err := json.Marshal(logs)
-//            if err == nil {
-//              ctx.conn.Write(context.Background(), websocket.MessageText, combined)
-//              log.Printf("[vPJ] pushed %d log entries in one frame", len(logs))
-//            }
-//          }
-//          // end of log accumulation
-
-
-//          // --- immediate push of album art with ReadPicture fallback ---
-//          var img []byte
-//          err := mpdDo(func(c *mpd.Client) error {
-//            song, err := c.CurrentSong()
-//            if err != nil {
-//              log.Printf("[vPJ] Subscribe: CurrentSong error: %v", err)
-//              return err
-//            }
-//
-//            uri := song["file"]
-//            log.Printf("[vPJ] Subscribe: attempting ReadPicture for %q", uri)
-//            img, err = c.ReadPicture(uri)
-//            if err != nil || len(img) == 0 {
-//              log.Printf("[vPJ] Subscribe: ReadPicture failed, falling back to AlbumArt for %q", uri)
-//              img, err = c.AlbumArt(uri)
-//              if err != nil || len(img) == 0 {
-//                log.Printf("[vPJ] Subscribe: AlbumArt failed, no image available for %q", uri)
-//                if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-//                  log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
-//                }
-//                img = nil
-//              } else {
-//                log.Printf("[vPJ] Subscribe: AlbumArt succeeded, %d bytes", len(img))
-//              }
-//            } else {
-//              log.Printf("[vPJ] Subscribe: ReadPicture succeeded, %d bytes", len(img))
-//            }
-//            return nil
-//          }, "wsWatcher-subscribe-art")
-//
-//          if err == nil {
-//            if len(img) > 0 {
-//              ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
-//              log.Printf("[vPJ] pushed album art (%d bytes) to subscriber", len(img))
-//            } else {
-//              ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
-//              log.Printf("[vPJ] pushed empty album art frame to subscriber")
-//            }
-//          }
-//        }
-//
-////        js["response"] = "subscribed"
-////        out, _ := json.Marshal(js)
-//        return nil //[]string{string(out)}
-
           // --- immediate push of album art using unified pipeline ---
-          var img []byte
+          var (
+            img []byte
+            art *AlbumArtResult
+            b   []byte
+          )
 
           err := mpdDo(func(c *mpd.Client) error {
             song, err := c.CurrentSong()
@@ -5017,35 +5149,49 @@ log.Printf("abs: %s", abs)
 
             log.Printf("[vPJ] Subscribe: fetching album art via unified pipeline for %q", uri)
 
-            art, err := getBestAlbumArt(c, uri)
+            a, err := getBestAlbumArt(c, uri)
             if err != nil {
               log.Printf("[vPJ] Subscribe: getBestAlbumArt error for %q: %v", uri, err)
               return err
             }
 
-            if art != nil && len(art.Img) > 0 {
-              img = art.Img
-              log.Printf("[vPJ] Subscribe: selected %s art (%d bytes)", art.Source, len(img))
+            if a != nil && a.Size > 0 {
+              art = a
+              img = a.Img
+
+              jsArt := clone(js)
+              jsArt["response"] = map[string]any{
+                "hash":   a.Hash,
+                "mime":   a.MimeType,
+                "size":   a.Size,
+                "width":  a.Width,
+                "height": a.Height,
+              }
+
+              b, _ = json.Marshal(jsArt)
+
+              log.Printf("[vPJ] Subscribe: selected %s art (%d bytes)", a.Source, a.Size)
             } else {
-              log.Printf("[vPJ] Subscribe: no album art available for %q", uri)
               img = nil
+              art = nil
             }
 
             return nil
           }, "wsWatcher-subscribe-art")
 
           if err == nil {
-            if len(img) > 0 {
+            if art != nil && art.Size > 0 {
+              ctx.conn.Write(context.Background(), websocket.MessageText, b)
               ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
-              log.Printf("[vPJ] pushed album art (%d bytes) to subscriber", len(img))
+              log.Printf("[vPJ] pushed album art (%d bytes)", art.Size)
             } else {
               ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
-              log.Printf("[vPJ] pushed empty album art frame to subscriber")
+              log.Printf("[vPJ] pushed empty album art frame")
             }
           }
         }
-
         return nil //[]string{string(out)}
+        // case "subscribe":
 
     case "ping":
       js["response"] = "pong"
