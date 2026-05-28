@@ -2077,31 +2077,42 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
   // --- system switch ---
   switch system {   // mpd, player, playlist; linger; websocket; pulseaudio; search; pauseTimer //
-  case "artwork":
+  case "resolve":
 
-  switch cmd {
+    type ArtworkArgs struct {
+      Path string `json:"path"`
+    }
 
-    case "resolve":
+    var a ArtworkArgs
 
-      type ArtworkArgs struct {
-        Path string `json:"path"`
-      }
-
-      var a ArtworkArgs
-
-      if err := json.Unmarshal(req.Args, &a); err != nil {
-        js["response"] = "error"
-        js["error"] = err.Error()
-        out, _ := json.Marshal(js)
-        return []string{string(out)}
-      }
-
-      js["response"] = "ok"
-      js["path"] = a.Path
-
+    if err := json.Unmarshal(req.Args, &a); err != nil {
+      js["response"] = "error"
+      js["error"] = err.Error()
       out, _ := json.Marshal(js)
       return []string{string(out)}
-  }
+    }
+
+    // build stdin payload for artwork.go
+    in := map[string]string{
+      "path": a.Path,
+    }
+
+    b, _ := json.Marshal(in)
+
+    cmd := exec.Command("go", "run", "artwork.go")
+    cmd.Stdin = strings.NewReader(string(b))
+
+    outBytes, err := cmd.Output()
+    if err != nil {
+      js["response"] = "error"
+      js["error"] = err.Error()
+      js["stderr"] = string(outBytes)
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+    }
+
+    // pass artwork.go result straight through
+    return []string{string(outBytes)}
   return nil
 
   case "pause_timer":
