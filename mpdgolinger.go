@@ -5123,39 +5123,38 @@ log.Printf("abs: %s", abs)
             }
           }
 
-//          // --- push logs immediately on subscribe ---
+          // --- push logs immediately on subscribe ---
 //          resp := verbProcessor("json-log")
 //          for _, entry := range resp {
 //            if entry != "" {
 //              ctx.conn.Write(context.Background(), websocket.MessageText, []byte(entry))
 //            }
 //          }
-          // --- push logs immediately on subscribe ---
 
-          resp := verbProcessor("json-log")
+// --- push logs immediately on subscribe ---
+resp := verbProcessor("json-log")
 
-          for _, entry := range resp {
-            if entry == "" {
-              continue
-            }
+var logs []any
 
-            jsLog := clone(js)
+for _, entry := range resp {
+  if entry == "" {
+    continue
+  }
 
-            var parsed any
-            if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
-              // fallback: keep raw string if it is not JSON
-              jsLog["response"] = entry
-            } else {
-              jsLog["response"] = parsed
-            }
+  var parsed any
+  if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
+    // fallback: keep raw
+    parsed = entry
+  }
 
-            b, err := json.Marshal(jsLog)
-            if err != nil {
-              continue
-            }
+  logs = append(logs, parsed)
+}
+jsLog := clone(js)
+jsLog["response"] = logs
 
-            ctx.conn.Write(context.Background(), websocket.MessageText, b)
-          }
+jsLogM, _ := json.Marshal(jsLog)
+ctx.conn.Write(context.Background(), websocket.MessageText, jsLogM)
+
 
           // --- immediate push of album art using unified pipeline ---
           var (
