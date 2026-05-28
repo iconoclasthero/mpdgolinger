@@ -5105,15 +5105,11 @@ log.Printf("abs: %s", abs)
         // then push status, logs, and finally binary album art
         // --- immediate push on subscribe ---
         status, notes, err := MPDtags(nil, "status", "status")
-        log.Println("[DBG] MPDtags err:", err)
-
         if err == nil {
           jsStatus := clone(js)
           jsStatus["response"] = &StatusV1{}
 
-          err2 := convert2json(status, jsStatus["response"])
-          log.Println("[DBG] convert2json err:", err2)
-          if err2 == nil {
+          if err := convert2json(status, jsStatus["response"]); err == nil {
             data, err := json.Marshal(jsStatus)
             if err == nil {
               ctx.conn.Write(context.Background(), websocket.MessageText, data)
@@ -5127,12 +5123,31 @@ log.Printf("abs: %s", abs)
             }
           }
 
+//          // --- push logs immediately on subscribe ---
+//          resp := verbProcessor("json-log")
+//          for _, entry := range resp {
+//            if entry != "" {
+//              ctx.conn.Write(context.Background(), websocket.MessageText, []byte(entry))
+//            }
+//          }
+
           // --- push logs immediately on subscribe ---
           resp := verbProcessor("json-log")
+
           for _, entry := range resp {
-            if entry != "" {
-              ctx.conn.Write(context.Background(), websocket.MessageText, []byte(entry))
+            if entry == "" {
+              continue
             }
+
+            jsLog := clone(js)
+            jsLog["response"] = entry
+
+            b, err := json.Marshal(jsLog)
+            if err != nil {
+              continue
+            }
+
+            ctx.conn.Write(context.Background(), websocket.MessageText, b)
           }
 
           // --- immediate push of album art using unified pipeline ---
