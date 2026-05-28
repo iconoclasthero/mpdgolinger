@@ -5105,11 +5105,14 @@ log.Printf("abs: %s", abs)
         // then push status, logs, and finally binary album art
         // --- immediate push on subscribe ---
         status, notes, err := MPDtags(nil, "status", "status")
+        log.Println("[DBG] MPDtags err:", err)
+
         if err == nil {
           jsStatus := clone(js)
           jsStatus["response"] = &StatusV1{}
 
           if err := convert2json(status, jsStatus); err == nil {
+            log.Printf("[DBG] convert2json succeeded")
             data, err := json.Marshal(jsStatus)
             if err == nil {
               ctx.conn.Write(context.Background(), websocket.MessageText, data)
