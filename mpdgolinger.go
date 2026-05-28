@@ -5123,7 +5123,7 @@ log.Printf("abs: %s", abs)
             }
           }
 
-          // --- push logs immediately on subscribe ---
+//          // --- push logs immediately on subscribe ---
 //          resp := verbProcessor("json-log")
 //          for _, entry := range resp {
 //            if entry != "" {
@@ -5131,29 +5131,29 @@ log.Printf("abs: %s", abs)
 //            }
 //          }
 
-// --- push logs immediately on subscribe ---
-resp := verbProcessor("json-log")
+          // --- push logs immediately on subscribe ---
+          resp := verbProcessor("json-log")
 
-var logs []any
+          var logs []any
 
-for _, entry := range resp {
-  if entry == "" {
-    continue
-  }
+          for _, entry := range resp {
+            if entry == "" {
+              continue
+            }
 
-  var parsed any
-  if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
-    // fallback: keep raw
-    parsed = entry
-  }
+            var parsed any
+            if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
+              // fallback: keep raw
+              parsed = entry
+            }
 
-  logs = append(logs, parsed)
-}
-jsLog := clone(js)
-jsLog["response"] = logs
+            logs = append(logs, parsed)
+          }
+          jsLog := clone(js)
+          jsLog["response"] = logs
 
-jsLogM, _ := json.Marshal(jsLog)
-ctx.conn.Write(context.Background(), websocket.MessageText, jsLogM)
+          jsLogM, _ := json.Marshal(jsLog)
+          ctx.conn.Write(context.Background(), websocket.MessageText, jsLogM)
 
 
           // --- immediate push of album art using unified pipeline ---
@@ -5163,7 +5163,7 @@ ctx.conn.Write(context.Background(), websocket.MessageText, jsLogM)
             b   []byte
           )
 
-          mpdErr := mpdDo(func(c *mpd.Client) error {
+          err := mpdDo(func(c *mpd.Client) error {
             song, err := c.CurrentSong()
             if err != nil {
               log.Printf("[vPJ] Subscribe: CurrentSong error: %v", err)
@@ -5204,10 +5204,9 @@ ctx.conn.Write(context.Background(), websocket.MessageText, jsLogM)
             return nil
           }, "wsWatcher-subscribe-art")
 
-          if mpdErr == nil {
+          if err == nil {
             if art != nil && art.Size > 0 {
               ctx.conn.Write(context.Background(), websocket.MessageText, b)
-              img = nil
               ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
               log.Printf("[vPJ] pushed album art (%d bytes)", art.Size)
             } else {
