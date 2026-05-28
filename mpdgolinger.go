@@ -5138,7 +5138,7 @@ log.Printf("abs: %s", abs)
             b   []byte
           )
 
-          err := mpdDo(func(c *mpd.Client) error {
+          mpdErr := mpdDo(func(c *mpd.Client) error {
             song, err := c.CurrentSong()
             if err != nil {
               log.Printf("[vPJ] Subscribe: CurrentSong error: %v", err)
@@ -5179,9 +5179,10 @@ log.Printf("abs: %s", abs)
             return nil
           }, "wsWatcher-subscribe-art")
 
-          if err == nil {
+          if mpdErr == nil {
             if art != nil && art.Size > 0 {
               ctx.conn.Write(context.Background(), websocket.MessageText, b)
+              img = nil
               ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
               log.Printf("[vPJ] pushed album art (%d bytes)", art.Size)
             } else {
