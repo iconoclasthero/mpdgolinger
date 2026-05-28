@@ -5111,7 +5111,7 @@ log.Printf("abs: %s", abs)
           jsStatus := clone(js)
           jsStatus["response"] = &StatusV1{}
 
-          err2 := convert2json(status, jsStatus)
+          err2 := convert2json(status, jsStatus["response"])
           log.Println("[DBG] convert2json err:", err2)
           if err2 == nil {
             data, err := json.Marshal(jsStatus)
