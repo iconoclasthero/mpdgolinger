@@ -2083,25 +2083,27 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 
 case "resolve":
 
-  type ArtworkArgs struct {
-    Path string `json:"path"`
-  }
+//  type ArtworkArgs struct {
+//    Path string `json:"path"`
+//  }
+//
+//  var a ArtworkArgs
+//
+//  if err := json.Unmarshal(req.Args, &a); err != nil {
+//    js["response"] = "error"
+//    js["error"] = err.Error()
+//    out, _ := json.Marshal(js)
+//    return []string{string(out)}
+//  }
+//
+//  // build stdin payload for artwork.go
+//  in := map[string]string{
+//    "path": a.Path,
+//  }
+//
+//  b, _ := json.Marshal(in)
 
-  var a ArtworkArgs
-
-  if err := json.Unmarshal(req.Args, &a); err != nil {
-    js["response"] = "error"
-    js["error"] = err.Error()
-    out, _ := json.Marshal(js)
-    return []string{string(out)}
-  }
-
-  // build stdin payload for artwork.go
-  in := map[string]string{
-    "path": a.Path,
-  }
-
-  b, _ := json.Marshal(in)
+b := req.Args
 
 cmd := exec.Command("go", "run", ".")
 cmd.Dir = "/opt/mgl"
