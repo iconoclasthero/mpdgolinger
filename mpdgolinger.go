@@ -1957,6 +1957,7 @@ case "player":
 
         song, err := c.CurrentSong()
         if err != nil {
+log.Printf("[--------------------URIDBG] err=%q", err)
             return err
         }
 
