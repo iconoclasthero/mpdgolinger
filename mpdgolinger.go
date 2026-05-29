@@ -2029,7 +2029,7 @@ case "player":
     // ALBUM ART (HASH-BASED)
     // -----------------------
     err = mpdDo(func(c *mpd.Client) error {
-
+      log.Printf("[ARTDBG] getBestAlbumArt uri=%q", uri)
       art, err := getBestAlbumArt(c, uri)
       if err != nil {
         log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
