@@ -366,7 +366,7 @@ var wsGlobal = &wsCtx{
 var (
   defaultLibPrefix  = "/library/music"
   musicLibPrefix    = defaultLibPrefix
-  debug     bool    = true // manual toggle
+  debug     bool    = false // manual toggle
   tryParsed bool    = true
   rawTags   bool
 )
@@ -1962,7 +1962,7 @@ case "player":
 
         songID := atoi(song["Id"])
         uri := song["file"]
-
+log.Printf("[--------------------URIDBG] getBestAlbumArt uri=%q", uri)
         if lastSongID == 0 || songID != lastSongID {
             songChanged = true
             lastSongID = songID
