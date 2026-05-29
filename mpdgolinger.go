@@ -1961,7 +1961,7 @@ case "player":
         }
 
         songID := atoi(song["Id"])
-        localURI := song["file"]
+        uri := song["file"]
 
         if lastSongID == 0 || songID != lastSongID {
             songChanged = true
@@ -1975,11 +1975,11 @@ case "player":
         switch {
         case mbid != "":
             albumKey = mbid
-        case localURI != "":
-            if idx := strings.LastIndex(localURI, "/"); idx > 0 {
-                albumKey = localURI[:idx]
+        case uri != "":
+            if idx := strings.LastIndex(uri, "/"); idx > 0 {
+                albumKey = uri[:idx]
             } else {
-                albumKey = localURI
+                albumKey = uri
             }
         case artist != "" && album != "":
             albumKey = artist + " -- " + album
@@ -2029,7 +2029,7 @@ case "player":
     // ALBUM ART (HASH-BASED)
     // -----------------------
     err = mpdDo(func(c *mpd.Client) error {
-      log.Printf("[ARTDBG] getBestAlbumArt uri=%q", uri)
+log.Printf("[ARTDBG] getBestAlbumArt uri=%q", uri)
       art, err := getBestAlbumArt(c, uri)
       if err != nil {
         log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
