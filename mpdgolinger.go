@@ -2127,39 +2127,88 @@ log.Printf("[WSDBG] passed send gate")
     // --- push to all subscribed connections ---
     ctx.mu.Lock()
 log.Printf("[WSDBG] acquired ctx.mu")
-    for conn := range ctx.conns {
-      dbg("[wW] primary for push loop: %v", conn)
+//    for conn := range ctx.conns {
+//      dbg("[wW] primary for push loop: %v", conn)
+//
+//      ctx.writeMu.Lock()
+//      dead := false
+//
+//      write := func(typ websocket.MessageType, payload []byte) bool {
+//        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+//        defer cancel()
+//
+//        err := conn.Write(wctx, typ, payload)
+//        if err != nil {
+//          log.Printf("[wW] write failed, removing conn: %v", err)
+//          conn.Close(websocket.StatusNormalClosure, "")
+//          dead = true
+//          return false
+//        }
+//        return true
+//      }
+//
+//      dbg("broadcast start conn=%p", conn)
+//
+//      for _, m := range msgs {
+//        if !write(websocket.MessageText, m) {
+//          break
+//        }
+//      }
+//
+//      if dead {
+//        ctx.writeMu.Unlock()
+//        delete(ctx.conns, conn)
+//        continue
+//      }
 
-      ctx.writeMu.Lock()
-      dead := false
+for conn := range ctx.conns {
+  log.Printf("[wW] primary for push loop: conn=%p msgs=%d", conn, len(msgs))
 
-      write := func(typ websocket.MessageType, payload []byte) bool {
-        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-        defer cancel()
+  ctx.writeMu.Lock()
+  dead := false
 
-        err := conn.Write(wctx, typ, payload)
-        if err != nil {
-          log.Printf("[wW] write failed, removing conn: %v", err)
-          conn.Close(websocket.StatusNormalClosure, "")
-          dead = true
-          return false
-        }
-        return true
-      }
+  write := func(typ websocket.MessageType, payload []byte) bool {
+    log.Printf("[wW] write attempt conn=%p typ=%d len=%d", conn, typ, len(payload))
 
-      dbg("broadcast start conn=%p", conn)
+    wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
 
-      for _, m := range msgs {
-        if !write(websocket.MessageText, m) {
-          break
-        }
-      }
+    err := conn.Write(wctx, typ, payload)
+    if err != nil {
+      log.Printf("[wW] WRITE FAILED conn=%p err=%v", conn, err)
+      conn.Close(websocket.StatusNormalClosure, "")
+      dead = true
+      return false
+    }
 
-      if dead {
-        ctx.writeMu.Unlock()
-        delete(ctx.conns, conn)
-        continue
-      }
+    log.Printf("[wW] write OK conn=%p len=%d", conn, len(payload))
+    return true
+  }
+
+  log.Printf("[wW] broadcast start conn=%p", conn)
+
+  for i, m := range msgs {
+    log.Printf("[wW] sending msg i=%d conn=%p", i, conn)
+
+    ok := write(websocket.MessageText, m)
+    if !ok {
+      log.Printf("[wW] write aborted conn=%p at msg i=%d", conn, i)
+      break
+    }
+  }
+
+  if dead {
+    log.Printf("[wW] conn dead removing conn=%p", conn)
+    ctx.writeMu.Unlock()
+    delete(ctx.conns, conn)
+    continue
+  }
+
+  log.Printf("[wW] broadcast complete conn=%p", conn)
+  }
+  ctx.writeMu.Unlock()
+}
+
 
 //if pushArt {
 //  err := mpdDo(func(c *mpd.Client) error {
@@ -2238,10 +2287,10 @@ log.Printf("[WSDBG] acquired ctx.mu")
 //      }
 //
 //      dbg("broadcast complete conn=%p", conn)
-    }
+//    }
 
-    ctx.mu.Unlock()
-  }
+//    ctx.mu.Unlock()
+//  }
   time.Sleep(100 * time.Millisecond)
 } // func wsWatcher()
 
