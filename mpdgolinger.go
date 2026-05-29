@@ -1957,13 +1957,11 @@ case "player":
 
         song, err := c.CurrentSong()
         if err != nil {
-log.Printf("[--------------------URIDBG] err=%q", err)
             return err
         }
 
         songID := atoi(song["Id"])
         uri = song["file"]
-log.Printf("[--------------------URIDBG] getBestAlbumArt uri=%q", uri)
         if lastSongID == 0 || songID != lastSongID {
             songChanged = true
             lastSongID = songID
@@ -2152,6 +2150,7 @@ log.Printf("[WSDBG] acquired ctx.mu")
       dbg("broadcast start conn=%p", conn)
 
       for _, m := range msgs {
+        log.Printf(">>>>>>>>>>>>>>>>>>>>>>>[WSDBG] for _, m := range msgs, m=%s", m)
         if !write(websocket.MessageText, m) {
           break
         }
