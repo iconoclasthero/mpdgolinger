@@ -2120,6 +2120,7 @@ case "player":
     }
 
     // nothing to send → skip
+log.Printf("[WSDBG] msgs=%d pushArt=%v", len(msgs), pushArt)
     if len(msgs) == 0 && !pushArt {
       continue
     }
