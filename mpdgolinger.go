@@ -2150,7 +2150,6 @@ log.Printf("[WSDBG] acquired ctx.mu")
       dbg("broadcast start conn=%p", conn)
 
       for _, m := range msgs {
-        log.Printf(">>>>>>>>>>>>>>>>>>>>>>>[WSDBG] for _, m := range msgs, m=%s", m)
         if !write(websocket.MessageText, m) {
           break
         }
