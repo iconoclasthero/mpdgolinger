@@ -366,7 +366,7 @@ var wsGlobal = &wsCtx{
 var (
   defaultLibPrefix  = "/library/music"
   musicLibPrefix    = defaultLibPrefix
-  debug     bool    = false // manual toggle
+  debug     bool    = true // manual toggle
   tryParsed bool    = true
   rawTags   bool
 )
@@ -2127,7 +2127,7 @@ log.Printf("[WSDBG] msgs=%d pushArt=%v", len(msgs), pushArt)
 log.Printf("[WSDBG] passed send gate")
     // --- push to all subscribed connections ---
     ctx.mu.Lock()
-
+log.Printf("[WSDBG] acquired ctx.mu")
     for conn := range ctx.conns {
       dbg("[wW] primary for push loop: %v", conn)
 
