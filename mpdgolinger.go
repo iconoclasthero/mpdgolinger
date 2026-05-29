@@ -1962,7 +1962,7 @@ log.Printf("[--------------------URIDBG] err=%q", err)
         }
 
         songID := atoi(song["Id"])
-        uri := song["file"]
+        uri = song["file"]
 log.Printf("[--------------------URIDBG] getBestAlbumArt uri=%q", uri)
         if lastSongID == 0 || songID != lastSongID {
             songChanged = true
