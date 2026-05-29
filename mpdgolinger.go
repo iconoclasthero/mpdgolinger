@@ -2124,7 +2124,7 @@ log.Printf("[WSDBG] msgs=%d pushArt=%v", len(msgs), pushArt)
     if len(msgs) == 0 && !pushArt {
       continue
     }
-
+log.Printf("[WSDBG] passed send gate")
     // --- push to all subscribed connections ---
     ctx.mu.Lock()
 
