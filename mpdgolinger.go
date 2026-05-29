@@ -1855,43 +1855,95 @@ func wsWatcher(ctx *wsCtx) {
           pushArt = false
         }
 
-        if songChanged {
-          // --- prepare log like json-log ---
-          lines := mpdLogParse(24)
-          for _, ll := range lines {
-            tags, notes, err := MPDtags(c, ll.Path, ll.Action)
-            if err != nil {
-              log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
-              continue
-            }
+//        if songChanged {
+//          // --- prepare log like json-log ---
+//          lines := mpdLogParse(24)
+//          for _, ll := range lines {
+//            tags, notes, err := MPDtags(c, ll.Path, ll.Action)
+//            if err != nil {
+//              log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
+//              continue
+//            }
+//
+//            entry := &LogEntryV1{}
+//            err = convert2json(
+//              tags,
+//              entry,
+//              ll.Timestamp,
+//              ll.Action,
+//              notes,
+//              ll.Path,
+//            )
+//            if err != nil {
+//              log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
+//              continue
+//            }
+//
+//            entryData, err := json.Marshal(entry)
+//            if err != nil {
+//              log.Printf("[LOG] json.Marshal failed for %q: %v", ll.Path, err)
+//              continue
+//            }
+//
+//            allLogEntries = append(allLogEntries, entryData)
+//            dbg("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
+//          }
+//        } else {
+//          log.Printf("[LOG] songChanged=%v; not sending log", songChanged)
+//        }
+//
+//        return nil
+//      }, "wsWatcher-albumkey")
+//
+//      if err != nil {
+//        log.Printf("wsWatcher mpdDo error: %v", err)
+//        continue
+//      }
+//      if songChanged && len(allLogEntries) > 0 {
+//        msgs = append(msgs, allLogEntries...)
+//      }
+if songChanged {
+  // --- prepare log like json-log ---
+  lines := mpdLogParse(24)
 
-            entry := &LogEntryV1{}
-            err = convert2json(
-              tags,
-              entry,
-              ll.Timestamp,
-              ll.Action,
-              notes,
-              ll.Path,
-            )
-            if err != nil {
-              log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
-              continue
-            }
+  for _, ll := range lines {
+    tags, notes, err := MPDtags(c, ll.Path, ll.Action)
+    if err != nil {
+      log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
+      continue
+    }
 
-            entryData, err := json.Marshal(entry)
-            if err != nil {
-              log.Printf("[LOG] json.Marshal failed for %q: %v", ll.Path, err)
-              continue
-            }
+    entry := &LogEntryV1{}
 
-            allLogEntries = append(allLogEntries, entryData)
-            dbg("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
-          }
-        } else {
-          log.Printf("[LOG] songChanged=%v; not sending log", songChanged)
-        }
+    err = convert2json(
+      tags,
+      entry,
+      ll.Timestamp,
+      ll.Action,
+      notes,
+      ll.Path,
+    )
+    if err != nil {
+      log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
+      continue
+    }
 
+    // IMPORTANT: envelope happens HERE
+    msg := map[string]any{
+      "system":   "subscribed",
+      "cmd":      "json-log",
+      "response": entry,
+    }
+
+    b, err := json.Marshal(msg)
+    if err != nil {
+      log.Printf("[LOG] marshal failed for %q: %v", ll.Path, err)
+      continue
+    }
+
+    allLogEntries = append(allLogEntries, b)
+  }
+}
         return nil
       }, "wsWatcher-albumkey")
 
