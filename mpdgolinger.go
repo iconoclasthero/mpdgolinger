@@ -208,15 +208,15 @@ type      PulseV1     struct {
 }
 
 type AlbumArtResult   struct {
-     Img              []byte
-     MimeType         string
-     Source           string
-     Size             int
-     Hash             string
-     Width            int
-     Height           int
-     HasEmbed         bool
-     HasAlbumArt      bool
+     Img              []byte    `json:"-"`
+     MimeType         string    `json:"mime"`
+     Source           string    `json:"source"`
+     Size             int       `json:"size"`
+     Hash             uint64    `json:"hash,string"`
+     Width            int       `json:"width,omitempty"`
+     Height           int       `json:"height,omitempty"`
+     HasEmbed         bool      `json:"hasEmbed,omitempty"`
+     HasAlbumArt      bool      `json:"hasAlbumArt,omitempty"`
 }
 
 const (
@@ -778,11 +778,11 @@ func mpdPlaylist(albumKey string) ([]AudioV1, error) {
 
 /* ---------------- utils ---------------- */
 
-func fnv1a(data []byte) string {
+func fnv1a(data []byte) uint64 {
   h := fnv.New64a()
-  h.Write(data)
-  return fmt.Sprintf("%x", h.Sum64())
-}
+  _, _ = h.Write(data)
+  return h.Sum64()
+} // func fnv1a
 
 func isoLocalEpoch(iso string) int64 {
     // Parse ISO 8601 string
@@ -1643,7 +1643,7 @@ func wsWatcher(ctx *wsCtx) {
   }()
 
   // persistent state trackers
-  var lastAlbumKey string
+//  var lastAlbumKey string
   var lastSongID int
   var lastPlaylistRev int
 
@@ -1651,11 +1651,14 @@ func wsWatcher(ctx *wsCtx) {
   for ev := range idleEvents {
 
     var (
-      msgs [][]byte  // accumulate messages to send
-      data []byte
-      notes []string
-      img []byte
-      pushArt bool
+      msgs        [][]byte  // accumulate messages to send
+      data        []byte
+      notes       []string
+      img         []byte
+      pushArt     bool
+      lastArtHash uint64
+      uri         string
+//      err error
 //      allLogEntries [][]byte
 //      songChanged bool
 //      status map[string]string
@@ -1947,7 +1950,7 @@ case "player":
     var (
         albumKey    string
         songChanged bool
-        uri         string
+//        uri         string
     )
 
     err = mpdDo(func(c *mpd.Client) error {
@@ -1958,7 +1961,7 @@ case "player":
         }
 
         songID := atoi(song["Id"])
-        uri = song["file"]
+        localURI := song["file"]
 
         if lastSongID == 0 || songID != lastSongID {
             songChanged = true
@@ -1972,55 +1975,92 @@ case "player":
         switch {
         case mbid != "":
             albumKey = mbid
-        case uri != "":
-            if idx := strings.LastIndex(uri, "/"); idx > 0 {
-                albumKey = uri[:idx]
+        case localURI != "":
+            if idx := strings.LastIndex(localURI, "/"); idx > 0 {
+                albumKey = localURI[:idx]
             } else {
-                albumKey = uri
+                albumKey = localURI
             }
         case artist != "" && album != "":
             albumKey = artist + " -- " + album
         default:
             albumKey = strconv.Itoa(songID)
         }
-
         return nil
     }, "wsWatcher-albumkey")
 
     if err != nil {
         log.Printf("wsWatcher mpdDo error: %v", err)
         continue
-    }
-
-    // -----------------------
-    // ALBUM ART (FIXED + RESTORED)
-    // -----------------------
-    if albumKey == "" || albumKey != lastAlbumKey {
-
-        log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-      err = mpdDo(func(c *mpd.Client) error {
-
-        art, err := getBestAlbumArt(c, uri) // c not available here; assumes your existing helper handles nil or global client
-        if err != nil {
-            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
-            img = nil
-        } else if art != nil {
-            img = art.Img
-            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
-        } else {
-            img = nil
-            log.Printf("[ART] no album art available for %q", uri)
-        }
-
-        lastAlbumKey = albumKey
-        pushArt = true
-        return nil
-      }, "wsWatcher-gBAA")
-
-
     } else {
-        pushArt = false
+      log.Printf("[wsW] albumKey: %s", albumKey)
     }
+
+//    // -----------------------
+//    // ALBUM ART (FIXED + RESTORED)
+//    // -----------------------
+//    if albumKey == "" || albumKey != lastAlbumKey {
+//
+//        log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
+//      err = mpdDo(func(c *mpd.Client) error {
+//
+//        art, err := getBestAlbumArt(c, uri) // c not available here; assumes your existing helper handles nil or global client
+//        if err != nil {
+//            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
+//            img = nil
+//        } else if art != nil {
+//            img = art.Img
+//            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
+//        } else {
+//            img = nil
+//            log.Printf("[ART] no album art available for %q", uri)
+//        }
+//
+//        return nil
+//      }, "wsWatcher-gBAA")
+//
+//        lastAlbumKey = albumKey
+//        pushArt = true
+//    } else {
+//        pushArt = false
+//    }
+
+    // -----------------------
+    // ALBUM ART (HASH-BASED)
+    // -----------------------
+    err = mpdDo(func(c *mpd.Client) error {
+
+      art, err := getBestAlbumArt(c, uri)
+      if err != nil {
+        log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
+        img = nil
+        return nil
+      }
+
+      if art == nil {
+        img = nil
+        return nil
+      }
+
+      img = art.Img
+
+      log.Printf(
+        "[ART] selected %s hash=%d (%d bytes)",
+        art.Source,
+        art.Hash,
+        len(img),
+      )
+
+      // dedupe based on image hash (NOT albumKey)
+      if art.Hash != lastArtHash {
+        pushArt = true
+        lastArtHash = art.Hash
+      } else {
+        pushArt = false
+      }
+
+      return nil
+    }, "wsWatcher-gBAA")
 
     // -----------------------
     // LOG FRAME (SEPARATE)
@@ -2121,36 +2161,83 @@ case "player":
         continue
       }
 
-      // --- ALBUM ART ---
-      if pushArt {
-        dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
+//if pushArt {
+//  err := mpdDo(func(c *mpd.Client) error {
+//
+//    art, err := getBestAlbumArt(c, uri)
+//    if err != nil {
+//      log.Printf("[ART] getBestAlbumArt error: %v", err)
+//      img = nil
+//      return nil
+//    }
+//
+//    if art == nil || art.Size == 0 {
+//      img = nil
+//      return nil
+//    }
+//
+//    jsArt := map[string]any{
+//      "system": "subscribed",
+//      "cmd":    "albumart",
+//      "response": map[string]any{
+//        "hash":   art.Hash,
+//        "mime":   art.MimeType,
+//        "size":   art.Size,
+//        "width":  art.Width,
+//        "height": art.Height,
+//      },
+//    }
+//
+//    b, _ := json.Marshal(jsArt)
+//
+//    // enqueue JSON FIRST (critical ordering contract)
+//    msgs = append(msgs, b)
+//
+//    img = art.Img
+//
+//    return nil
+//  }, "wsWatcher-albumart")
+//
+//  if err == nil {
+//    if len(img) > 0 {
+//      msgs = append(msgs, img)
+//    } else {
+//      msgs = append(msgs, []byte{})
+//    }
+//  }
+//}
+//
 
-        if len(img) > 0 {
-          if !write(websocket.MessageBinary, img) {
-            ctx.writeMu.Unlock()
-            delete(ctx.conns, conn)
-            continue
-          }
-          dbg("album art pushed (%d bytes)", len(img))
-        } else {
-          // empty frame clears stale client art
-          if !write(websocket.MessageBinary, []byte{}) {
-            ctx.writeMu.Unlock()
-            delete(ctx.conns, conn)
-            continue
-          }
-          dbg("empty album art frame pushed")
-        }
-      }
-
-      ctx.writeMu.Unlock()
-
-      if dead {
-        delete(ctx.conns, conn)
-        continue
-      }
-
-      dbg("broadcast complete conn=%p", conn)
+//      // --- ALBUM ART ---
+//      if pushArt {
+//        dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
+//
+//        if len(img) > 0 {
+//          if !write(websocket.MessageBinary, img) {
+//            ctx.writeMu.Unlock()
+//            delete(ctx.conns, conn)
+//            continue
+//          }
+//          dbg("album art pushed (%d bytes)", len(img))
+//        } else {
+//          // empty frame clears stale client art
+//          if !write(websocket.MessageBinary, []byte{}) {
+//            ctx.writeMu.Unlock()
+//            delete(ctx.conns, conn)
+//            continue
+//          }
+//          dbg("empty album art frame pushed")
+//        }
+//      }
+//
+//      ctx.writeMu.Unlock()
+//
+//      if dead {
+//        delete(ctx.conns, conn)
+//        continue
+//      }
+//
+//      dbg("broadcast complete conn=%p", conn)
     }
 
     ctx.mu.Unlock()
