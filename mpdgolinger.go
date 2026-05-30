@@ -4686,6 +4686,7 @@ log.Printf("abs: %s", abs)
           var tmp []string
           if err := json.Unmarshal([]byte(resp[0]), &tmp); err != nil {
             respArr = append(respArr, "error unmarshaling response")
+            log.Printf("error unmarshaling response")
             return
           }
 
