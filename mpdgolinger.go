@@ -2008,7 +2008,7 @@ state.mu.Lock()
 lastAlbumKey = state.lastAlbumKey
 state.mu.Unlock()
 
-if lastSongID != 0 && songID == lastSongID && lastAlbumKey != "" {
+if !songChanged && state.lastAlbumKey != "" {
   // nothing changed → reuse previous albumKey
   albumKey = lastAlbumKey
   log.Printf("[wsW] albumKey unchanged (state): %s", albumKey)
