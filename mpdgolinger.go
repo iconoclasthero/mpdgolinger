@@ -4684,7 +4684,12 @@ log.Printf("abs: %s", abs)
           var obj map[string]any
           log.Printf("%#v", obj["response"])
           if err := json.Unmarshal([]byte(resp[0]), &obj); err != nil {
-            respArr = append(respArr, "error unmarshaling response")
+//            respArr = append(respArr, "error unmarshaling response")
+            js["response"] = append(js["response"].([]any), map[string]any{
+                "error": "unmarshal failed",
+                "detail": err.Error(),
+                "raw": resp[0],
+            })
             log.Printf("unmarshal failed: %v", err)
             return
           }
@@ -4695,7 +4700,7 @@ log.Printf("abs: %s", abs)
 
 //          respArr = append(respArr, tmp)
         }
-
+_ = respArr
 
         // ------------------------------------------------------------
         // Equivalent to CLI handler behaviour
