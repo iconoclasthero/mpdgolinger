@@ -6244,6 +6244,7 @@ log.Printf(
   current["Album"],
   current["AlbumArtist"],
   current["MUSICBRAINZ_ALBUMID"],
+  current["file"],
 )
         if err != nil {
           return err
