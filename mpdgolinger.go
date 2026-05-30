@@ -4681,32 +4681,27 @@ log.Printf("abs: %s", abs)
           resp := verbProcessorJSON(jsreq, req, ctx)
 
 //          log.Printf("resp: %v", resp[0])
-          var tmp map[string]any
-          log.Printf("%#v", tmp["response"])
-          if err := json.Unmarshal([]byte(resp[0]), &tmp); err != nil {
+          var obj map[string]any
+          log.Printf("%#v", obj["response"])
+          if err := json.Unmarshal([]byte(resp[0]), &obj); err != nil {
             respArr = append(respArr, "error unmarshaling response")
-            log.Printf("error unmarshaling response")
+            log.Printf("unmarshal failed: %v", err)
             return
           }
 
-//          respArr = append(respArr, resp[0])
-switch v := tmp["response"].(type) {
-case string:
-  respArr = append(respArr, v)
+          r := js["response"].([]any)
+          r = append(r, obj)
+          js["response"] = r
 
-case []any:
-  for _, x := range v {
-    if s, ok := x.(string); ok {
-      respArr = append(respArr, s)
-    }
-  }
-}
+//          respArr = append(respArr, tmp)
         }
 
 
         // ------------------------------------------------------------
         // Equivalent to CLI handler behaviour
         // ------------------------------------------------------------
+
+        js["response"] = []any{}
 
         // turn random on
         run("random", 1)
@@ -4721,8 +4716,12 @@ case []any:
         // ------------------------------------------------------------
         // Linger message
         // ------------------------------------------------------------
-        respArr = append(respArr, "linger block advanced")
-        js["response"] = respArr
+//        respArr = append(respArr, "linger block advanced")
+//        js["response"] = respArr
+r := js["response"].([]any)
+r = append(r, "linger block advanced")
+js["response"] = r
+
 //        out, _ := json.Marshal(respArr)
         out, _ := json.Marshal(js)
         return []string{string(out)}
