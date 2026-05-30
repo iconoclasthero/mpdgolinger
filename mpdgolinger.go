@@ -4607,7 +4607,6 @@ log.Printf("abs: %s", abs)
         return []string{string(out)}
       }
 
-//xxxx
   case "linger":
     switch cmd {
       case "next":
@@ -4712,10 +4711,11 @@ log.Printf("abs: %s", abs)
         // Linger message
         // ------------------------------------------------------------
         respArr = append(respArr, "linger block advanced")
-
-        out, _ := json.Marshal(respArr)
+        js["response"] = respArr
+//        out, _ := json.Marshal(respArr)
+        out, _ := json.Marshal(js)
         return []string{string(out)}
-//xxxx
+
       case "toggle":
         log.Printf("vPJ: received toggle command")
 
