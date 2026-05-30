@@ -4092,9 +4092,9 @@ log.Printf("abs: %s", abs)
 
         var (
           img []byte
-          mimeType string
           uri string
           ErrNoResponse = fmt.Errorf("no response")
+          art *AlbumArtResult
         )
 
         err := mpdDo(func(c *mpd.Client) error {
@@ -4128,7 +4128,7 @@ log.Printf("abs: %s", abs)
           }
 
           // --- unified album art pipeline ---
-          art, err := getBestAlbumArt(c, uri)
+          art, err = getBestAlbumArt(c, uri)
           if err != nil {
             return err
           }
@@ -4154,22 +4154,23 @@ log.Printf("abs: %s", abs)
           return []string{string(out)}
         }
 
-        // --- MIME detection ---
-        mimeType = "image/jpeg"
-        if len(img) > 3 {
-          if img[0] == 0x89 &&
-            img[1] == 0x50 &&
-            img[2] == 0x4E &&
-            img[3] == 0x47 {
-            mimeType = "image/png"
-          }
-        }
-
-        // --- response JSON ---
-        js["response"] = "ok"
-        js["size"] = len(img)
-        js["uri"] = uri
-        js["mime_type"] = mimeType
+//        // --- MIME detection ---
+//        mimeType = "image/jpeg"
+//        if len(img) > 3 {
+//          if img[0] == 0x89 &&
+//            img[1] == 0x50 &&
+//            img[2] == 0x4E &&
+//            img[3] == 0x47 {
+//            mimeType = "image/png"
+//          }
+//        }
+//
+//        // --- response JSON ---
+//        js["response"] = "ok"
+//        js["size"] = len(img)
+//        js["uri"] = uri
+//        js["mime_type"] = mimeType
+        js["response"] = art
 
         out, _ := json.Marshal(js)
 
@@ -4177,7 +4178,7 @@ log.Printf("abs: %s", abs)
         if len(img) > 0 {
           ctx.conn.Write(context.Background(), websocket.MessageText, out)
           ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
-          log.Printf("[vPJ] pushed album art (%d bytes) to albumart request", len(img))
+          log.Printf("[vPJ] pushed album art (%d bytes) to albumart request", art.Size)
         } else {
           ctx.conn.Write(context.Background(), websocket.MessageText, out)
           ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
@@ -5405,6 +5406,7 @@ log.Printf("abs: %s", abs)
           )
 
           err := mpdDo(func(c *mpd.Client) error {
+            var err error
             song, err := c.CurrentSong()
             if err != nil {
               log.Printf("[vPJ] Subscribe: CurrentSong error: %v", err)
@@ -5415,28 +5417,28 @@ log.Printf("abs: %s", abs)
 
             log.Printf("[vPJ] Subscribe: fetching album art via unified pipeline for %q", uri)
 
-            a, err := getBestAlbumArt(c, uri)
+            art, err = getBestAlbumArt(c, uri)
             if err != nil {
               log.Printf("[vPJ] Subscribe: getBestAlbumArt error for %q: %v", uri, err)
               return err
             }
 
-            if a != nil && a.Size > 0 {
-              art = a
-              img = a.Img
+            if art != nil && art.Size > 0 {
+              img = art.Img
 
               jsArt := clone(js)
-              jsArt["response"] = map[string]any{
-                "hash":   a.Hash,
-                "mime":   a.MimeType,
-                "size":   a.Size,
-                "width":  a.Width,
-                "height": a.Height,
-              }
+//              jsArt["response"] = map[string]any{
+//                "hash":   a.Hash,
+//                "mime":   a.MimeType,
+//                "size":   a.Size,
+//                "width":  a.Width,
+//                "height": a.Height,
+//              }
+              jsArt["response"] = art
 
               b, _ = json.Marshal(jsArt)
 
-              log.Printf("[vPJ] Subscribe: selected %s art (%d bytes)", a.Source, a.Size)
+              log.Printf("[vPJ] Subscribe: selected %s art (%d bytes)", art.Source, art.Size)
             } else {
               img = nil
               art = nil
