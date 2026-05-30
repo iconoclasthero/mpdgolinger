@@ -4607,7 +4607,7 @@ log.Printf("abs: %s", abs)
         return []string{string(out)}
       }
 
-
+//xxxx
   case "linger":
     switch cmd {
       case "next":
@@ -4674,15 +4674,14 @@ log.Printf("abs: %s", abs)
             "system":"mpd",
             "cmd":cmd,
           }
-            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>%v<<<<<<<<<<<<<<<<<<<<<<<<<<", cmd)
 
           if args != nil {
             jsreq["args"] = args
-            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>%v<<<<<<<<<<<<<<<<<<<<<<<<<<", args)
           }
 
           resp := verbProcessorJSON(jsreq, req, ctx)
-          log.Printf("resp: %v", resp)
+
+          log.Printf("resp: %v", resp[0])
           var tmp []string
           if err := json.Unmarshal([]byte(resp[0]), &tmp); err != nil {
             respArr = append(respArr, "error unmarshaling response")
@@ -4715,7 +4714,7 @@ log.Printf("abs: %s", abs)
 
         out, _ := json.Marshal(respArr)
         return []string{string(out)}
-
+//xxxx
       case "toggle":
         log.Printf("vPJ: received toggle command")
 
