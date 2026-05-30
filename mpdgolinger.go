@@ -2002,6 +2002,7 @@ func wsWatcher(ctx *wsCtx) {
       mbid := song.MBAlbumID
       album := song.Album
       artist := song.AlbumArtist
+        log.Printf(">>>>>>>>>>>>>>%s<<<<<<<<<<<<<<<<<<<<", mbid)
 
 state.mu.Lock()
 lastAlbumKey = state.lastAlbumKey
@@ -2016,7 +2017,7 @@ if lastSongID != 0 && songID == lastSongID && lastAlbumKey != "" {
       switch {
       case mbid != "":
         albumKey = mbid
-
+        log.Printf(">>>>>>>>>>>>>>%s<<<<<<<<<<<<<<<<<<<<", mbid)
       case uri != "":
         if idx := strings.LastIndex(uri, "/"); idx > 0 {
           albumKey = uri[:idx]
