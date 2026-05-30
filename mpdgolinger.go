@@ -1984,7 +1984,7 @@ func wsWatcher(ctx *wsCtx) {
       }
 
       b, _ := json.Marshal(env)
-      msgs = append(msgs, []byte(b))
+      msgs = append(msgs, b)
 
       // -----------------------
       // SONG / ALBUM STATE
