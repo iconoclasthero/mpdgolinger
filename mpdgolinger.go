@@ -1576,11 +1576,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
       break
     }
 
-log.Printf("[WS] incoming raw size: %d bytes", len(msgBytes))
+    dbg("[WS] incoming raw size: %d bytes", len(msgBytes))
 
     msg := string(msgBytes)
 
-log.Printf("[WS] incoming decompressed size: %d bytes", len(msg))
+    dbg("[WS] incoming decompressed size: %d bytes", len(msg))
 
     // detect JSON messages
     var js map[string]interface{}
@@ -6138,7 +6138,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           return err
         }
         songURI   := current["file"]
-        log.Printf("---------------------------->SONGURI = %s", songURI)
+        dbg("[rIL] songURI = %s", songURI)
 
         status, err := c.Status()
         if err != nil {
@@ -6216,7 +6216,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         //
         if songID == state.lastSongID {
           // nothing changed; keep trace so we can see frequent idle hits
-          log.Printf("Idle event received but songID unchanged: %s", songID)
+          log.Printf("Idle event received but songID unchanged: %d", songID)
 //          state.mu.Unlock()
           // Log currentsong again so we can verify the *file*
           // really stayed the same across the idle break.
