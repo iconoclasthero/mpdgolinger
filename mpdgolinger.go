@@ -1947,34 +1947,29 @@ func wsWatcher(ctx *wsCtx) {
       // -----------------------
       // STATUS FRAME
       // -----------------------
-      resp := verbProcessor("json-status")
-
-      for _, entry := range resp {
-        if entry == "" {
-          continue
-        }
-
-        msgs = append(msgs, []byte(entry))
-      }
-
-      // -----------------------
-      // SONG / ALBUM STATE
-      // -----------------------
       var (
         st          StatusV1
         albumKey    string
         songChanged bool
 //      uri         string
       )
+      resp := verbProcessor("json-status")
+log.Printf("json-status resp len=%d %#v", len(resp), resp)
+      for _, entry := range resp {
+        if entry == "" {
+          continue
+        }
 
-      if len(resp) > 0 {
+        msgs = append(msgs, []byte(entry))
         if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
           log.Printf("wsWatcher unmarshal error: %v", err)
           continue
-        } else {
-          log.Printf("%#v\n", st)
         }
       }
+
+      // -----------------------
+      // SONG / ALBUM STATE
+      // -----------------------
 
       err = mpdDo(func(c *mpd.Client) error {
 
