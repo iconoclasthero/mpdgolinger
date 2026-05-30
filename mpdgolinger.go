@@ -1624,677 +1624,6 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 }
 
 
-//func wsWatcher(ctx *wsCtx) {
-//  log.Println("wsWatcher started")
-//
-//  // add this connection to the set
-//  ctx.mu.Lock()
-//  if ctx.conns == nil {
-//    ctx.conns = make(map[*websocket.Conn]struct{})
-//  }
-//  ctx.conns[ctx.conn] = struct{}{}
-//  ctx.mu.Unlock()
-//
-//  defer func() {
-//    ctx.mu.Lock()
-//    delete(ctx.conns, ctx.conn)
-//    ctx.mu.Unlock()
-//    log.Println("wsWatcher stopped for connection")
-//  }()
-//
-//  // persistent state trackers
-////  var lastAlbumKey string
-//  var lastSongID int
-//  var lastPlaylistRev int
-//
-////  for range idleEvents {
-//  for ev := range idleEvents {
-//
-//    var (
-//      msgs        [][]byte  // accumulate messages to send
-//      data        []byte
-//      notes       []string
-//      img         []byte
-//      pushArt     bool
-//      lastArtHash uint64
-//      uri         string
-////      err error
-////      allLogEntries [][]byte
-////      songChanged bool
-////      status map[string]string
-////      playlistChanged bool
-////      playlistRev int
-//    )
-//
-//
-//    switch ev.Subsystem {
-//    case "pulseaudio":
-//      dbg("[wW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
-//      pd := ev.PulseData
-//
-//      pulseMu.Lock()
-//      PulseData = pd
-//      pulseMu.Unlock()
-//
-//      msg := map[string]interface{}{
-//        "system": "pulseaudio",
-//        "cmd":    "changed",
-//        "response": pd,
-//      }
-//
-//      log.Printf("[wW] pulseaudio case, adding msg: %v", msg)
-//
-//      data, _ := json.Marshal(msg)
-//      msgs = append(msgs, data)
-//
-//    case "pauseTimer":
-//      var (
-//        err error
-//        status map[string]string
-//        notes []string
-//      )
-//      js := &StatusV1{}  // declare a fresh StatusV1 just for the pauseTimer case
-//      // fetch MPD status first
-//      status, notes, err = MPDtags(nil, "status", "status")
-//      if err != nil {
-//        log.Printf("wsWatcher MPDtags error in pauseTimer case: %v", err)
-//        continue
-//      }
-//
-//      if err := convert2json(status, js); err != nil {
-//        log.Printf("wsWatcher convert2json error in pauseTimer case: %v", err)
-//        continue
-//      }
-//
-//      // also add js to msgs
-//      data, err := json.Marshal(js)
-//      if err != nil {
-//        log.Printf("[WS pauseTimer CASE marshal] %v", err)
-//        break
-//      }
-//      msgs = append(msgs, data)
-//      for _, note := range notes {
-//        msgs = append(msgs, []byte(note))
-//      }
-//
-////    case "player":
-////      var (
-////        err error
-////        status map[string]string
-////        n []string
-////      )
-////      log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
-////      // --- fetch normalized status ---
-//////    status, notes, err := MPDtags(nil, "status", "status")
-////      status, n, err = MPDtags(nil, "status", "status")
-//////    status, n, err = MPDtags(...)
-////      notes = n
-////      if err != nil {
-////        log.Printf("wsWatcher MPDtags error: %v", err)
-////        continue
-////      }
-////
-////      js := &StatusV1{}
-////      if err := convert2json(status, js); err != nil {
-////        log.Printf("wsWatcher convert2json error: %v", err)
-////        continue
-////      }
-////
-////      data, err = json.Marshal(js)
-////      if err != nil {
-////        log.Printf("wsWatcher marshal error: %v", err)
-////        continue
-////      }
-////      msgs = append(msgs, data)
-////      for _, note := range notes {
-////        msgs = append(msgs, []byte(note))
-////      }
-////
-////      // --- fetch raw MPD song fields for album identity ---
-////      var albumKey string
-//////      var img []byte
-//////      var pushArt bool
-//////      var allLogEntries [][]byte
-//////      var songChanged bool
-////
-////      err = mpdDo(func(c *mpd.Client) error {
-////
-////        song, err := c.CurrentSong()
-////        if err != nil {
-////          return err
-////        }
-////
-////        mbalbid := song["MUSICBRAINZ_ALBUMID"]
-////        uri := song["file"]
-////        album := song["Album"]
-////        albumArtist := song["AlbumArtist"]
-////        songID := atoi(song["Id"])
-////
-////        if lastSongID == 0 || songID != lastSongID {
-////          log.Printf("[SONG] songID changed: %d → %d", lastSongID, songID)
-////          songChanged = true
-////          lastSongID = songID
-////        }
-////
-////        switch {
-////        case mbalbid != "":
-////          albumKey = mbalbid
-////        case uri != "":
-////          if idx := strings.LastIndex(uri, "/"); idx > 0 {
-////            albumKey = uri[:idx]
-////          }
-////        case albumArtist != "" && album != "":
-////          albumKey = albumArtist + " -- " + album
-////        default:
-////          albumKey = strconv.Itoa(songID)
-////        }
-////
-//////        // fetch art ONLY if album changed
-//////        log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
-//////        if albumKey == "" || albumKey != lastAlbumKey {
-//////          log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-//////          img, err = c.ReadPicture(uri)
-//////          log.Printf("[ART] After ReadPicture(%s), len(img)=%d", uri, len(img))
-//////          if err != nil || len(img) == 0 {
-//////            log.Printf("[ART] ReadPicture(%s) failed, trying fallback.", uri)
-//////            img, err = c.AlbumArt(uri)
-//////            if err != nil || len(img) == 0 {
-//////              log.Printf("[ART] AlbumArt(%s) failed, image apparently unavailable.", uri)
-//////              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-//////                log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
-//////              }
-//////
-//////              // mediainfo on the file
-//////              cmd := exec.Command("mediainfo", uri)
-//////              out, _ := cmd.CombinedOutput()
-//////              log.Printf("[ART] mediainfo output:\n%s", out)
-//////
-//////              // ls of the directory containing the file
-//////              dir := path.Dir(uri)
-//////              cmd = exec.Command("ls", "-l", dir)
-//////              out, _ = cmd.CombinedOutput()
-//////              log.Printf("[ART] dir listing:\n%s", out)
-//////
-//////              img = nil
-//////            }
-//////          }
-//////          lastAlbumKey = albumKey
-//////          state.mu.Lock()
-//////          state.lastAlbumKey = lastAlbumKey
-//////          state.mu.Unlock()
-//////
-//////          pushArt = true
-//////        } else {
-//////          log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
-//////          pushArt = false
-//////        }
-////
-////        // fetch art ONLY if album changed
-////        log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
-////
-////        if albumKey == "" || albumKey != lastAlbumKey {
-////          log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-////
-////          art, err := getBestAlbumArt(c, uri)
-////          if err != nil {
-////            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
-////            img = nil
-////          } else if art != nil {
-////            img = art.Img
-////            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
-////          } else {
-////            log.Printf("[ART] no album art available for %q", uri)
-////            img = nil
-////          }
-////
-////          lastAlbumKey = albumKey
-////          state.mu.Lock()
-////          state.lastAlbumKey = lastAlbumKey
-////          state.mu.Unlock()
-////
-////          pushArt = true
-////        } else {
-////          log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
-////          pushArt = false
-////        }
-////
-////        if songChanged {
-////          // --- prepare log like json-log ---
-////          lines := mpdLogParse(24)
-////          for _, ll := range lines {
-////            tags, notes, err := MPDtags(c, ll.Path, ll.Action)
-////            if err != nil {
-////              log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
-////              continue
-////            }
-////
-////            entry := &LogEntryV1{}
-////            err = convert2json(
-////              tags,
-////              entry,
-////              ll.Timestamp,
-////              ll.Action,
-////              notes,
-////              ll.Path,
-////            )
-////            if err != nil {
-////              log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
-////              continue
-////            }
-////
-////            entryData, err := json.Marshal(entry)
-////            if err != nil {
-////              log.Printf("[LOG] json.Marshal failed for %q: %v", ll.Path, err)
-////              continue
-////            }
-////
-////            allLogEntries = append(allLogEntries, entryData)
-////            dbg("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
-////          }
-////        } else {
-////          log.Printf("[LOG] songChanged=%v; not sending log", songChanged)
-////        }
-////
-////        return nil
-////      }, "wsWatcher-albumkey")
-////
-////      if err != nil {
-////        log.Printf("wsWatcher mpdDo error: %v", err)
-////        continue
-////      }
-////      if songChanged && len(allLogEntries) > 0 {
-////        msgs = append(msgs, allLogEntries...)
-////      }
-//
-//
-//case "player":
-//    var (
-//        err error
-//        status map[string]string
-//        n []string
-//    )
-//
-//    log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
-//
-//    // -----------------------
-//    // STATUS FRAME
-//    // -----------------------
-//    status, n, err = MPDtags(nil, "status", "status")
-//    notes = n
-//    if err != nil {
-//        log.Printf("wsWatcher MPDtags error: %v", err)
-//        continue
-//    }
-//
-//    js := &StatusV1{}
-//    if err := convert2json(status, js); err != nil {
-//        log.Printf("wsWatcher convert2json error: %v", err)
-//        continue
-//    }
-//
-//    data, err = json.Marshal(js)
-//    if err != nil {
-//        log.Printf("wsWatcher marshal error: %v", err)
-//        continue
-//    }
-//
-//    msgs = append(msgs, data)
-//
-//    for _, note := range notes {
-//        msgs = append(msgs, []byte(note))
-//    }
-//
-//    // -----------------------
-//    // SONG / ALBUM STATE
-//    // -----------------------
-//    var (
-//        albumKey    string
-//        songChanged bool
-////        uri         string
-//    )
-//
-//    err = mpdDo(func(c *mpd.Client) error {
-//
-//        song, err := c.CurrentSong()
-//        if err != nil {
-//            return err
-//        }
-//
-//        songID := atoi(song["Id"])
-//        uri = song["file"]
-//        if lastSongID == 0 || songID != lastSongID {
-//            songChanged = true
-//            lastSongID = songID
-//        }
-//
-//        mbid := song["MUSICBRAINZ_ALBUMID"]
-//        album := song["Album"]
-//        artist := song["AlbumArtist"]
-//
-//        switch {
-//        case mbid != "":
-//            albumKey = mbid
-//        case uri != "":
-//            if idx := strings.LastIndex(uri, "/"); idx > 0 {
-//                albumKey = uri[:idx]
-//            } else {
-//                albumKey = uri
-//            }
-//        case artist != "" && album != "":
-//            albumKey = artist + " -- " + album
-//        default:
-//            albumKey = strconv.Itoa(songID)
-//        }
-//        return nil
-//    }, "wsWatcher-albumkey")
-//
-//    if err != nil {
-//        log.Printf("wsWatcher mpdDo error: %v", err)
-//        continue
-//    } else {
-//      log.Printf("[wsW] albumKey: %s", albumKey)
-//    }
-//
-////    // -----------------------
-////    // ALBUM ART (FIXED + RESTORED)
-////    // -----------------------
-////    if albumKey == "" || albumKey != lastAlbumKey {
-////
-////        log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-////      err = mpdDo(func(c *mpd.Client) error {
-////
-////        art, err := getBestAlbumArt(c, uri) // c not available here; assumes your existing helper handles nil or global client
-////        if err != nil {
-////            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
-////            img = nil
-////        } else if art != nil {
-////            img = art.Img
-////            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
-////        } else {
-////            img = nil
-////            log.Printf("[ART] no album art available for %q", uri)
-////        }
-////
-////        return nil
-////      }, "wsWatcher-gBAA")
-////
-////        lastAlbumKey = albumKey
-////        pushArt = true
-////    } else {
-////        pushArt = false
-////    }
-//
-//    // -----------------------
-//    // ALBUM ART (HASH-BASED)
-//    // -----------------------
-//    err = mpdDo(func(c *mpd.Client) error {
-//log.Printf("[ARTDBG] getBestAlbumArt uri=%q", uri)
-//      art, err := getBestAlbumArt(c, uri)
-//      if err != nil {
-//        log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
-//        img = nil
-//        return nil
-//      }
-//
-//      if art == nil {
-//        img = nil
-//        return nil
-//      }
-//
-//      img = art.Img
-//
-//      log.Printf(
-//        "[ART] selected %s hash=%d (%d bytes)",
-//        art.Source,
-//        art.Hash,
-//        len(img),
-//      )
-//
-//      // dedupe based on image hash (NOT albumKey)
-//      if art.Hash != lastArtHash {
-//        pushArt = true
-//        lastArtHash = art.Hash
-//      } else {
-//        pushArt = false
-//      }
-//
-//      return nil
-//    }, "wsWatcher-gBAA")
-//
-//    // -----------------------
-//    // LOG FRAME (SEPARATE)
-//    // -----------------------
-//    if songChanged {
-//        resp := verbProcessor("json-log")
-//
-//        var logs []any
-//        for _, entry := range resp {
-//            if entry == "" {
-//                continue
-//            }
-//
-//            var parsed any
-//            if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
-//                parsed = entry
-//            }
-//
-//            logs = append(logs, parsed)
-//        }
-//
-//        msg := map[string]any{
-//            "system": "subscribed",
-//            "cmd":    "json-log",
-//            "response": logs,
-//        }
-//
-//        b, err := json.Marshal(msg)
-//        if err != nil {
-//            log.Printf("[LOG] marshal failed: %v", err)
-//            continue
-//        }
-//
-//        msgs = append(msgs, b)
-//    }
-//
-//
-//    case "playlist":
-//      if ev.PlaylistRev != lastPlaylistRev {
-//        lastPlaylistRev = ev.PlaylistRev
-//
-//      msg := map[string]interface{}{
-//        "system": ev.Subsystem,
-//        "cmd": "changed",
-//        "response": map[string]interface{} {
-//          "playlist_rev": ev.PlaylistRev,
-//        },
-//      }
-//      payload, _ := json.Marshal(msg)
-//      msgs = append(msgs, payload)
-//      } else {
-//       continue
-//      }
-//
-//    default:
-//      continue
-//    }
-//
-//    // nothing to send → skip
-//log.Printf("[WSDBG] msgs=%d pushArt=%v", len(msgs), pushArt)
-//    if len(msgs) == 0 && !pushArt {
-//      continue
-//    }
-//log.Printf("[WSDBG] passed send gate")
-//    // --- push to all subscribed connections ---
-//    ctx.mu.Lock()
-//log.Printf("[WSDBG] acquired ctx.mu")
-////    for conn := range ctx.conns {
-////      dbg("[wW] primary for push loop: %v", conn)
-////
-////      ctx.writeMu.Lock()
-////      dead := false
-////
-////      write := func(typ websocket.MessageType, payload []byte) bool {
-////        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-////        defer cancel()
-////
-////        err := conn.Write(wctx, typ, payload)
-////        if err != nil {
-////          log.Printf("[wW] write failed, removing conn: %v", err)
-////          conn.Close(websocket.StatusNormalClosure, "")
-////          dead = true
-////          return false
-////        }
-////        return true
-////      }
-////
-////      dbg("broadcast start conn=%p", conn)
-////
-////      for _, m := range msgs {
-////        if !write(websocket.MessageText, m) {
-////          break
-////        }
-////      }
-////
-////      if dead {
-////        ctx.writeMu.Unlock()
-////        delete(ctx.conns, conn)
-////        continue
-////      }
-//
-//for conn := range ctx.conns {
-//  log.Printf("[wW] primary for push loop: conn=%p msgs=%d", conn, len(msgs))
-//
-//  ctx.writeMu.Lock()
-//  dead := false
-//
-//  write := func(typ websocket.MessageType, payload []byte) bool {
-//    log.Printf("[wW] write attempt conn=%p typ=%d len=%d", conn, typ, len(payload))
-//
-//    wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-//    defer cancel()
-//
-//    err := conn.Write(wctx, typ, payload)
-//    if err != nil {
-//      log.Printf("[wW] WRITE FAILED conn=%p err=%v", conn, err)
-//      conn.Close(websocket.StatusNormalClosure, "")
-//      dead = true
-//      return false
-//    }
-//
-//    log.Printf("[wW] write OK conn=%p len=%d", conn, len(payload))
-//    return true
-//  }
-//
-//  log.Printf("[wW] broadcast start conn=%p", conn)
-//
-//  for i, m := range msgs {
-//    log.Printf("[wW] sending msg i=%d conn=%p", i, conn)
-//
-//    ok := write(websocket.MessageText, m)
-//    if !ok {
-//      log.Printf("[wW] write aborted conn=%p at msg i=%d", conn, i)
-//      break
-//    }
-//  }
-//
-//  if dead {
-//    log.Printf("[wW] conn dead removing conn=%p", conn)
-//    ctx.writeMu.Unlock()
-//    delete(ctx.conns, conn)
-//    continue
-//  }
-//
-//  log.Printf("[wW] broadcast complete conn=%p", conn)
-//  }
-//  ctx.writeMu.Unlock()
-//}
-//
-//
-////if pushArt {
-////  err := mpdDo(func(c *mpd.Client) error {
-////
-////    art, err := getBestAlbumArt(c, uri)
-////    if err != nil {
-////      log.Printf("[ART] getBestAlbumArt error: %v", err)
-////      img = nil
-////      return nil
-////    }
-////
-////    if art == nil || art.Size == 0 {
-////      img = nil
-////      return nil
-////    }
-////
-////    jsArt := map[string]any{
-////      "system": "subscribed",
-////      "cmd":    "albumart",
-////      "response": map[string]any{
-////        "hash":   art.Hash,
-////        "mime":   art.MimeType,
-////        "size":   art.Size,
-////        "width":  art.Width,
-////        "height": art.Height,
-////      },
-////    }
-////
-////    b, _ := json.Marshal(jsArt)
-////
-////    // enqueue JSON FIRST (critical ordering contract)
-////    msgs = append(msgs, b)
-////
-////    img = art.Img
-////
-////    return nil
-////  }, "wsWatcher-albumart")
-////
-////  if err == nil {
-////    if len(img) > 0 {
-////      msgs = append(msgs, img)
-////    } else {
-////      msgs = append(msgs, []byte{})
-////    }
-////  }
-////}
-////
-//
-////      // --- ALBUM ART ---
-////      if pushArt {
-////        dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
-////
-////        if len(img) > 0 {
-////          if !write(websocket.MessageBinary, img) {
-////            ctx.writeMu.Unlock()
-////            delete(ctx.conns, conn)
-////            continue
-////          }
-////          dbg("album art pushed (%d bytes)", len(img))
-////        } else {
-////          // empty frame clears stale client art
-////          if !write(websocket.MessageBinary, []byte{}) {
-////            ctx.writeMu.Unlock()
-////            delete(ctx.conns, conn)
-////            continue
-////          }
-////          dbg("empty album art frame pushed")
-////        }
-////      }
-////
-////      ctx.writeMu.Unlock()
-////
-////      if dead {
-////        delete(ctx.conns, conn)
-////        continue
-////      }
-////
-////      dbg("broadcast complete conn=%p", conn)
-////    }
-//
-////    ctx.mu.Unlock()
-////  }
-//  time.Sleep(100 * time.Millisecond)
-//} // func wsWatcher()
-
-
 func wsWatcher(ctx *wsCtx) {
   log.Println("wsWatcher started")
 
@@ -2314,7 +1643,7 @@ func wsWatcher(ctx *wsCtx) {
   }()
 
   // persistent state trackers
-  var lastAlbumKey string
+//  var lastAlbumKey string
   var lastSongID int
   var lastPlaylistRev int
 
@@ -2322,13 +1651,15 @@ func wsWatcher(ctx *wsCtx) {
   for ev := range idleEvents {
 
     var (
-      msgs [][]byte  // accumulate messages to send
-      data []byte
-      notes []string
-      img []byte
-      pushArt bool
-      allLogEntries [][]byte
-      songChanged bool
+      msgs        [][]byte  // accumulate messages to send
+      data        []byte
+      notes       []string
+      img         []byte
+      pushArt     bool
+      lastArtHash uint64
+      uri         string
+//      allLogEntries [][]byte
+//      songChanged bool
 //      status map[string]string
 //      playlistChanged bool
 //      playlistRev int
@@ -2385,107 +1716,136 @@ func wsWatcher(ctx *wsCtx) {
         msgs = append(msgs, []byte(note))
       }
 
-    case "player":
-      var (
-        err error
-        status map[string]string
-        n []string
-      )
-      log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
-      // --- fetch normalized status ---
-//    status, notes, err := MPDtags(nil, "status", "status")
-      status, n, err = MPDtags(nil, "status", "status")
-//    status, n, err = MPDtags(...)
-      notes = n
-      if err != nil {
-        log.Printf("wsWatcher MPDtags error: %v", err)
-        continue
-      }
-
-      js := &StatusV1{}
-      if err := convert2json(status, js); err != nil {
-        log.Printf("wsWatcher convert2json error: %v", err)
-        continue
-      }
-
-      data, err = json.Marshal(js)
-      if err != nil {
-        log.Printf("wsWatcher marshal error: %v", err)
-        continue
-      }
-      msgs = append(msgs, data)
-      for _, note := range notes {
-        msgs = append(msgs, []byte(note))
-      }
-
-      // --- fetch raw MPD song fields for album identity ---
-      var albumKey string
-//      var img []byte
-//      var pushArt bool
-//      var allLogEntries [][]byte
-//      var songChanged bool
-
-      err = mpdDo(func(c *mpd.Client) error {
-
-        song, err := c.CurrentSong()
-        if err != nil {
-          return err
-        }
-
-        mbalbid := song["MUSICBRAINZ_ALBUMID"]
-        uri := song["file"]
-        album := song["Album"]
-        albumArtist := song["AlbumArtist"]
-        songID := atoi(song["Id"])
-
-        if lastSongID == 0 || songID != lastSongID {
-          log.Printf("[SONG] songID changed: %d → %d", lastSongID, songID)
-          songChanged = true
-          lastSongID = songID
-        }
-
-        switch {
-        case mbalbid != "":
-          albumKey = mbalbid
-        case uri != "":
-          if idx := strings.LastIndex(uri, "/"); idx > 0 {
-            albumKey = uri[:idx]
-          }
-        case albumArtist != "" && album != "":
-          albumKey = albumArtist + " -- " + album
-        default:
-          albumKey = strconv.Itoa(songID)
-        }
-
+//    case "player":
+//      var (
+//        err error
+//        status map[string]string
+//        n []string
+//      )
+//      log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
+//      // --- fetch normalized status ---
+////    status, notes, err := MPDtags(nil, "status", "status")
+//      status, n, err = MPDtags(nil, "status", "status")
+////    status, n, err = MPDtags(...)
+//      notes = n
+//      if err != nil {
+//        log.Printf("wsWatcher MPDtags error: %v", err)
+//        continue
+//      }
+//
+//      js := &StatusV1{}
+//      if err := convert2json(status, js); err != nil {
+//        log.Printf("wsWatcher convert2json error: %v", err)
+//        continue
+//      }
+//
+//      data, err = json.Marshal(js)
+//      if err != nil {
+//        log.Printf("wsWatcher marshal error: %v", err)
+//        continue
+//      }
+//      msgs = append(msgs, data)
+//      for _, note := range notes {
+//        msgs = append(msgs, []byte(note))
+//      }
+//
+//      // --- fetch raw MPD song fields for album identity ---
+//      var albumKey string
+////      var img []byte
+////      var pushArt bool
+////      var allLogEntries [][]byte
+////      var songChanged bool
+//
+//      err = mpdDo(func(c *mpd.Client) error {
+//
+//        song, err := c.CurrentSong()
+//        if err != nil {
+//          return err
+//        }
+//
+//        mbalbid := song["MUSICBRAINZ_ALBUMID"]
+//        uri := song["file"]
+//        album := song["Album"]
+//        albumArtist := song["AlbumArtist"]
+//        songID := atoi(song["Id"])
+//
+//        if lastSongID == 0 || songID != lastSongID {
+//          log.Printf("[SONG] songID changed: %d → %d", lastSongID, songID)
+//          songChanged = true
+//          lastSongID = songID
+//        }
+//
+//        switch {
+//        case mbalbid != "":
+//          albumKey = mbalbid
+//        case uri != "":
+//          if idx := strings.LastIndex(uri, "/"); idx > 0 {
+//            albumKey = uri[:idx]
+//          }
+//        case albumArtist != "" && album != "":
+//          albumKey = albumArtist + " -- " + album
+//        default:
+//          albumKey = strconv.Itoa(songID)
+//        }
+//
+////        // fetch art ONLY if album changed
+////        log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
+////        if albumKey == "" || albumKey != lastAlbumKey {
+////          log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
+////          img, err = c.ReadPicture(uri)
+////          log.Printf("[ART] After ReadPicture(%s), len(img)=%d", uri, len(img))
+////          if err != nil || len(img) == 0 {
+////            log.Printf("[ART] ReadPicture(%s) failed, trying fallback.", uri)
+////            img, err = c.AlbumArt(uri)
+////            if err != nil || len(img) == 0 {
+////              log.Printf("[ART] AlbumArt(%s) failed, image apparently unavailable.", uri)
+////              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
+////                log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
+////              }
+////
+////              // mediainfo on the file
+////              cmd := exec.Command("mediainfo", uri)
+////              out, _ := cmd.CombinedOutput()
+////              log.Printf("[ART] mediainfo output:\n%s", out)
+////
+////              // ls of the directory containing the file
+////              dir := path.Dir(uri)
+////              cmd = exec.Command("ls", "-l", dir)
+////              out, _ = cmd.CombinedOutput()
+////              log.Printf("[ART] dir listing:\n%s", out)
+////
+////              img = nil
+////            }
+////          }
+////          lastAlbumKey = albumKey
+////          state.mu.Lock()
+////          state.lastAlbumKey = lastAlbumKey
+////          state.mu.Unlock()
+////
+////          pushArt = true
+////        } else {
+////          log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
+////          pushArt = false
+////        }
+//
 //        // fetch art ONLY if album changed
 //        log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
+//
 //        if albumKey == "" || albumKey != lastAlbumKey {
 //          log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-//          img, err = c.ReadPicture(uri)
-//          log.Printf("[ART] After ReadPicture(%s), len(img)=%d", uri, len(img))
-//          if err != nil || len(img) == 0 {
-//            log.Printf("[ART] ReadPicture(%s) failed, trying fallback.", uri)
-//            img, err = c.AlbumArt(uri)
-//            if err != nil || len(img) == 0 {
-//              log.Printf("[ART] AlbumArt(%s) failed, image apparently unavailable.", uri)
-//              if err = c.PlaylistAdd(noCoverList, uri); err != nil {
-//                log.Printf("[ART] failed adding %q to %s: %v", uri, noCoverList, err)
-//              }
 //
-//              // mediainfo on the file
-//              cmd := exec.Command("mediainfo", uri)
-//              out, _ := cmd.CombinedOutput()
-//              log.Printf("[ART] mediainfo output:\n%s", out)
-//
-//              // ls of the directory containing the file
-//              dir := path.Dir(uri)
-//              cmd = exec.Command("ls", "-l", dir)
-//              out, _ = cmd.CombinedOutput()
-//              log.Printf("[ART] dir listing:\n%s", out)
-//
-//              img = nil
-//            }
+//          art, err := getBestAlbumArt(c, uri)
+//          if err != nil {
+//            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
+//            img = nil
+//          } else if art != nil {
+//            img = art.Img
+//            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
+//          } else {
+//            log.Printf("[ART] no album art available for %q", uri)
+//            img = nil
 //          }
+//
 //          lastAlbumKey = albumKey
 //          state.mu.Lock()
 //          state.lastAlbumKey = lastAlbumKey
@@ -2496,83 +1856,246 @@ func wsWatcher(ctx *wsCtx) {
 //          log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
 //          pushArt = false
 //        }
+//
+//        if songChanged {
+//          // --- prepare log like json-log ---
+//          lines := mpdLogParse(24)
+//          for _, ll := range lines {
+//            tags, notes, err := MPDtags(c, ll.Path, ll.Action)
+//            if err != nil {
+//              log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
+//              continue
+//            }
+//
+//            entry := &LogEntryV1{}
+//            err = convert2json(
+//              tags,
+//              entry,
+//              ll.Timestamp,
+//              ll.Action,
+//              notes,
+//              ll.Path,
+//            )
+//            if err != nil {
+//              log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
+//              continue
+//            }
+//
+//            entryData, err := json.Marshal(entry)
+//            if err != nil {
+//              log.Printf("[LOG] json.Marshal failed for %q: %v", ll.Path, err)
+//              continue
+//            }
+//
+//            allLogEntries = append(allLogEntries, entryData)
+//            dbg("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
+//          }
+//        } else {
+//          log.Printf("[LOG] songChanged=%v; not sending log", songChanged)
+//        }
+//
+//        return nil
+//      }, "wsWatcher-albumkey")
+//
+//      if err != nil {
+//        log.Printf("wsWatcher mpdDo error: %v", err)
+//        continue
+//      }
+//      if songChanged && len(allLogEntries) > 0 {
+//        msgs = append(msgs, allLogEntries...)
+//      }
 
-        // fetch art ONLY if album changed
-        log.Printf("[ART] About to test albumKey vs. lastAlbumKey: %q → %q", lastAlbumKey, albumKey)
 
-        if albumKey == "" || albumKey != lastAlbumKey {
-          log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
+case "player":
+    var (
+        err error
+        status map[string]string
+        n []string
+    )
 
-          art, err := getBestAlbumArt(c, uri)
-          if err != nil {
-            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
-            img = nil
-          } else if art != nil {
-            img = art.Img
-            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
-          } else {
-            log.Printf("[ART] no album art available for %q", uri)
-            img = nil
-          }
+    log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
 
-          lastAlbumKey = albumKey
-          state.mu.Lock()
-          state.lastAlbumKey = lastAlbumKey
-          state.mu.Unlock()
+    // -----------------------
+    // STATUS FRAME
+    // -----------------------
+    status, n, err = MPDtags(nil, "status", "status")
+    notes = n
+    if err != nil {
+        log.Printf("wsWatcher MPDtags error: %v", err)
+        continue
+    }
 
-          pushArt = true
-        } else {
-          log.Printf("[ART] not pushing albumart (albumKey unchanged: %q)", albumKey)
-          pushArt = false
+    js := &StatusV1{}
+    if err := convert2json(status, js); err != nil {
+        log.Printf("wsWatcher convert2json error: %v", err)
+        continue
+    }
+
+    data, err = json.Marshal(js)
+    if err != nil {
+        log.Printf("wsWatcher marshal error: %v", err)
+        continue
+    }
+
+    msgs = append(msgs, data)
+
+    for _, note := range notes {
+        msgs = append(msgs, []byte(note))
+    }
+
+    // -----------------------
+    // SONG / ALBUM STATE
+    // -----------------------
+    var (
+        albumKey    string
+        songChanged bool
+//        uri         string
+    )
+
+    err = mpdDo(func(c *mpd.Client) error {
+
+        song, err := c.CurrentSong()
+        if err != nil {
+            return err
         }
 
-        if songChanged {
-          // --- prepare log like json-log ---
-          lines := mpdLogParse(24)
-          for _, ll := range lines {
-            tags, notes, err := MPDtags(c, ll.Path, ll.Action)
-            if err != nil {
-              log.Printf("[LOG] MPDtags error for %q: %v", ll.Path, err)
-              continue
-            }
+        songID := atoi(song["Id"])
+        uri = song["file"]
 
-            entry := &LogEntryV1{}
-            err = convert2json(
-              tags,
-              entry,
-              ll.Timestamp,
-              ll.Action,
-              notes,
-              ll.Path,
-            )
-            if err != nil {
-              log.Printf("[LOG] convert2json failed for %q: %v", ll.Path, err)
-              continue
-            }
-
-            entryData, err := json.Marshal(entry)
-            if err != nil {
-              log.Printf("[LOG] json.Marshal failed for %q: %v", ll.Path, err)
-              continue
-            }
-
-            allLogEntries = append(allLogEntries, entryData)
-            dbg("[LOG] prepared log update %d bytes for file=%q", len(entryData), ll.Path)
-          }
-        } else {
-          log.Printf("[LOG] songChanged=%v; not sending log", songChanged)
+        if lastSongID == 0 || songID != lastSongID {
+            songChanged = true
+            lastSongID = songID
         }
 
+        mbid := song["MUSICBRAINZ_ALBUMID"]
+        album := song["Album"]
+        artist := song["AlbumArtist"]
+
+        switch {
+        case mbid != "":
+            albumKey = mbid
+        case uri != "":
+            if idx := strings.LastIndex(uri, "/"); idx > 0 {
+                albumKey = uri[:idx]
+            } else {
+                albumKey = uri
+            }
+        case artist != "" && album != "":
+            albumKey = artist + " -- " + album
+        default:
+            albumKey = strconv.Itoa(songID)
+        }
         return nil
-      }, "wsWatcher-albumkey")
+    }, "wsWatcher-albumkey")
 
-      if err != nil {
+    if err != nil {
         log.Printf("wsWatcher mpdDo error: %v", err)
         continue
+    } else {
+      log.Printf("[wsW] albumKey: %s", albumKey)
+    }
+
+//    // -----------------------
+//    // ALBUM ART (FIXED + RESTORED)
+//    // -----------------------
+//    if albumKey == "" || albumKey != lastAlbumKey {
+//
+//        log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
+//      err = mpdDo(func(c *mpd.Client) error {
+//
+//        art, err := getBestAlbumArt(c, uri) // c not available here; assumes your existing helper handles nil or global client
+//        if err != nil {
+//            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
+//            img = nil
+//        } else if art != nil {
+//            img = art.Img
+//            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
+//        } else {
+//            img = nil
+//            log.Printf("[ART] no album art available for %q", uri)
+//        }
+//
+//        return nil
+//      }, "wsWatcher-gBAA")
+//
+//        lastAlbumKey = albumKey
+//        pushArt = true
+//    } else {
+//        pushArt = false
+//    }
+
+    // -----------------------
+    // ALBUM ART (HASH-BASED)
+    // -----------------------
+    err = mpdDo(func(c *mpd.Client) error {
+
+      art, err := getBestAlbumArt(c, uri)
+      if err != nil {
+        log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
+        img = nil
+        return nil
       }
-      if songChanged && len(allLogEntries) > 0 {
-        msgs = append(msgs, allLogEntries...)
+
+      if art == nil {
+        img = nil
+        return nil
       }
+
+      img = art.Img
+
+      log.Printf(
+        "[ART] selected %s hash=%d (%d bytes)",
+        art.Source,
+        art.Hash,
+        len(img),
+      )
+
+      // dedupe based on image hash (NOT albumKey)
+      if art.Hash != lastArtHash {
+        pushArt = true
+        lastArtHash = art.Hash
+      } else {
+        pushArt = false
+      }
+
+      return nil
+    }, "wsWatcher-gBAA")
+
+    // -----------------------
+    // LOG FRAME (SEPARATE)
+    // -----------------------
+    if songChanged {
+        resp := verbProcessor("json-log")
+
+        var logs []any
+        for _, entry := range resp {
+            if entry == "" {
+                continue
+            }
+
+            var parsed any
+            if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
+                parsed = entry
+            }
+
+            logs = append(logs, parsed)
+        }
+
+        msg := map[string]any{
+            "system": "subscribed",
+            "cmd":    "json-log",
+            "response": logs,
+        }
+
+        b, err := json.Marshal(msg)
+        if err != nil {
+            log.Printf("[LOG] marshal failed: %v", err)
+            continue
+        }
+
+        msgs = append(msgs, b)
+    }
+
 
     case "playlist":
       if ev.PlaylistRev != lastPlaylistRev {
@@ -2636,6 +2159,53 @@ func wsWatcher(ctx *wsCtx) {
         delete(ctx.conns, conn)
         continue
       }
+//xxxx
+if pushArt {
+  err := mpdDo(func(c *mpd.Client) error {
+
+    art, err := getBestAlbumArt(c, uri)
+    if err != nil {
+      log.Printf("[ART] getBestAlbumArt error: %v", err)
+      img = nil
+      return nil
+    }
+
+    if art == nil || art.Size == 0 {
+      img = nil
+      return nil
+    }
+
+    jsArt := map[string]any{
+      "system": "subscribed",
+      "cmd":    "albumart",
+      "response": map[string]any{
+        "hash":   art.Hash,
+        "mime":   art.MimeType,
+        "size":   art.Size,
+        "width":  art.Width,
+        "height": art.Height,
+      },
+    }
+
+    b, _ := json.Marshal(jsArt)
+
+    // enqueue JSON FIRST (critical ordering contract)
+    msgs = append(msgs, b)
+
+    img = art.Img
+
+    return nil
+  }, "wsWatcher-albumart")
+
+  if err == nil {
+    if len(img) > 0 {
+      msgs = append(msgs, img)
+    } else {
+      msgs = append(msgs, []byte{})
+    }
+  }
+}
+
 
       // --- ALBUM ART ---
       if pushArt {
@@ -2673,7 +2243,6 @@ func wsWatcher(ctx *wsCtx) {
   }
   time.Sleep(100 * time.Millisecond)
 } // func wsWatcher()
-
 
 // verbProcessorJSON handles JSON commands from the WebSocket and returns
 // JSON-formatted responses. Does NOT send over the WebSocket — wsHandler does that.
