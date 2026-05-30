@@ -7349,9 +7349,9 @@ func verbProcessor(csv string) []string {
     default:
       resp = "Unknown command: " + cmd
     }
-    if len(resp) > 0 {
+//    if len(resp) > 0 {
       responses = append(responses, resp)
-    }
+//    }
   }
 
 
