@@ -6340,6 +6340,12 @@ func runIdleLoop(w *mpd.Watcher) error {
         state.lastSongID = songID
         state.lastSongURI = songURI
 
+log.Printf(
+  "[rIL] SONG CHANGE oldid=%d newid=%d uri=%s",
+  state.prevSongID,
+  state.lastSongID,
+  state.lastSongURI,
+)
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
           // addresses https://github.com/iconoclasthero/mpdgolinger/issues/19
