@@ -4689,7 +4689,7 @@ log.Printf("abs: %s", abs)
             return
           }
 
-          respArr = append(respArr)
+          respArr = append(respArr, resp[0])
         }
 
 
