@@ -1909,11 +1909,11 @@ func wsWatcher(ctx *wsCtx) {
 
 
     case "player":
-      var (
-        err error
+//      var (
+//        err error
 //        status map[string]string
 //        n []string
-      )
+//      )
 
       log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
 
@@ -1954,65 +1954,101 @@ func wsWatcher(ctx *wsCtx) {
 //      uri         string
       )
       resp := verbProcessor("json-status")
-log.Printf("json-status resp len=%d %#v", len(resp), resp)
+
       for _, entry := range resp {
         if entry == "" {
           continue
         }
 
         msgs = append(msgs, []byte(entry))
-        if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
-          log.Printf("wsWatcher unmarshal error: %v", err)
-          continue
-        }
       }
 
       // -----------------------
       // SONG / ALBUM STATE
       // -----------------------
 
-      err = mpdDo(func(c *mpd.Client) error {
-
-        song, err := c.CurrentSong()
-        if err != nil {
-          return err
+      if len(resp) > 0 {
+        if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
+          log.Printf("wsWatcher unmarshal error: %v", err)
+          continue
         }
-
-        songID := atoi(song["Id"])
-        uri = song["file"]
-
-        if lastSongID == 0 || songID != lastSongID {
-          songChanged = true
-          lastSongID = songID
-        }
-
-        mbid := song["MUSICBRAINZ_ALBUMID"]
-        album := song["Album"]
-        artist := song["AlbumArtist"]
-
-        switch {
-        case mbid != "":
-          albumKey = mbid
-        case uri != "":
-          if idx := strings.LastIndex(uri, "/"); idx > 0 {
-              albumKey = uri[:idx]
-          } else {
-              albumKey = uri
-          }
-        case artist != "" && album != "":
-          albumKey = artist + " -- " + album
-        default:
-          albumKey = strconv.Itoa(songID)
-        }
-        return nil
-      }, "wsWatcher-albumkey")
-
-      if err != nil {
-        log.Printf("wsWatcher mpdDo error: %v", err)
-        continue
-      } else {
-      log.Printf("[wsW] albumKey: %s", albumKey)
       }
+
+      song := st.Current
+      songID := st.Player.SongID
+      uri = song.File               // uri needs to exist outside scope
+
+      if lastSongID == 0 || songID != lastSongID {
+        songChanged = true
+        lastSongID = songID
+      }
+
+      mbid := song.MBAlbumID
+      album := song.Album
+      artist := song.AlbumArtist
+
+      switch {
+      case mbid != "":
+        albumKey = mbid
+
+      case uri != "":
+        if idx := strings.LastIndex(uri, "/"); idx > 0 {
+          albumKey = uri[:idx]
+        } else {
+          albumKey = uri
+        }
+
+      case artist != "" && album != "":
+        albumKey = artist + " -- " + album
+
+      default:
+        albumKey = strconv.Itoa(songID)
+      }
+
+      log.Printf("[wsW] albumKey: %s", albumKey)
+
+//      err = mpdDo(func(c *mpd.Client) error {
+//
+//        song, err := c.CurrentSong()
+//        if err != nil {
+//          return err
+//        }
+//
+//        songID := atoi(song["Id"])
+//        uri = song["file"]
+//
+//        if lastSongID == 0 || songID != lastSongID {
+//          songChanged = true
+//          lastSongID = songID
+//        }
+//
+//        mbid := song["MUSICBRAINZ_ALBUMID"]
+//        album := song["Album"]
+//        artist := song["AlbumArtist"]
+//
+//        switch {
+//        case mbid != "":
+//          albumKey = mbid
+//        case uri != "":
+//          if idx := strings.LastIndex(uri, "/"); idx > 0 {
+//              albumKey = uri[:idx]
+//          } else {
+//              albumKey = uri
+//          }
+//        case artist != "" && album != "":
+//          albumKey = artist + " -- " + album
+//        default:
+//          albumKey = strconv.Itoa(songID)
+//        }
+//        return nil
+//      }, "wsWatcher-albumkey")
+//
+//      if err != nil {
+//        log.Printf("wsWatcher mpdDo error: %v", err)
+//        continue
+//      } else {
+//        log.Printf("[wsW] albumKey: %s", albumKey)
+//      }
 
 //    // -----------------------
 //    // ALBUM ART (FIXED + RESTORED)
@@ -2046,7 +2082,7 @@ log.Printf("json-status resp len=%d %#v", len(resp), resp)
       // -----------------------
       // ALBUM ART (HASH-BASED)
       // -----------------------
-      err = mpdDo(func(c *mpd.Client) error {
+      err := mpdDo(func(c *mpd.Client) error {
 
         art, err := getBestAlbumArt(c, uri)
         if err != nil {
@@ -2079,6 +2115,11 @@ log.Printf("json-status resp len=%d %#v", len(resp), resp)
 
         return nil
       }, "wsWatcher-gBAA")
+      if err != nil {
+        log.Printf("[ART] mpdDo/gBAA failed: %v", err)
+        continue
+      }
+
 
       // -----------------------
       // LOG FRAME (SEPARATE)
