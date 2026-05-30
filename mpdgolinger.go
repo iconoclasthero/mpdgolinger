@@ -4689,7 +4689,18 @@ log.Printf("abs: %s", abs)
             return
           }
 
-          respArr = append(respArr, resp[0])
+//          respArr = append(respArr, resp[0])
+switch v := tmp["response"].(type) {
+case string:
+  respArr = append(respArr, v)
+
+case []any:
+  for _, x := range v {
+    if s, ok := x.(string); ok {
+      respArr = append(respArr, s)
+    }
+  }
+}
         }
 
 
