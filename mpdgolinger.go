@@ -7308,6 +7308,10 @@ func verbProcessor(csv string) []string {
   deriveStateLocked(songZI, songID, songURI, limit)
   state.mu.Unlock()
 
+for i, r := range responses {
+  log.Printf("[VP DEBUG] resp[%d]=%q len=%d", i, r, len(r))
+}
+
   return responses
 } // func verbProcessor(csv string) []string
 
