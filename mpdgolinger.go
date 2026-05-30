@@ -4674,6 +4674,7 @@ log.Printf("abs: %s", abs)
             "system":"mpd",
             "cmd":cmd,
           }
+            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>%v<<<<<<<<<<<<<<<<<<<<<<<<<<", cmd)
 
           if args != nil {
             jsreq["args"] = args
