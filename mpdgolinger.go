@@ -1715,7 +1715,8 @@ func wsWatcher(ctx *wsCtx) {
       }
       msgs = append(msgs, data)
       for _, note := range notes {
-        msgs = append(msgs, []byte(note))
+//        msgs = append(msgs, []byte(note))
+        _ = note
       }
 
 //    case "player":
