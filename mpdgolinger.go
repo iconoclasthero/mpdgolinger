@@ -1645,7 +1645,7 @@ func wsWatcher(ctx *wsCtx) {
   }()
 
   // persistent state trackers
-//  var lastAlbumKey string
+  var lastAlbumKey string
   var lastSongID int
   var lastPlaylistRev int
 
@@ -2003,6 +2003,16 @@ func wsWatcher(ctx *wsCtx) {
       album := song.Album
       artist := song.AlbumArtist
 
+state.mu.Lock()
+lastAlbumKey = state.lastAlbumKey
+state.mu.Unlock()
+
+if lastSongID != 0 && songID == lastSongID && lastAlbumKey != "" {
+  // nothing changed → reuse previous albumKey
+  albumKey = lastAlbumKey
+  log.Printf("[wsW] albumKey unchanged (state): %s", albumKey)
+} else {
+
       switch {
       case mbid != "":
         albumKey = mbid
@@ -2022,6 +2032,11 @@ func wsWatcher(ctx *wsCtx) {
       }
 
       log.Printf("[wsW] albumKey: %s", albumKey)
+}
+
+state.mu.Lock()
+state.lastAlbumKey = albumKey
+state.mu.Unlock()
 
 //      err = mpdDo(func(c *mpd.Client) error {
 //
