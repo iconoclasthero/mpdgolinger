@@ -6238,14 +6238,6 @@ func runIdleLoop(w *mpd.Watcher) error {
         // supervisor must reconnect.
         //
         current, err := c.CurrentSong()
-
-log.Printf(
-  "[rIL] album='%s' artist='%s' mbid='%s'",
-  current["Album"],
-  current["AlbumArtist"],
-  current["MUSICBRAINZ_ALBUMID"],
-  current["file"],
-)
         if err != nil {
           return err
         }
@@ -6353,6 +6345,13 @@ log.Printf(
   state.prevSongID,
   state.lastSongID,
   state.lastSongURI,
+)
+log.Printf(
+  "[rIL] album='%s' artist='%s' mbid='%s'",
+  current["Album"],
+  current["AlbumArtist"],
+  current["MUSICBRAINZ_ALBUMID"],
+  current["file"],
 )
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
