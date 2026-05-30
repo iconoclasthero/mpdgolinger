@@ -1645,7 +1645,7 @@ func wsWatcher(ctx *wsCtx) {
   }()
 
   // persistent state trackers
-  var lastAlbumKey string
+//  var lastAlbumKey string
   var lastSongID int
   var lastPlaylistRev int
 
@@ -2002,22 +2002,11 @@ func wsWatcher(ctx *wsCtx) {
       mbid := song.MBAlbumID
       album := song.Album
       artist := song.AlbumArtist
-        log.Printf(">>>>>>>>>>>>>>%s<<<<<<<<<<<<<<<<<<<<", mbid)
-
-state.mu.Lock()
-lastAlbumKey = state.lastAlbumKey
-state.mu.Unlock()
-
-if !songChanged && state.lastAlbumKey != "" {
-  // nothing changed → reuse previous albumKey
-  albumKey = lastAlbumKey
-  log.Printf("[wsW] albumKey unchanged (state): %s", albumKey)
-} else {
 
       switch {
       case mbid != "":
         albumKey = mbid
-        log.Printf(">>>>>>>>>>>>>>%s<<<<<<<<<<<<<<<<<<<<", mbid)
+
       case uri != "":
         if idx := strings.LastIndex(uri, "/"); idx > 0 {
           albumKey = uri[:idx]
@@ -2033,11 +2022,6 @@ if !songChanged && state.lastAlbumKey != "" {
       }
 
       log.Printf("[wsW] albumKey: %s", albumKey)
-}
-
-state.mu.Lock()
-state.lastAlbumKey = albumKey
-state.mu.Unlock()
 
 //      err = mpdDo(func(c *mpd.Client) error {
 //
@@ -2852,7 +2836,6 @@ return []string{string(out)}
         case string:
           if v == "album" {
             albumKey = state.lastAlbumKey
-            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>%s<<<<<<<<<<<<<<<<<<<<<<<<<<", albumKey)
           }
 
         case map[string]interface{}:
@@ -6340,45 +6323,34 @@ func runIdleLoop(w *mpd.Watcher) error {
         state.lastSongID = songID
         state.lastSongURI = songURI
 
-log.Printf(
-  "[rIL] SONG CHANGE oldid=%d newid=%d uri=%s",
-  state.prevSongID,
-  state.lastSongID,
-  state.lastSongURI,
-)
-log.Printf(
-  "[rIL] album='%s' artist='%s' mbid='%s' uri=%s",
-  current["Album"],
-  current["AlbumArtist"],
-  current["MUSICBRAINZ_ALBUMID"],
-  current["file"],
-)
-if true {
-  mbid := current["MUSICBRAINZ_ALBUMID"]
-  album := current["Album"]
-  artist := current["AlbumArtist"]
-  songURI := current["songURI"]
 
-  switch {
-    case mbid != "":
-        state.lastAlbumKey = mbid
+        {
+          mbid := current["MUSICBRAINZ_ALBUMID"]
+          album := current["Album"]
+          artist := current["AlbumArtist"]
+          songURI := current["file"]
 
-    case songURI != "":
-        if idx := strings.LastIndex(songURI, "/"); idx > 0 {
-            state.lastAlbumKey = songURI[:idx]
-        } else {
-            state.lastAlbumKey = songURI
+          switch {
+            case mbid != "":
+                state.lastAlbumKey = mbid
+
+            case songURI != "":
+                if idx := strings.LastIndex(songURI, "/"); idx > 0 {
+                    state.lastAlbumKey = songURI[:idx]
+                } else {
+                    state.lastAlbumKey = songURI
+                }
+
+            case artist != "" && album != "":
+                state.lastAlbumKey = artist + " -- " + album
+
+            default:
+                state.lastAlbumKey = strconv.Itoa(songID)
+          }
+
+          log.Printf("[rIL] lastAlbumKey=%s", state.lastAlbumKey)
         }
 
-    case artist != "" && album != "":
-        state.lastAlbumKey = artist + " -- " + album
-
-    default:
-        state.lastAlbumKey = strconv.Itoa(songID)
-  }
-
-  log.Printf("[rIL] lastAlbumKey=%s", state.lastAlbumKey)
-}
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
           // addresses https://github.com/iconoclasthero/mpdgolinger/issues/19
