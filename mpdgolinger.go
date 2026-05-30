@@ -1207,7 +1207,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 	// --- ReadPicture ---
 	imgRP, errRP = c.ReadPicture(uri)
 	if errRP != nil || len(imgRP) == 0 {
-		log.Printf("[ART] ReadPicture failed for %q", uri)
+		dbg("[ART] ReadPicture failed for %q", uri)
 
 		if err := c.PlaylistAdd(noEmbedList, uri); err != nil {
 			log.Printf("[ART] failed adding %q to %s: %v",
@@ -1216,10 +1216,10 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 	} else {
 		cfgRP, _, errRP = image.DecodeConfig(bytes.NewReader(imgRP))
 		if errRP != nil {
-			log.Printf("[ART] ReadPicture decode failed for %q: %v",
+			dbg("[ART] ReadPicture decode failed for %q: %v",
 				uri, errRP)
 		} else {
-			log.Printf("[ART] ReadPicture succeeded for %q (%dx%d, %d bytes)",
+			dbg("[ART] ReadPicture succeeded for %q (%dx%d, %d bytes)",
 				uri, cfgRP.Width, cfgRP.Height, len(imgRP))
 
 			result.HasEmbed = true
@@ -1236,7 +1236,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 	// --- AlbumArt ---
 	imgAA, errAA = c.AlbumArt(uri)
 	if errAA != nil || len(imgAA) == 0 {
-		log.Printf("[ART] AlbumArt failed for %q", uri)
+		dbg("[ART] AlbumArt failed for %q", uri)
 
 		if err := c.PlaylistAdd(noAAlist, uri); err != nil {
 			log.Printf("[ART] failed adding %q to %s: %v",
@@ -1280,7 +1280,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
     }
 		cmd := exec.Command("mediainfo", absURI)
 		out, _ := cmd.CombinedOutput()
-		log.Printf("[ART] mediainfo output:\n%s", out)
+		dbg("[ART] mediainfo output:\n%s", out)
 
 		// directory listing
     absDir := ""
@@ -1292,7 +1292,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
     }
 		cmd = exec.Command("ls", "-l", absDir)
 		out, _ = cmd.CombinedOutput()
-		log.Printf("[ART] dir listing:\n%s", out)
+		dbg("[ART] dir listing:\n%s", out)
 
 		return nil, nil
 	}
