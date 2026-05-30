@@ -1961,7 +1961,8 @@ func wsWatcher(ctx *wsCtx) {
         if entry == "" {
           continue
         }
-        msgs = append(msgs, []byte(entry))
+//        msgs = append(msgs, []byte(entry))
+        _ = append(msgs, []byte(entry))
       }
 
       // ---------------------------
@@ -4610,7 +4611,7 @@ log.Printf("abs: %s", abs)
   case "linger":
     switch cmd {
       case "next":
-        var respArr []string
+//        var respArr []string
         log.Printf("vPJ: received linger next")
 
         // ------------------------------------------------------------
@@ -4680,11 +4681,9 @@ log.Printf("abs: %s", abs)
 
           resp := verbProcessorJSON(jsreq, req, ctx)
 
-//          log.Printf("resp: %v", resp[0])
           var obj map[string]any
           log.Printf("%#v", obj["response"])
           if err := json.Unmarshal([]byte(resp[0]), &obj); err != nil {
-//            respArr = append(respArr, "error unmarshaling response")
             js["response"] = append(js["response"].([]any), map[string]any{
                 "error": "unmarshal failed",
                 "detail": err.Error(),
@@ -4698,9 +4697,7 @@ log.Printf("abs: %s", abs)
           r = append(r, obj)
           js["response"] = r
 
-//          respArr = append(respArr, tmp)
         }
-_ = respArr
 
         // ------------------------------------------------------------
         // Equivalent to CLI handler behaviour
@@ -4717,17 +4714,12 @@ _ = respArr
         // resume playback if paused (vPJ play/nil → play -1)
         run("play", nil)
 
-
         // ------------------------------------------------------------
         // Linger message
         // ------------------------------------------------------------
-//        respArr = append(respArr, "linger block advanced")
-//        js["response"] = respArr
-r := js["response"].([]any)
-r = append(r, "linger block advanced")
-js["response"] = r
-
-//        out, _ := json.Marshal(respArr)
+        r := js["response"].([]any)
+        r = append(r, "linger block advanced")
+        js["response"] = r
         out, _ := json.Marshal(js)
         return []string{string(out)}
 
