@@ -1954,13 +1954,13 @@ func wsWatcher(ctx *wsCtx) {
         songChanged bool
 //      uri         string
       )
+
       resp := verbProcessor("json-status")
 
       for _, entry := range resp {
         if entry == "" {
           continue
         }
-
         msgs = append(msgs, []byte(entry))
       }
 
@@ -1984,8 +1984,8 @@ func wsWatcher(ctx *wsCtx) {
       }
 
       b, _ := json.Marshal(env)
-      msgs = append(msgs, b)
-
+//      msgs = append(msgs, b)
+_ = b
       // -----------------------
       // SONG / ALBUM STATE
       // -----------------------
