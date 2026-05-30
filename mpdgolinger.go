@@ -1670,7 +1670,7 @@ func wsWatcher(ctx *wsCtx) {
 
     switch ev.Subsystem {
     case "pulseaudio":
-      dbg("[wW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
+      dbg("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
       pd := ev.PulseData
 
       pulseMu.Lock()
@@ -1683,13 +1683,13 @@ func wsWatcher(ctx *wsCtx) {
         "response": pd,
       }
 
-      log.Printf("[wW] pulseaudio case, adding msg: %v", msg)
+      log.Printf("[wsW] pulseaudio case, adding msg: %v", msg)
 
       data, _ := json.Marshal(msg)
       msgs = append(msgs, data)
 
     case "pauseTimer":
-      log.Printf("[wsW] Started case \"pauseTimer\"")
+      log.Printf(">>>>>>>>>>>>>>>>>>>>>[wsW] Started case \"pauseTimer\"<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
       var (
         err error
         status map[string]string
@@ -2204,7 +2204,7 @@ func wsWatcher(ctx *wsCtx) {
     ctx.mu.Lock()
 
     for conn := range ctx.conns {
-      dbg("[wW] primary for push loop: %v", conn)
+      dbg("[wsW] primary for push loop: %v", conn)
 
       ctx.writeMu.Lock()
       dead := false
@@ -2215,7 +2215,7 @@ func wsWatcher(ctx *wsCtx) {
 
         err := conn.Write(wctx, typ, payload)
         if err != nil {
-          log.Printf("[wW] write failed, removing conn: %v", err)
+          log.Printf("[wsW] write failed, removing conn: %v", err)
           conn.Close(websocket.StatusNormalClosure, "")
           dead = true
           return false
