@@ -4681,15 +4681,16 @@ log.Printf("abs: %s", abs)
 
           resp := verbProcessorJSON(jsreq, req, ctx)
 
-          log.Printf("resp: %v", resp[0])
-          var tmp []string
+//          log.Printf("resp: %v", resp[0])
+          var tmp map[string]any
+          log.Printf("%#v", tmp["response"])
           if err := json.Unmarshal([]byte(resp[0]), &tmp); err != nil {
             respArr = append(respArr, "error unmarshaling response")
             log.Printf("error unmarshaling response")
             return
           }
 
-          respArr = append(respArr, tmp...)
+          respArr = append(respArr)
         }
 
 
