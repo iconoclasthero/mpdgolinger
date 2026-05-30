@@ -1343,7 +1343,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
   result.Size = len(result.Img)
   result.Hash = fnv1a(result.Img)
 
-	log.Printf("[ART] selected %s for %q (hash=%d) (%dx%d, %d bytes)",
+	log.Printf("[ART] selected %s for %q (hash=%d; W×H=%dx%d; %d bytes)",
 		result.Source,
 		uri,
     result.Hash,
@@ -1944,6 +1944,7 @@ func wsWatcher(ctx *wsCtx) {
 //      for _, note := range notes {
 //        msgs = append(msgs, []byte(note))
 //      }
+
       // -----------------------
       // STATUS FRAME
       // -----------------------
@@ -1963,10 +1964,9 @@ func wsWatcher(ctx *wsCtx) {
         msgs = append(msgs, []byte(entry))
       }
 
-      // -----------------------
-      // SONG / ALBUM STATE
-      // -----------------------
-
+      // ---------------------------
+      // UNMARSHAL JSON TO STATUSV1
+      // ---------------------------
       if len(resp) > 0 {
         if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
           log.Printf("wsWatcher unmarshal error: %v", err)
@@ -1974,6 +1974,21 @@ func wsWatcher(ctx *wsCtx) {
         }
       }
 
+      // -----------------------
+      // STATUS FRAME
+      // -----------------------
+      env := map[string]any{
+        "system": "subscribed",
+        "cmd": "json-status",
+        "response": st,
+      }
+
+      b, _ := json.Marshal(env)
+      msgs = append(msgs, []byte(b))
+
+      // -----------------------
+      // SONG / ALBUM STATE
+      // -----------------------
       song := st.Current
       songID := st.Player.SongID
       uri = song.File               // uri needs to exist outside scope
@@ -6605,7 +6620,7 @@ func verbProcessor(csv string) []string {
       responses = append(responses, string(jsonBytes))
 
       // --- optionally append notes if any ---
-      if len(notes) == 0 {
+      if len(notes) > 0 {
         for _, note := range notes {
           if note != "" {
             responses = append(responses, note)
