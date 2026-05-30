@@ -1689,6 +1689,7 @@ func wsWatcher(ctx *wsCtx) {
       msgs = append(msgs, data)
 
     case "pauseTimer":
+      log.Printf("[wsW] Started case \"pauseTimer\"")
       var (
         err error
         status map[string]string
