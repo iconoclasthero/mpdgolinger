@@ -2836,6 +2836,7 @@ return []string{string(out)}
         case string:
           if v == "album" {
             albumKey = state.lastAlbumKey
+            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>%s<<<<<<<<<<<<<<<<<<<<<<<<<<", albumKey)
           }
 
         case map[string]interface{}:
