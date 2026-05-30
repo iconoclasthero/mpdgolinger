@@ -1689,7 +1689,6 @@ func wsWatcher(ctx *wsCtx) {
       msgs = append(msgs, data)
 
     case "pauseTimer":
-      log.Printf(">>>>>>>>>>>>>>>>>>>>>[wsW] Started case \"pauseTimer\"<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
       var (
         err error
         status map[string]string
@@ -1717,7 +1716,6 @@ func wsWatcher(ctx *wsCtx) {
       msgs = append(msgs, data)
       for _, note := range notes {
         msgs = append(msgs, []byte(note))
-//        _ = note
       }
 
 //    case "player":
@@ -4679,6 +4677,7 @@ log.Printf("abs: %s", abs)
 
           if args != nil {
             jsreq["args"] = args
+            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>%v<<<<<<<<<<<<<<<<<<<<<<<<<<", args)
           }
 
           resp := verbProcessorJSON(jsreq, req, ctx)
@@ -6025,7 +6024,7 @@ func directDialMPD() (net.Conn, error) {
 // logStateChange logs standardized state transition information
 func logStateChange(src string, songID int, count, limit int, transition bool) {
   log.Printf(
-    "STATE CHANGE: [%s]: songID=%s count=%d/limit=%d transition=%v",
+    "STATE CHANGE: [%s]: songID=%d count=%d/limit=%d transition=%v",
     src, songID, count, limit, transition,
   )
 } // func logStateChange(src, songID string, count, limit int, transition bool)
