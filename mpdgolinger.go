@@ -6564,8 +6564,10 @@ func verbProcessor(csv string) []string {
       responses = append(responses, string(jsonBytes))
 
       // --- optionally append notes if any ---
+      if len(notes) == 0 {
       for _, note := range notes {
         responses = append(responses, note)
+      }
       }
 
     case "getlog":
