@@ -1343,7 +1343,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
   result.Size = len(result.Img)
   result.Hash = fnv1a(result.Img)
 
-	log.Printf("[ART] selected %s for %q (%dx%d, %d bytes)",
+	log.Printf("[ART] selected %s for %q (hash=%d) (%dx%d, %d bytes)",
 		result.Source,
 		uri,
     result.Hash,
