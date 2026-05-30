@@ -1234,6 +1234,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 	}
 
 	// --- AlbumArt ---
+  result.HasAlbumArt = false
 	imgAA, errAA = c.AlbumArt(uri)
 	if errAA != nil || len(imgAA) == 0 {
 		dbg("[ART] AlbumArt failed for %q", uri)
