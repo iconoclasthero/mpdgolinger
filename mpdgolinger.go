@@ -6347,12 +6347,38 @@ log.Printf(
   state.lastSongURI,
 )
 log.Printf(
-  "[rIL] album='%s' artist='%s' mbid='%s'",
+  "[rIL] album='%s' artist='%s' mbid='%s' uri=%s",
   current["Album"],
   current["AlbumArtist"],
   current["MUSICBRAINZ_ALBUMID"],
   current["file"],
 )
+if true {
+  mbid := current["MUSICBRAINZ_ALBUMID"]
+  album := current["Album"]
+  artist := current["AlbumArtist"]
+  songURI := current["songURI"]
+
+  switch {
+    case mbid != "":
+        state.lastAlbumKey = mbid
+
+    case songURI != "":
+        if idx := strings.LastIndex(songURI, "/"); idx > 0 {
+            state.lastAlbumKey = songURI[:idx]
+        } else {
+            state.lastAlbumKey = songURI
+        }
+
+    case artist != "" && album != "":
+        state.lastAlbumKey = artist + " -- " + album
+
+    default:
+        state.lastAlbumKey = strconv.Itoa(songID)
+  }
+
+  log.Printf("[rIL] lastAlbumKey=%s", state.lastAlbumKey)
+}
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
           // addresses https://github.com/iconoclasthero/mpdgolinger/issues/19
