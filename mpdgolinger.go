@@ -55,6 +55,7 @@ type       State      struct {
      lastSongURI      string
      prevSongID       int
      prevSongURI      string
+     prevAlbumKey     string
      baseLimit        int
      blockOn          bool
      consume          bool
@@ -349,6 +350,7 @@ type     IdleEvent    struct {
      SongURI          string
      Status           map[string]string
      PlaylistRev      int
+     AlbumKey         string
      PulseData        PulseV1
 }
 
@@ -1644,29 +1646,34 @@ func wsWatcher(ctx *wsCtx) {
     log.Println("wsWatcher stopped for connection")
   }()
 
+  type wsMsg struct {
+    typ websocket.MessageType
+    data []byte
+  }
   // persistent state trackers
-//  var lastAlbumKey string
-  var lastSongID int
-  var lastPlaylistRev int
+  var (
+    lastSongID      int
+    lastPlaylistRev int
+//    lastAlbumKey string
+  )
 
 //  for range idleEvents {
   for ev := range idleEvents {
 
     var (
-      msgs        [][]byte  // accumulate messages to send
-//      data        []byte
-//      notes       []string
-      img         []byte
-      pushArt     bool
-      lastArtHash uint64
-      uri         string
-//      allLogEntries [][]byte
-//      songChanged bool
-//      status map[string]string
-//      playlistChanged bool
-//      playlistRev int
+      msgs            []wsMsg  // accumulate messages to send
+//    data            []byte
+//    notes           []string
+      img             []byte
+      pushArt         bool
+      lastArtHash     uint64
+      uri             string
+//    allLogEntries   [][]byte
+//    songChanged     bool
+//    status          map[string]string
+//    playlistChanged bool
+//    playlistRev     int
     )
-
 
     switch ev.Subsystem {
     case "pulseaudio":
@@ -1678,15 +1685,15 @@ func wsWatcher(ctx *wsCtx) {
       pulseMu.Unlock()
 
       msg := map[string]interface{}{
-        "system": "pulseaudio",
-        "cmd":    "changed",
+          "system": "pulseaudio",
+             "cmd": "changed",
         "response": pd,
       }
 
       log.Printf("[wsW] pulseaudio case, adding msg: %v", msg)
 
       data, _ := json.Marshal(msg)
-      msgs = append(msgs, data)
+      msgs = append(msgs, wsMsg{websocket.MessageText, data})
 
     case "pauseTimer":
       var (
@@ -1713,9 +1720,10 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("[WS pauseTimer CASE marshal] %v", err)
         break
       }
-      msgs = append(msgs, data)
+      msgs = append(msgs, wsMsg{websocket.MessageText, data})
       for _, note := range notes {
-        msgs = append(msgs, []byte(note))
+        // msgs = append(msgs, []byte(note))
+        msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte(note)})
       }
 
 //    case "player":
@@ -1962,7 +1970,7 @@ func wsWatcher(ctx *wsCtx) {
           continue
         }
 //        msgs = append(msgs, []byte(entry))
-        _ = append(msgs, []byte(entry))
+//        _ = append(msgs, []byte(entry))
       }
 
       // ---------------------------
@@ -1984,8 +1992,8 @@ func wsWatcher(ctx *wsCtx) {
         "response": st,
       }
 
-      b, _ := json.Marshal(env)
-      msgs = append(msgs, b)
+      data, _ := json.Marshal(env)
+      msgs = append(msgs, wsMsg{websocket.MessageText, data})
 
       // -----------------------
       // SONG / ALBUM STATE
@@ -2004,21 +2012,21 @@ func wsWatcher(ctx *wsCtx) {
       artist := song.AlbumArtist
 
       switch {
-      case mbid != "":
-        albumKey = mbid
+        case mbid != "":
+          albumKey = mbid
 
-      case uri != "":
-        if idx := strings.LastIndex(uri, "/"); idx > 0 {
-          albumKey = uri[:idx]
-        } else {
-          albumKey = uri
-        }
+        case uri != "":
+          if idx := strings.LastIndex(uri, "/"); idx > 0 {
+            albumKey = uri[:idx]
+          } else {
+            albumKey = uri
+          }
 
-      case artist != "" && album != "":
-        albumKey = artist + " -- " + album
+        case artist != "" && album != "":
+          albumKey = artist + " -- " + album
 
-      default:
-        albumKey = strconv.Itoa(songID)
+        default:
+          albumKey = strconv.Itoa(songID)
       }
 
       log.Printf("[wsW] albumKey: %s", albumKey)
@@ -2121,13 +2129,45 @@ func wsWatcher(ctx *wsCtx) {
           len(img),
         )
 
+//        // dedupe based on image hash (NOT albumKey)
+//        if art.Hash != lastArtHash {
+//          pushArt = true
+//          lastArtHash = art.Hash
+//        } else {
+//          pushArt = false
+//        }
         // dedupe based on image hash (NOT albumKey)
+        var jsArt map[string]any
         if art.Hash != lastArtHash {
           pushArt = true
           lastArtHash = art.Hash
+          jsArt = map[string]any{
+              "system": "subscribe",
+                 "cmd": "albumart",
+            "response": art,
+          }
         } else {
           pushArt = false
+          jsArt = map[string]any{
+              "system": "subscribe",
+                 "cmd": "albumart",
+            "response": "no art retrieved",
+          }
         }
+        data, err := json.Marshal(jsArt)
+        if err != nil {
+          log.Printf("[wsW] Art mashal failed %v", err)
+        } else {
+          // Important: enforce ordering contract
+          msgs = append(msgs, wsMsg{websocket.MessageText, data})
+
+          if len(img) > 0 {
+            msgs = append(msgs, wsMsg{websocket.MessageBinary, img})
+          } else {
+            msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte{}})
+          }
+        }
+
 
         return nil
       }, "wsWatcher-gBAA")
@@ -2163,13 +2203,13 @@ func wsWatcher(ctx *wsCtx) {
           "response": logs,
         }
 
-        b, err := json.Marshal(msg)
+        data, err := json.Marshal(msg)
         if err != nil {
           log.Printf("[LOG] marshal failed: %v", err)
           continue
         }
 
-        msgs = append(msgs, b)
+        msgs = append(msgs, wsMsg{websocket.MessageText, data})
       }
 
 
@@ -2184,8 +2224,8 @@ func wsWatcher(ctx *wsCtx) {
           "playlist_rev": ev.PlaylistRev,
         },
       }
-      payload, _ := json.Marshal(msg)
-      msgs = append(msgs, payload)
+      data, _ := json.Marshal(msg)
+      msgs = append(msgs, wsMsg{websocket.MessageText, data})
       } else {
        continue
       }
@@ -2201,12 +2241,12 @@ func wsWatcher(ctx *wsCtx) {
 
     // --- push to all subscribed connections ---
     ctx.mu.Lock()
+    dead := false
 
     for conn := range ctx.conns {
       dbg("[wsW] primary for push loop: %v", conn)
 
       ctx.writeMu.Lock()
-      dead := false
 
       write := func(typ websocket.MessageType, payload []byte) bool {
         wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -2224,8 +2264,14 @@ func wsWatcher(ctx *wsCtx) {
 
       dbg("broadcast start conn=%p", conn)
 
+  //    for _, m := range msgs {
+  //      if !write(websocket.MessageText, m) {
+  //        break
+  //      }
+  //    }
       for _, m := range msgs {
-        if !write(websocket.MessageText, m) {
+        if !write(m.typ, m.data) {
+          dead = true
           break
         }
       }
@@ -2236,74 +2282,68 @@ func wsWatcher(ctx *wsCtx) {
         continue
       }
 
-if pushArt {
-  err := mpdDo(func(c *mpd.Client) error {
-
-    art, err := getBestAlbumArt(c, uri)
-    if err != nil {
-      log.Printf("[ART] getBestAlbumArt error: %v", err)
-      img = nil
-      return nil
-    }
-
-    if art == nil || art.Size == 0 {
-      img = nil
-      return nil
-    }
-
-    jsArt := map[string]any{
-      "system": "subscribed",
-      "cmd":    "albumart",
-      "response": map[string]any{
-        "hash":   art.Hash,
-        "mime":   art.MimeType,
-        "size":   art.Size,
-        "width":  art.Width,
-        "height": art.Height,
-      },
-    }
-
-    b, _ := json.Marshal(jsArt)
-
-    // enqueue JSON FIRST (critical ordering contract)
-    msgs = append(msgs, b)
-
-    img = art.Img
-
-    return nil
-  }, "wsWatcher-albumart")
-
-  if err == nil {
-    if len(img) > 0 {
-      msgs = append(msgs, img)
-    } else {
-      msgs = append(msgs, []byte{})
-    }
-  }
-}
-
-
-      // --- ALBUM ART ---
-      if pushArt {
-        dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
-
-        if len(img) > 0 {
-          if !write(websocket.MessageBinary, img) {
-            ctx.writeMu.Unlock()
-            delete(ctx.conns, conn)
-            continue
-          }
-          dbg("album art pushed (%d bytes)", len(img))
-        } else {
-          // empty frame clears stale client art
-          if !write(websocket.MessageBinary, []byte{}) {
-            ctx.writeMu.Unlock()
-            delete(ctx.conns, conn)
-            continue
-          }
-          dbg("empty album art frame pushed")
-        }
-      }
+//      if pushArt {
+//        err := mpdDo(func(c *mpd.Client) error {
+//
+//          art, err := getBestAlbumArt(c, uri)
+//          if err != nil {
+//            log.Printf("[ART] getBestAlbumArt error: %v", err)
+//            img = nil
+//            return nil
+//          }
+//
+//          if art == nil || art.Size == 0 {
+//            img = nil
+//            return nil
+//          }
+//
+//          jsArt := map[string]any{
+//            "system": "subscribed",
+//            "cmd":    "albumart",
+//            "response": art,
+//          }
+//
+//          b, _ := json.Marshal(jsArt)
+//
+//          // enqueue JSON FIRST (critical ordering contract)
+//          msgs = append(msgs, b)
+//
+//          img = art.Img
+//
+//          return nil
+//        }, "wsWatcher-albumart")
+//
+//        if err == nil {
+//          if len(img) > 0 {
+//            msgs = append(msgs, img)
+//          } else {
+//            msgs = append(msgs, []byte{})
+//          }
+//        }
+//      }
+//
+//
+//      // --- ALBUM ART ---
+//      if pushArt {
+//        dbg("pushArt true for conn=%p len(img)=%d", conn, len(img))
+//
+//        if len(img) > 0 {
+//          if !write(websocket.MessageBinary, img) {
+//            ctx.writeMu.Unlock()
+//            delete(ctx.conns, conn)
+//            continue
+//          }
+//          dbg("album art pushed (%d bytes)", len(img))
+//        } else {
+//          // empty frame clears stale client art
+//          if !write(websocket.MessageBinary, []byte{}) {
+//            ctx.writeMu.Unlock()
+//            delete(ctx.conns, conn)
+//            continue
+//          }
+//          dbg("empty album art frame pushed")
+//        }
+//      }
 
       ctx.writeMu.Unlock()
 
@@ -5562,6 +5602,17 @@ log.Printf("abs: %s", abs)
       out, _ := json.Marshal(js)
       return []string{string(out)}
 
+case "test-player-event":
+  idleEvents <- IdleEvent{
+    Subsystem: "player",
+  }
+
+  js["response"] = "ok"
+  js["message"] = "synthetic player event queued"
+
+  out, _ := json.Marshal(js)
+  return []string{string(out)}
+
    default: // of system case "websocket" switch cmd
       js["response"] = "error"
       js["error"] = "unknown websocket cmd"
@@ -6224,17 +6275,46 @@ func runIdleLoop(w *mpd.Watcher) error {
         if err != nil {
           return err
         }
-        songURI   := current["file"]
-        dbg("[rIL] songURI = %s", songURI)
 
         status, err := c.Status()
         if err != nil {
           // return so outer code treats this as a status error and reconnects
           return err
         }
-        songID, _ := strconv.Atoi(status["songid"])
-        songZI, _ := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
-        plRev, _  := strconv.Atoi(status["playlist"])
+
+        songID, _      := strconv.Atoi(status["songid"])
+        songZI, _      := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
+        plRev, _       := strconv.Atoi(status["playlist"])
+        songURI        := current["file"]
+        mbid           := current["MUSICBRAINZ_ALBUMID"]
+        album          := current["Album"]
+        albumKey       := status["songid"]
+        albumArtist    := current["AlbumArtist"]
+        if albumArtist == "" {
+          albumArtist  =  "<unavailable>"
+        }
+
+        switch {
+          case mbid != "":
+            albumKey = mbid
+
+          case songURI != "":
+            if idx := strings.LastIndex(songURI, "/"); idx > 0 {
+              albumKey = songURI[:idx]
+            } else {
+              albumKey = songURI
+            }
+
+          case albumArtist != "" && albumArtist != "<unavailable>" && album != "":
+            albumKey = albumArtist + " -- " + album
+
+          default:
+            albumKey = "[songID=" + status["songid"] + "] " +albumArtist + " -- " + album
+        }
+
+        dbg("[rIL] songURI = %s", songURI)
+        dbg("[rIL] albumKey=%s", albumKey)
+
 
         idleEvents <- IdleEvent{
           Subsystem:   subsystem,
@@ -6242,6 +6322,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           SongURI:     songURI,
           Status:      status,
           PlaylistRev: plRev,
+          AlbumKey:    albumKey,
         }
 
         // Protect shared FSM state.
@@ -6281,8 +6362,9 @@ func runIdleLoop(w *mpd.Watcher) error {
             state.prevSongID = state.lastSongID
             state.prevSongURI = state.lastSongURI
 
-            state.lastSongID = songID
-            state.lastSongURI = songURI
+            state.lastSongID   = songID
+            state.lastSongURI  = songURI
+            state.lastAlbumKey = albumKey
             state.count++ // keep counting while paused (matches bash behavior)
             log.Printf("Paused: song advanced, count=%d (limit=%d)", state.count, limit)
             log.Printf("Paused: state.lastSongURI=%s", state.lastSongURI)
@@ -6290,9 +6372,6 @@ func runIdleLoop(w *mpd.Watcher) error {
             log.Printf("Paused: idle event, song unchanged")
           }
           deriveStateLocked(songZI, songID, songURI, limit)  // <--- write after increment to update state count while paused
-
-//          state.mu.Unlock()
-//          return nil
         }
 
         // If songID did not change, this idle event was caused by:
@@ -6303,7 +6382,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         //
         if songID == state.lastSongID {
           // nothing changed; keep trace so we can see frequent idle hits
-          log.Printf("Idle event received but songID unchanged: %d", songID)
+          dbg("Idle event received but songID unchanged: %d", songID)
 //          state.mu.Unlock()
           // Log currentsong again so we can verify the *file*
           // really stayed the same across the idle break.
@@ -6317,39 +6396,13 @@ func runIdleLoop(w *mpd.Watcher) error {
         prevCount := state.count
         prevTransition := state.transition
         if songID != state.lastSongID {
-          state.prevSongID = state.lastSongID
-          state.prevSongURI = state.lastSongURI
+          state.prevSongID   = state.lastSongID
+          state.prevSongURI  = state.lastSongURI
+          state.prevAlbumKey = state.lastAlbumKey
         }
-        state.lastSongID = songID
-        state.lastSongURI = songURI
-
-
-        {
-          mbid := current["MUSICBRAINZ_ALBUMID"]
-          album := current["Album"]
-          artist := current["AlbumArtist"]
-          songURI := current["file"]
-
-          switch {
-            case mbid != "":
-                state.lastAlbumKey = mbid
-
-            case songURI != "":
-                if idx := strings.LastIndex(songURI, "/"); idx > 0 {
-                    state.lastAlbumKey = songURI[:idx]
-                } else {
-                    state.lastAlbumKey = songURI
-                }
-
-            case artist != "" && album != "":
-                state.lastAlbumKey = artist + " -- " + album
-
-            default:
-                state.lastAlbumKey = strconv.Itoa(songID)
-          }
-
-          log.Printf("[rIL] lastAlbumKey=%s", state.lastAlbumKey)
-        }
+        state.lastSongID     = songID
+        state.lastSongURI    = songURI
+        state.lastAlbumKey   = albumKey
 
         // ---------- INSERTED XY HANDLER ----------
         if xy.active {
