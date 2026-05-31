@@ -5602,7 +5602,7 @@ log.Printf("abs: %s", abs)
       out, _ := json.Marshal(js)
       return []string{string(out)}
 
-case "test-player-event":
+case "test":
   idleEvents <- IdleEvent{
     Subsystem: "player",
   }
