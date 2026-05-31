@@ -2007,65 +2007,29 @@ func wsWatcher(ctx *wsCtx) {
         lastSongID = songID
       }
 
-//      mbid := song.MBAlbumID
-//      album := song.Album
-//      artist := song.AlbumArtist
-//
-//      switch {
-//        case mbid != "":
-//          albumKey = mbid
-//
-//        case uri != "":
-//          if idx := strings.LastIndex(uri, "/"); idx > 0 {
-//            albumKey = uri[:idx]
-//          } else {
-//            albumKey = uri
-//          }
-//
-//        case artist != "" && album != "":
-//          albumKey = artist + " -- " + album
-//
-//        default:
-//          albumKey = strconv.Itoa(songID)
-//      }
+      mbid := song.MBAlbumID
+      album := song.Album
+      artist := song.AlbumArtist
 
-      log.Printf("[wsW] albumKey: %s", albumKey)
+      switch {
+        case mbid != "":
+          albumKey = mbid
 
-      // -----------------------
-      // LOG FRAME (SEPARATE)
-      // -----------------------
-      if songChanged {
-        resp := verbProcessor("json-log")
-
-        var logs []any
-        for _, entry := range resp {
-          if entry == "" {
-            continue
+        case uri != "":
+          if idx := strings.LastIndex(uri, "/"); idx > 0 {
+            albumKey = uri[:idx]
+          } else {
+            albumKey = uri
           }
 
-          var parsed any
-          if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
-            parsed = entry
-          }
+        case artist != "" && album != "":
+          albumKey = artist + " -- " + album
 
-          logs = append(logs, parsed)
-        }
-
-        msg := map[string]any{
-          "system": "subscribed",
-          "cmd":    "json-log",
-          "response": logs,
-        }
-
-        data, err := json.Marshal(msg)
-        if err != nil {
-          log.Printf("[LOG] marshal failed: %v", err)
-          continue
-        }
-
-        msgs = append(msgs, wsMsg{websocket.MessageText, data})
+        default:
+          albumKey = strconv.Itoa(songID)
       }
 
+      log.Printf("[wsW] albumKey: %s", albumKey)
 
 //      err = mpdDo(func(c *mpd.Client) error {
 //
@@ -2210,6 +2174,42 @@ func wsWatcher(ctx *wsCtx) {
       if err != nil {
         log.Printf("[ART] mpdDo/gBAA failed: %v", err)
         continue
+      }
+
+
+      // -----------------------
+      // LOG FRAME (SEPARATE)
+      // -----------------------
+      if songChanged {
+        resp := verbProcessor("json-log")
+
+        var logs []any
+        for _, entry := range resp {
+          if entry == "" {
+            continue
+          }
+
+          var parsed any
+          if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
+            parsed = entry
+          }
+
+          logs = append(logs, parsed)
+        }
+
+        msg := map[string]any{
+          "system": "subscribed",
+          "cmd":    "json-log",
+          "response": logs,
+        }
+
+        data, err := json.Marshal(msg)
+        if err != nil {
+          log.Printf("[LOG] marshal failed: %v", err)
+          continue
+        }
+
+        msgs = append(msgs, wsMsg{websocket.MessageText, data})
       }
 
 
@@ -5445,8 +5445,7 @@ log.Printf("abs: %s", abs)
 //        return nil //[]string{string(out)}
 
       case "subscribe":
-
-        clone := func(in map[string]any) map[string]any {
+       clone := func(in map[string]any) map[string]any {
           out := make(map[string]any, len(in))
           for k, v := range in {
             out[k] = v
@@ -5470,8 +5469,6 @@ log.Printf("abs: %s", abs)
         out, _ = json.Marshal(js)
         return []string{string(out)}
 
-
-//
 //        // mark watcher as running
 //        if !ctx.watcherRunning {
 //          ctx.watcherRunning = true
