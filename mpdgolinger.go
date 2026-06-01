@@ -2013,6 +2013,10 @@ log.Printf("ART CHECK art=%q last=%q subscribe=%v subsystem=%s",
         if !write(m.typ, m.data) {
           dead = true
           break
+        } else if m.typ == 1 {
+          log.Printf("[wsW] websoket.MessageText: %v", m.data)
+        } else if m.typ == 2 {
+          log.Printf("[wsW] websocket.MessageBinary len(m.data): %d", len(m.data))
         }
       }
 
