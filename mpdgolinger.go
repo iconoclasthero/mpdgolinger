@@ -1800,9 +1800,10 @@ func wsWatcher(ctx *wsCtx) {
       // -----------------------
       log.Printf("PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
       env := map[string]any{
-        "system": "subscribed",
-        "cmd": "json-status",
+          "system": "subscribed",
+             "cmd": "json-status",
         "response": st,
+           "debug": time.Now().UnixNano(),
       }
 
       data, _ := json.Marshal(env)
