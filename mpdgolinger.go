@@ -352,6 +352,7 @@ type     IdleEvent    struct {
      PlaylistRev      int
      AlbumKey         string
      PulseData        PulseV1
+     Subscribe        bool
 }
 
 var idleEvents = make(chan IdleEvent, 32)
@@ -1828,6 +1829,42 @@ if state.lastSongID == 0 || songID != state.lastSongID {
 
 state.mu.Unlock()
 
+
+      // -----------------------
+      // LOG FRAME (SEPARATE)
+      // -----------------------
+      if songChanged || ev.Subscribe {
+        resp := verbProcessor("json-log")
+
+        var logs []any
+        for _, entry := range resp {
+          if entry == "" {
+            continue
+          }
+
+          var parsed any
+          if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
+            parsed = entry
+          }
+
+          logs = append(logs, parsed)
+        }
+
+        msg := map[string]any{
+          "system": "subscribed",
+          "cmd":    "json-log",
+          "response": logs,
+        }
+
+        data, err := json.Marshal(msg)
+        if err != nil {
+          log.Printf("[LOG] marshal failed: %v", err)
+          continue
+        }
+
+        msgs = append(msgs, wsMsg{websocket.MessageText, data})
+      }
+
 //      mbid := song.MBAlbumID
 //      album := song.Album
 //      artist := song.AlbumArtist
@@ -1923,41 +1960,6 @@ state.mu.Unlock()
 //    } else {
 //        pushArt = false
 //    }
-
-      // -----------------------
-      // LOG FRAME (SEPARATE)
-      // -----------------------
-      if songChanged {
-        resp := verbProcessor("json-log")
-
-        var logs []any
-        for _, entry := range resp {
-          if entry == "" {
-            continue
-          }
-
-          var parsed any
-          if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
-            parsed = entry
-          }
-
-          logs = append(logs, parsed)
-        }
-
-        msg := map[string]any{
-          "system": "subscribed",
-          "cmd":    "json-log",
-          "response": logs,
-        }
-
-        data, err := json.Marshal(msg)
-        if err != nil {
-          log.Printf("[LOG] marshal failed: %v", err)
-          continue
-        }
-
-        msgs = append(msgs, wsMsg{websocket.MessageText, data})
-      }
 
       // -----------------------
       // ALBUM ART (HASH-BASED)
@@ -5218,6 +5220,7 @@ log.Printf("abs: %s", abs)
 
         idleEvents <- IdleEvent{
           Subsystem: "player",
+          Subscribe: true,
         }
 
 //        out, _ = json.Marshal(js)
