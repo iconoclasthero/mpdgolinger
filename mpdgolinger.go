@@ -1910,7 +1910,7 @@ func wsWatcher(ctx *wsCtx) {
         }
         } else {
           img = nil
-
+          log.Printf("BoooooooooooooooooooooooooooooooooooooobbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbBSSSSSSSSSSSSSSS")
   // synthesize a fake "art" state WITHOUT touching art
   jsArt = map[string]any{
       "system": "subscribed",
