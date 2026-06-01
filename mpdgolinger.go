@@ -5463,11 +5463,10 @@ log.Printf("abs: %s", abs)
           Subsystem: "player",
         }
 
-        js["response"] = "ok"
-        js["message"] = "synthetic player event queued"
+//        out, _ = json.Marshal(js)
+//        return []string{string(out)}
+        return nil
 
-        out, _ = json.Marshal(js)
-        return []string{string(out)}
 
 //        // mark watcher as running
 //        if !ctx.watcherRunning {
