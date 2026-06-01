@@ -5215,7 +5215,8 @@ log.Printf("abs: %s", abs)
 //        return nil //[]string{string(out)}
 
       case "subscribe":
-       clone := func(in map[string]any) map[string]any {
+        log.Printf("SUBSCRIBE handler entered")
+        clone := func(in map[string]any) map[string]any {
           out := make(map[string]any, len(in))
           for k, v := range in {
             out[k] = v
