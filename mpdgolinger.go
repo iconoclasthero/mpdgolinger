@@ -1854,13 +1854,9 @@ func wsWatcher(ctx *wsCtx) {
           img = nil
           return nil
         }
-        if art == nil {
-          img = nil
-          art.Hash = 0
-        } else {
+        if art != nil {
 
         img = art.Img
-        }
 
         hashMatch := art.Hash == lastArtHash
         log.Printf(
@@ -1877,6 +1873,20 @@ func wsWatcher(ctx *wsCtx) {
           ev.Subscribe,
           ev.Subsystem,
         )
+        } else {
+          img = nil
+
+  // synthesize a fake "art" state WITHOUT touching art
+  jsArt = map[string]any{
+      "system": "subscribed",
+         "cmd": "albumart",
+      "response": map[string]any{
+          "msg":  "no albumart",
+          "hash": 0,
+      },
+         "debug": time.Now().UnixNano(),
+  }
+        }
 
         // dedupe based on image hash (NOT albumKey)
         pushArt = false
