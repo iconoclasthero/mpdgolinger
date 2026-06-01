@@ -1855,6 +1855,7 @@ state.mu.Unlock()
           "system": "subscribed",
           "cmd":    "json-log",
           "response": logs,
+          "debug": time.Now().UnixNano(),
         }
 
         data, err := json.Marshal(msg)
@@ -2004,6 +2005,7 @@ state.mu.Unlock()
               "system": "subscribed",
                  "cmd": "albumart",
             "response": art,
+              "debug": time.Now().UnixNano(),
           }
         } else if art.Size > 0 {
           pushArt = false
@@ -2013,6 +2015,7 @@ state.mu.Unlock()
             "response": map[string]any{
                    "msg": "album art unchanged",
                   "hash": art.Hash,
+               "debug": time.Now().UnixNano(),
             },
           }
         } else if art.Size == 0 {
