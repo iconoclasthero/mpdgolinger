@@ -5924,8 +5924,10 @@ func runIdleLoop(w *mpd.Watcher) error {
 
   go func() {
     for err := range w.Error {
+      log.SetFlags(log.LstdFlags | log.Lmicroseconds)
       // keep this very explicit so we can trace EOF vs broken pipe
       log.Printf("Watcher error: %v", err)
+      time.Sleep(20 * time.Second)
     }
   }()
 
