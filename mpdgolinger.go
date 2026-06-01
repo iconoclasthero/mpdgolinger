@@ -1853,10 +1853,11 @@ func wsWatcher(ctx *wsCtx) {
           img = nil
           return nil
         }
-log.Printf("BBBBBBBBBBBOOOOOOOOOOOOOOOOOOOOOOBBBBBBBBBBBBBBBBBBBBS")
         if art == nil {
           img = nil
+log.Printf("BBBBBBBBBBBOOOOOOOOOOOOOOOOOOOOOOBBBBBBBBBBBBBBBBBBBBS")
           return nil
+log.Printf("BBBBBBBBBBBOOOOOOOOOOOOOOOOOOOOOOBBBBBBBBBBBBBBBBBBBBS")
         }
 
         img = art.Img
