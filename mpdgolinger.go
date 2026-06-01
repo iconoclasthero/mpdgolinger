@@ -1671,6 +1671,7 @@ func wsWatcher(ctx *wsCtx) {
       img             []byte
       pushArt         bool
       uri             string
+      art             AlbumArtResult
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
@@ -2023,7 +2024,7 @@ log.Printf("ART CHECK art=%q last=%q subscribe=%v subsystem=%s",
             log.Printf("[wsW] websocket.MessageText: %#v", data)
           }
         } else if m.typ == 2 {
-          log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d", len(m.data))
+          log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), art.Hash, lastArtHash)
         }
       }
 
