@@ -2021,7 +2021,7 @@ log.Printf("ART CHECK art=%q last=%q subscribe=%v subsystem=%s",
             log.Printf("[wsW] websocket.MessageText: %#v", v)
           }
         } else if m.typ == 2 {
-          log.Printf("[wsW] websocket.MessageBinary len(m.data): %d", len(m.data))
+          log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d", len(m.data))
         }
       }
 
