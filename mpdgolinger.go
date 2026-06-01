@@ -1905,7 +1905,10 @@ func wsWatcher(ctx *wsCtx) {
           jsArt = map[string]any{
               "system": "subscribed",
                  "cmd": "albumart",
-            "response": "no albumart retrieved",
+            "response": map[string]any{
+                   "msg": "no albumart retrieved",
+                  "hash": "nil",
+            },
                "debug": time.Now().UnixNano(),
           }
         }
