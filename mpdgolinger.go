@@ -1856,19 +1856,10 @@ func wsWatcher(ctx *wsCtx) {
         }
         if art == nil {
           img = nil
-          jsArt = map[string]any{
-              "system": "subscribed",
-                 "cmd": "albumart",
-            "response": map[string]any{
-                   "msg": "no albumart retrieved",
-                  "hash": "nil",
-            },
-               "debug": time.Now().UnixNano(),
-          }
-          return nil
-        }
+        } else {
 
         img = art.Img
+        }
 
         hashMatch := art.Hash == lastArtHash
         log.Printf(
