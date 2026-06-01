@@ -1212,26 +1212,26 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
   result.HasEmbed = false
 	imgRP, errRP = c.ReadPicture(uri)
 	if errRP != nil || len(imgRP) == 0 {
-		dbg("[ART] ReadPicture failed for %q", uri)
+		dbg("[gBAA] ReadPicture failed for %q", uri)
 
 		if err := c.PlaylistAdd(noEmbedList, uri); err != nil {
-			log.Printf("[ART] failed adding %q to %s: %v",
+			log.Printf("[gBAA] failed adding %q to %s: %v",
 				uri, noEmbedList, err)
 		}
 	} else {
 		cfgRP, _, errRP = image.DecodeConfig(bytes.NewReader(imgRP))
 		if errRP != nil {
-			dbg("[ART] ReadPicture decode failed for %q: %v",
+			dbg("[gBAA] ReadPicture decode failed for %q: %v",
 				uri, errRP)
 		} else {
-			dbg("[ART] ReadPicture succeeded for %q (%dx%d, %d bytes)",
+			dbg("[gBAA] ReadPicture succeeded for %q (%dx%d, %d bytes)",
 				uri, cfgRP.Width, cfgRP.Height, len(imgRP))
 
 			result.HasEmbed = true
 
 			if cfgRP.Width <= 500 || cfgRP.Height <= 500 {
 				if err := c.PlaylistAdd(smallRPlist, uri); err != nil {
-					log.Printf("[ART] failed adding %q to %s: %v",
+					log.Printf("[gBAA] failed adding %q to %s: %v",
 						uri, smallRPlist, err)
 				}
 			}
@@ -1242,26 +1242,26 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
   result.HasAlbumArt = false
 	imgAA, errAA = c.AlbumArt(uri)
 	if errAA != nil || len(imgAA) == 0 {
-		dbg("[ART] AlbumArt failed for %q", uri)
+		dbg("[gBAA] AlbumArt failed for %q", uri)
 
 		if err := c.PlaylistAdd(noAAlist, uri); err != nil {
-			log.Printf("[ART] failed adding %q to %s: %v",
+			log.Printf("[gBAA] failed adding %q to %s: %v",
 				uri, noAAlist, err)
 		}
 	} else {
 		cfgAA, _, errAA = image.DecodeConfig(bytes.NewReader(imgAA))
 		if errAA != nil {
-			log.Printf("[ART] AlbumArt decode failed for %q: %v",
+			log.Printf("[gBAA] AlbumArt decode failed for %q: %v",
 				uri, errAA)
 		} else {
-			log.Printf("[ART] AlbumArt succeeded for %q (%dx%d, %d bytes)",
+			log.Printf("[gBAA] AlbumArt succeeded for %q (%dx%d, %d bytes)",
 				uri, cfgAA.Width, cfgAA.Height, len(imgAA))
 
 			result.HasAlbumArt = true
 
 			if cfgAA.Width <= 500 || cfgAA.Height <= 500 {
 				if err := c.PlaylistAdd(smallAAlist, uri); err != nil {
-					log.Printf("[ART] failed adding %q to %s: %v",
+					log.Printf("[gBAA] failed adding %q to %s: %v",
 						uri, smallAAlist, err)
 				}
 			}
@@ -1270,10 +1270,10 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 
 	// --- total failure ---
 	if errAA != nil && errRP != nil {
-		log.Printf("[ART] no album art available for %q", uri)
+		log.Printf("[gBAA] no album art available for %q", uri)
 
 		if err := c.PlaylistAdd(noCoverList, uri); err != nil {
-			log.Printf("[ART] failed adding %q to %s: %v",
+			log.Printf("[gBAA] failed adding %q to %s: %v",
 				uri, noCoverList, err)
 		}
 
@@ -1286,7 +1286,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
     }
 		cmd := exec.Command("mediainfo", absURI)
 		out, _ := cmd.CombinedOutput()
-		dbg("[ART] mediainfo output:\n%s", out)
+		dbg("[gBAA] mediainfo output:\n%s", out)
 
 		// directory listing
     absDir := ""
@@ -1298,7 +1298,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
     }
 		cmd = exec.Command("ls", "-l", absDir)
 		out, _ = cmd.CombinedOutput()
-		dbg("[ART] dir listing:\n%s", out)
+		dbg("[gBAA] dir listing:\n%s", out)
 
 		return nil, nil
 	}
@@ -1347,7 +1347,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
   result.Size = len(result.Img)
   result.Hash = fnv1a(result.Img)
 
-	log.Printf("[ART] selected %s for %q (hash=%d; W×H=%dx%d; %d bytes)",
+	log.Printf("[gBAA] selected %s for %q (result.hash=%d; W×H=%dx%d; %d bytes)",
 		result.Source,
 		uri,
     result.Hash,
