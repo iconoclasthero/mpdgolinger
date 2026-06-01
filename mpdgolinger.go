@@ -1847,6 +1847,7 @@ func wsWatcher(ctx *wsCtx) {
       art = nil
       err := mpdDo(func(c *mpd.Client) error {
         var err2 error
+        var jsArt map[string]any
         art, err2 = getBestAlbumArt(c, uri)
         if err2 != nil {
           log.Printf("[wsW] getBestAlbumArt error for %q: %v", uri, err2)
@@ -1855,10 +1856,19 @@ func wsWatcher(ctx *wsCtx) {
         }
         if art == nil {
           img = nil
-//          return nil
+          jsArt = map[string]any{
+              "system": "subscribed",
+                 "cmd": "albumart",
+            "response": map[string]any{
+                   "msg": "no albumart retrieved",
+                  "hash": "nil",
+            },
+               "debug": time.Now().UnixNano(),
+          }
+          return nil
         }
 
-        if len(art.Img) > 0 { img = art.Img }
+        img = art.Img
 
         hashMatch := art.Hash == lastArtHash
         log.Printf(
@@ -1877,7 +1887,6 @@ func wsWatcher(ctx *wsCtx) {
         )
 
         // dedupe based on image hash (NOT albumKey)
-        var jsArt map[string]any
         pushArt = false
         if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
           pushArt = true
