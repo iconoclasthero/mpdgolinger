@@ -7,34 +7,35 @@ import (
   "github.com/fhs/gompd/v2/mpd"
   "github.com/coder/websocket"
   "github.com/mitchellh/mapstructure"
-  "context"
-  "regexp"
   "bufio"
   "bytes"
+  "context"
+  "encoding/json"
+  "errors"
   "fmt"
   "hash/fnv"
-  "log"
-  "net"
-  "net/http"
   "io"
   "image"
 	_ "image/jpeg"
 	_ "image/png"
   _ "golang.org/x/image/webp"
+  "log"
+  "math"
+  "math/rand"
+  "net"
+  "net/http"
   "os"
   "os/signal"
   "os/exec"
-  "syscall"
   "path"
   "path/filepath"
+  "regexp"
   "strconv"
   "strings"
   "sync"
-  "time"
   "sync/atomic"
-  "math"
-  "math/rand"
-  "encoding/json"
+  "syscall"
+  "time"
 //  "encoding/base64"
   "net/url"
   "sort"
@@ -5928,6 +5929,10 @@ func runIdleLoop(w *mpd.Watcher) error {
       // keep this very explicit so we can trace EOF vs broken pipe
       log.Printf("Watcher error: %v", err)
       log.SetFlags(log.LstdFlags)
+      if errors.Is(err, io.EOF) {
+        log.Printf("Watcher got EOF, exiting watcher")
+        return
+      }
       time.Sleep(5 * time.Second)
     }
   }()
