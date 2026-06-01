@@ -1671,7 +1671,7 @@ func wsWatcher(ctx *wsCtx) {
       img             []byte
       pushArt         bool
       uri             string
-      art             AlbumArtResult
+      art             *AlbumArtResult
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
@@ -1823,15 +1823,15 @@ func wsWatcher(ctx *wsCtx) {
 //        lastSongID = songID
 //      }
 
-state.mu.Lock()
-songChanged := false
+      state.mu.Lock()
+      songChanged := false
 
-if state.lastSongID == 0 || songID != state.lastSongID {
-  songChanged = true
-  state.lastSongID = songID
-}
+      if state.lastSongID == 0 || songID != state.lastSongID {
+        songChanged = true
+        state.lastSongID = songID
+      }
 
-state.mu.Unlock()
+      state.mu.Unlock()
 
 
       // -----------------------
@@ -1874,10 +1874,10 @@ state.mu.Unlock()
       // ALBUM ART (HASH-BASED)
       // -----------------------
       err := mpdDo(func(c *mpd.Client) error {
-
-        art, err := getBestAlbumArt(c, uri)
-        if err != nil {
-          log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
+        var err2 error
+        art, err2 = getBestAlbumArt(c, uri)
+        if err2 != nil {
+          log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err2)
           img = nil
           return nil
         }
@@ -1896,12 +1896,13 @@ state.mu.Unlock()
           len(img),
         )
 
-log.Printf("ART CHECK art=%q last=%q subscribe=%v subsystem=%s",
-    art.Hash,
-    lastArtHash,
-    ev.Subscribe,
-    ev.Subsystem,
-)
+        log.Printf("ART CHECK art=%d last=%d subscribe=%v subsystem=%s",
+            art.Hash,
+            lastArtHash,
+            ev.Subscribe,
+            ev.Subsystem,
+        )
+
         // dedupe based on image hash (NOT albumKey)
         var jsArt map[string]any
         if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
