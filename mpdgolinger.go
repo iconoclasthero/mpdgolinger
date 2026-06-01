@@ -1739,41 +1739,13 @@ func wsWatcher(ctx *wsCtx) {
 
       log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
 
-//      // -----------------------
-//      // STATUS FRAME
-//      // -----------------------
-//      status, n, err = MPDtags(nil, "status", "status")
-//      notes = n
-//      if err != nil {
-//        log.Printf("wsWatcher MPDtags error: %v", err)
-//        continue
-//      }
-//
-//      js := &StatusV1{}
-//      if err := convert2json(status, js); err != nil {
-//        log.Printf("wsWatcher convert2json error: %v", err)
-//        continue
-//      }
-//
-//      data, err = json.Marshal(js)
-//      if err != nil {
-//        log.Printf("wsWatcher marshal error: %v", err)
-//        continue
-//      }
-//
-//      msgs = append(msgs, data)
-//
-//      for _, note := range notes {
-//        msgs = append(msgs, []byte(note))
-//      }
-
       // -----------------------
       // STATUS FRAME
       // -----------------------
       var (
         st          StatusV1
-//        albumKey    string
-//        songChanged bool
+//      albumKey    string
+//      songChanged bool
 //      uri         string
       )
 
@@ -1889,6 +1861,7 @@ func wsWatcher(ctx *wsCtx) {
 
         img = art.Img
 
+        hashMatch := art.Hash == lastArtHash
         log.Printf(
           "[ART] selected %s hash=%d (%d bytes)",
           art.Source,
@@ -1896,11 +1869,12 @@ func wsWatcher(ctx *wsCtx) {
           len(img),
         )
 
-        log.Printf("ART CHECK art=%d last=%d subscribe=%v subsystem=%s",
-            art.Hash,
-            lastArtHash,
-            ev.Subscribe,
-            ev.Subsystem,
+        log.Printf("ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
+          hashMatch,
+          art.Hash,
+          lastArtHash,
+          ev.Subscribe,
+          ev.Subsystem,
         )
 
         // dedupe based on image hash (NOT albumKey)
@@ -1912,17 +1886,17 @@ func wsWatcher(ctx *wsCtx) {
               "system": "subscribed",
                  "cmd": "albumart",
             "response": art,
-              "debug": time.Now().UnixNano(),
+               "debug": time.Now().UnixNano(),
           }
         } else if art.Size > 0 {
           pushArt = false
           jsArt = map[string]any{
               "system": "subscribed",
                  "cmd": "albumart",
+               "debug": time.Now().UnixNano(),
             "response": map[string]any{
                    "msg": "album art unchanged",
                   "hash": art.Hash,
-               "debug": time.Now().UnixNano(),
             },
           }
         } else if art.Size == 0 {
@@ -1931,6 +1905,7 @@ func wsWatcher(ctx *wsCtx) {
               "system": "subscribed",
                  "cmd": "albumart",
             "response": "no albumart retrieved",
+               "debug": time.Now().UnixNano(),
           }
         }
 
