@@ -2014,7 +2014,12 @@ log.Printf("ART CHECK art=%q last=%q subscribe=%v subsystem=%s",
           dead = true
           break
         } else if m.typ == 1 {
-          log.Printf("[wsW] websoket.MessageText: %v", m.data)
+          var v any
+          if err := json.Unmarshal(m.data, &v); err != nil {
+            log.Printf("[wsW] bad json: %v", err)
+          } else {
+            log.Printf("[wsW] websocket.MessageText: %#v", v)
+          }
         } else if m.typ == 2 {
           log.Printf("[wsW] websocket.MessageBinary len(m.data): %d", len(m.data))
         }
