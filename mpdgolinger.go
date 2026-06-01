@@ -1873,21 +1873,6 @@ func wsWatcher(ctx *wsCtx) {
           ev.Subscribe,
           ev.Subsystem,
         )
-        } else {
-          img = nil
-
-  // synthesize a fake "art" state WITHOUT touching art
-  jsArt = map[string]any{
-      "system": "subscribed",
-         "cmd": "albumart",
-      "response": map[string]any{
-          "msg":  "no albumart",
-          "hash": 0,
-      },
-         "debug": time.Now().UnixNano(),
-  }
-        }
-
         // dedupe based on image hash (NOT albumKey)
         pushArt = false
         if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
@@ -1923,6 +1908,21 @@ func wsWatcher(ctx *wsCtx) {
                "debug": time.Now().UnixNano(),
           }
         }
+        } else {
+          img = nil
+
+  // synthesize a fake "art" state WITHOUT touching art
+  jsArt = map[string]any{
+      "system": "subscribed",
+         "cmd": "albumart",
+      "response": map[string]any{
+          "msg":  "no albumart",
+          "hash": 0,
+      },
+         "debug": time.Now().UnixNano(),
+  }
+        }
+
 
         data, err := json.Marshal(jsArt)
         if err != nil {
