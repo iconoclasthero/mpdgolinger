@@ -2051,39 +2051,43 @@ log.Printf("ART CHECK art=%q last=%q subscribe=%v subsystem=%s",
 
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
 func truncateJSON(v any) any {
-	switch val := v.(type) {
-	case float64:
-		// Truncate decimals (e.g., 3.14159 -> 3)
-		return math.Trunc(val)
+  switch val := v.(type) {
+  case float64:
+    // Truncate decimals (e.g., 3.14159 -> 3)
+    return math.Trunc(val)
 
-	case string:
-		// Truncate long string values (e.g., limit to 10 characters)
-		runes := []rune(val)
-		if len(runes) > 10 {
-			return string(runes[:10]) + "..."
-		}
-		return val
+  case string:
+    // Truncate long string values (e.g., limit to 10 characters)
+    runes := []rune(val)
+    if len(runes) > 10 {
+      return string(runes[:10]) + "..."
+    }
+    return val
 
-	case map[string]any:
-		// Recursively process JSON objects
-		newMap := make(map[string]any, len(val))
-		for k, v := range val {
-			newMap[k] = truncateJSON(v)
-		}
-		return newMap
+  case map[string]any:
+    // Recursively process JSON objects
+    newMap := make(map[string]any, len(val))
+    for k, v := range val {
+      // Skip the key entirely if it matches "response"
+      if k == "response" {
+        continue
+      }
+      newMap[k] = truncateJSON(v)
+    }
+    return newMap
 
-	case []any:
-		// Recursively process JSON arrays
-		newSlice := make([]any, len(val))
-		for i, v := range val {
-			newSlice[i] = truncateJSON(v)
-		}
-		return newSlice
+  case []any:
+    // Recursively process JSON arrays
+    newSlice := make([]any, len(val))
+    for i, v := range val {
+      newSlice[i] = truncateJSON(v)
+    }
+    return newSlice
 
-	default:
-		// Return booleans, nulls, and other types as-is
-		return val
-	}
+  default:
+    // Return booleans, nulls, and other types as-is
+    return val
+  }
 } // func truncateJSON
 
 // verbProcessorJSON handles JSON commands from the WebSocket and returns
