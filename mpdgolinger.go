@@ -1916,7 +1916,7 @@ func wsWatcher(ctx *wsCtx) {
           // Important: enforce ordering contract
           msgs = append(msgs, wsMsg{websocket.MessageText, data})
 
-          if len(img) > 0 {
+          if pushArt && len(img) > 0 {
             msgs = append(msgs, wsMsg{websocket.MessageBinary, img})
           } else {
             msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte{}})
