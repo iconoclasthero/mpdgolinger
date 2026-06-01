@@ -1668,7 +1668,7 @@ func wsWatcher(ctx *wsCtx) {
       msgs            []wsMsg  // accumulate messages to send
 //    data            []byte
 //    notes           []string
-      img             []byte
+//      img             []byte
       pushArt         bool
       uri             string
       art             *AlbumArtResult
@@ -1731,24 +1731,22 @@ func wsWatcher(ctx *wsCtx) {
       }
 
     case "player":
-//      var (
-//        err error
-//        status map[string]string
-//        n []string
-//      )
+      var (
+        st          StatusV1
+        img             []byte
+//      albumKey    string
+//      songChanged bool
+//      uri         string
+//      err error
+//      status map[string]string
+//      n []string
+      )
 
       log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
 
       // -----------------------
       // STATUS FRAME
       // -----------------------
-      var (
-        st          StatusV1
-//      albumKey    string
-//      songChanged bool
-//      uri         string
-      )
-
       resp := verbProcessor("json-status")
 
       for _, entry := range resp {
@@ -1845,6 +1843,8 @@ func wsWatcher(ctx *wsCtx) {
       // -----------------------
       // ALBUM ART (HASH-BASED)
       // -----------------------
+      img = nil
+      art = nil
       err := mpdDo(func(c *mpd.Client) error {
         var err2 error
         art, err2 = getBestAlbumArt(c, uri)
@@ -1879,6 +1879,7 @@ func wsWatcher(ctx *wsCtx) {
 
         // dedupe based on image hash (NOT albumKey)
         var jsArt map[string]any
+        pushArt = false
         if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
           pushArt = true
           if art.Hash != lastArtHash { lastArtHash = art.Hash }
