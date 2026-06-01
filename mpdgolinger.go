@@ -1901,6 +1901,7 @@ func wsWatcher(ctx *wsCtx) {
             },
           }
         } else if art.Size == 0 {
+          log.Printf("ENTERED THE ART.SIZE == 0 BRANCH!!!!!!!!!!!!!!!")
           pushArt = false
           jsArt = map[string]any{
               "system": "subscribed",
