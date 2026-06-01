@@ -1856,6 +1856,7 @@ func wsWatcher(ctx *wsCtx) {
         }
         if art == nil {
           img = nil
+          art.Hash = 0
         } else {
 
         img = art.Img
