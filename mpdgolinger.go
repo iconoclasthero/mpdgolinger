@@ -1868,102 +1868,6 @@ state.mu.Unlock()
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
       }
 
-//      mbid := song.MBAlbumID
-//      album := song.Album
-//      artist := song.AlbumArtist
-//
-//      switch {
-//        case mbid != "":
-//          albumKey = mbid
-//
-//        case uri != "":
-//          if idx := strings.LastIndex(uri, "/"); idx > 0 {
-//            albumKey = uri[:idx]
-//          } else {
-//            albumKey = uri
-//          }
-//
-//        case artist != "" && album != "":
-//          albumKey = artist + " -- " + album
-//
-//        default:
-//          albumKey = strconv.Itoa(songID)
-//      }
-//
-//      log.Printf("[wsW] albumKey: %s", albumKey)
-
-//      err = mpdDo(func(c *mpd.Client) error {
-//
-//        song, err := c.CurrentSong()
-//        if err != nil {
-//          return err
-//        }
-//
-//        songID := atoi(song["Id"])
-//        uri = song["file"]
-//
-//        if lastSongID == 0 || songID != lastSongID {
-//          songChanged = true
-//          lastSongID = songID
-//        }
-//
-//        mbid := song["MUSICBRAINZ_ALBUMID"]
-//        album := song["Album"]
-//        artist := song["AlbumArtist"]
-//
-//        switch {
-//        case mbid != "":
-//          albumKey = mbid
-//        case uri != "":
-//          if idx := strings.LastIndex(uri, "/"); idx > 0 {
-//              albumKey = uri[:idx]
-//          } else {
-//              albumKey = uri
-//          }
-//        case artist != "" && album != "":
-//          albumKey = artist + " -- " + album
-//        default:
-//          albumKey = strconv.Itoa(songID)
-//        }
-//        return nil
-//      }, "wsWatcher-albumkey")
-//
-//      if err != nil {
-//        log.Printf("wsWatcher mpdDo error: %v", err)
-//        continue
-//      } else {
-//        log.Printf("[wsW] albumKey: %s", albumKey)
-//      }
-
-//    // -----------------------
-//    // ALBUM ART (FIXED + RESTORED)
-//    // -----------------------
-//    if albumKey == "" || albumKey != lastAlbumKey {
-//
-//        log.Printf("[ART] albumKey changed: %q → %q", lastAlbumKey, albumKey)
-//      err = mpdDo(func(c *mpd.Client) error {
-//
-//        art, err := getBestAlbumArt(c, uri) // c not available here; assumes your existing helper handles nil or global client
-//        if err != nil {
-//            log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err)
-//            img = nil
-//        } else if art != nil {
-//            img = art.Img
-//            log.Printf("[ART] selected %s art (%d bytes)", art.Source, len(img))
-//        } else {
-//            img = nil
-//            log.Printf("[ART] no album art available for %q", uri)
-//        }
-//
-//        return nil
-//      }, "wsWatcher-gBAA")
-//
-//        lastAlbumKey = albumKey
-//        pushArt = true
-//    } else {
-//        pushArt = false
-//    }
-
       // -----------------------
       // ALBUM ART (HASH-BASED)
       // -----------------------
@@ -1990,13 +1894,12 @@ state.mu.Unlock()
           len(img),
         )
 
-//        // dedupe based on image hash (NOT albumKey)
-//        if art.Hash != lastArtHash {
-//          pushArt = true
-//          lastArtHash = art.Hash
-//        } else {
-//          pushArt = false
-//        }
+log.Printf("ART CHECK art=%q last=%q subscribe=%v subsystem=%s",
+    art.Hash,
+    lastArtHash,
+    ev.Subscribe,
+    ev.Subsystem,
+)
         // dedupe based on image hash (NOT albumKey)
         var jsArt map[string]any
         if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
