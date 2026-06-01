@@ -1347,7 +1347,7 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
   result.Size = len(result.Img)
   result.Hash = fnv1a(result.Img)
 
-	log.Printf("[gBAA] selected %s for %q (result.hash=%d; W×H=%dx%d; %d bytes)",
+	dbg("[gBAA] selected %s for %q (result.hash=%d; W×H=%dx%d; %d bytes)",
 		result.Source,
 		uri,
     result.Hash,
@@ -2001,7 +2001,11 @@ func wsWatcher(ctx *wsCtx) {
             log.Printf("[wsW] websocket.MessageText: %#v", data)
           }
         } else if m.typ == 2 {
-          log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), art.Hash, lastArtHash)
+            var artHash uint64
+            if art != nil {
+              artHash = art.Hash
+            }
+            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
         }
       }
 
