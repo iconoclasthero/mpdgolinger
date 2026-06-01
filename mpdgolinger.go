@@ -1699,9 +1699,9 @@ func wsWatcher(ctx *wsCtx) {
 
     case "pauseTimer":
       var (
-        err error
-        status map[string]string
-        notes []string
+        err     error
+        status  map[string]string
+        notes   []string
       )
       js := &StatusV1{}  // declare a fresh StatusV1 just for the pauseTimer case
       // fetch MPD status first
@@ -1996,22 +1996,33 @@ state.mu.Unlock()
 //        }
         // dedupe based on image hash (NOT albumKey)
         var jsArt map[string]any
-        if art.Hash != lastArtHash {
+        if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
           pushArt = true
-          lastArtHash = art.Hash
+          if art.Hash != lastArtHash { lastArtHash = art.Hash }
           jsArt = map[string]any{
               "system": "subscribed",
                  "cmd": "albumart",
             "response": art,
           }
-        } else {
+        } else if art.Size > 0 {
           pushArt = false
           jsArt = map[string]any{
               "system": "subscribed",
                  "cmd": "albumart",
-            "response": "no art retrieved",
+            "response": map[string]any{
+                   "msg": "album art unchanged",
+                  "hash": art.Hash,
+            },
+          }
+        } else if art.Size == 0 {
+          pushArt = false
+          jsArt = map[string]any{
+              "system": "subscribed",
+                 "cmd": "albumart",
+            "response": "no albumart retrieved",
           }
         }
+
         data, err := json.Marshal(jsArt)
         if err != nil {
           log.Printf("[wsW] Art mashal failed %v", err)
