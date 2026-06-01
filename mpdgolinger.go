@@ -2142,14 +2142,14 @@ func wsWatcher(ctx *wsCtx) {
           pushArt = true
           lastArtHash = art.Hash
           jsArt = map[string]any{
-              "system": "subscribe",
+              "system": "subscribed",
                  "cmd": "albumart",
             "response": art,
           }
         } else {
           pushArt = false
           jsArt = map[string]any{
-              "system": "subscribe",
+              "system": "subscribed",
                  "cmd": "albumart",
             "response": "no art retrieved",
           }
