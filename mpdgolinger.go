@@ -1849,11 +1849,11 @@ func wsWatcher(ctx *wsCtx) {
         var err2 error
         art, err2 = getBestAlbumArt(c, uri)
         if err2 != nil {
-          log.Printf("[ART] getBestAlbumArt error for %q: %v", uri, err2)
+          log.Printf("[wsW] getBestAlbumArt error for %q: %v", uri, err2)
           img = nil
           return nil
         }
-
+log.Printf("BBBBBBBBBBBOOOOOOOOOOOOOOOOOOOOOOBBBBBBBBBBBBBBBBBBBBS")
         if art == nil {
           img = nil
           return nil
