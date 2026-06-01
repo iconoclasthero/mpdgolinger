@@ -1854,75 +1854,74 @@ func wsWatcher(ctx *wsCtx) {
           img = nil
           return nil
         }
+
         if art != nil {
+          img = art.Img
 
-        img = art.Img
+          hashMatch := art.Hash == lastArtHash
+          log.Printf(
+            "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
+            art.Source,
+            art.Hash,
+            len(img),
+          )
 
-        hashMatch := art.Hash == lastArtHash
-        log.Printf(
-          "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
-          art.Source,
-          art.Hash,
-          len(img),
-        )
-
-        log.Printf("[wsW] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
-          hashMatch,
-          art.Hash,
-          lastArtHash,
-          ev.Subscribe,
-          ev.Subsystem,
-        )
-        // dedupe based on image hash (NOT albumKey)
-        pushArt = false
-        if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
-          pushArt = true
-          if art.Hash != lastArtHash { lastArtHash = art.Hash }
-          jsArt = map[string]any{
-              "system": "subscribed",
-                 "cmd": "albumart",
-            "response": art,
-               "debug": time.Now().UnixNano(),
-          }
-        } else if art.Size > 0 {
+          log.Printf("[wsW] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
+            hashMatch,
+            art.Hash,
+            lastArtHash,
+            ev.Subscribe,
+            ev.Subsystem,
+          )
+          // dedupe based on image hash (NOT albumKey)
           pushArt = false
-          jsArt = map[string]any{
-              "system": "subscribed",
-                 "cmd": "albumart",
-               "debug": time.Now().UnixNano(),
-            "response": map[string]any{
-                   "msg": "album art unchanged",
-                  "hash": art.Hash,
-            },
+          if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
+            pushArt = true
+            if art.Hash != lastArtHash { lastArtHash = art.Hash }
+            jsArt = map[string]any{
+                "system": "subscribed",
+                   "cmd": "albumart",
+              "response": art,
+                 "debug": time.Now().UnixNano(),
+            }
+          } else if art.Size > 0 {
+            pushArt = false
+            jsArt = map[string]any{
+                "system": "subscribed",
+                   "cmd": "albumart",
+                 "debug": time.Now().UnixNano(),
+              "response": map[string]any{
+                     "msg": "album art unchanged",
+                    "hash": art.Hash,
+              },
+            }
+          } else if art.Size == 0 {
+            log.Printf("The art.Size == 0 branch should be unreachable!")
+            pushArt = false
+            jsArt = map[string]any{
+                "system": "subscribed",
+                   "cmd": "albumart",
+              "response": map[string]any{
+                     "msg": "no albumart retrieved",
+                    "hash": 0,
+              },
+                 "debug": time.Now().UnixNano(),
+            }
           }
-        } else if art.Size == 0 {
-          log.Printf("ENTERED THE ART.SIZE == 0 BRANCH!!!!!!!!!!!!!!!")
-          pushArt = false
-          jsArt = map[string]any{
-              "system": "subscribed",
-                 "cmd": "albumart",
-            "response": map[string]any{
-                   "msg": "no albumart retrieved",
-                  "hash": "nil",
-            },
-               "debug": time.Now().UnixNano(),
-          }
-        }
         } else {
           img = nil
-          log.Printf("BoooooooooooooooooooooooooooooooooooooobbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbBSSSSSSSSSSSSSSS")
-  // synthesize a fake "art" state WITHOUT touching art
-  jsArt = map[string]any{
-      "system": "subscribed",
-         "cmd": "albumart",
-      "response": map[string]any{
-          "msg":  "no albumart",
-          "hash": 0,
-      },
-         "debug": time.Now().UnixNano(),
-  }
-        }
 
+          // synthesize a fake "art" state WITHOUT touching art
+          jsArt = map[string]any{
+              "system": "subscribed",
+                 "cmd": "albumart",
+              "response": map[string]any{
+                  "msg":  "no albumart retrieved",
+                  "hash": 0,
+              },
+                 "debug": time.Now().UnixNano(),
+          }
+        }
 
         data, err := json.Marshal(jsArt)
         if err != nil {
@@ -1933,14 +1932,14 @@ func wsWatcher(ctx *wsCtx) {
 
           if pushArt && len(img) > 0 {
             msgs = append(msgs, wsMsg{websocket.MessageBinary, img})
-          } else {
-            msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte{}})
+//          } else {
+//            msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte{}})
           }
         }
 
-
         return nil
       }, "wsWatcher-gBAA")
+
       if err != nil {
         log.Printf("[ART] mpdDo/gBAA failed: %v", err)
         continue
