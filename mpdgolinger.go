@@ -1858,7 +1858,7 @@ func wsWatcher(ctx *wsCtx) {
 //          return nil
         }
 
-        if art.Size > 0 { img = art.Img }
+        if len(art.Img) > 0 { img = art.Img }
 
         hashMatch := art.Hash == lastArtHash
         log.Printf(
