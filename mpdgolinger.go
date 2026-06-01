@@ -1656,6 +1656,7 @@ func wsWatcher(ctx *wsCtx) {
   var (
 //    lastSongID      int
     lastPlaylistRev int
+    lastArtHash     uint64
 //    lastAlbumKey string
   )
 
@@ -1668,7 +1669,6 @@ func wsWatcher(ctx *wsCtx) {
 //    notes           []string
       img             []byte
       pushArt         bool
-      lastArtHash     uint64
       uri             string
 //    allLogEntries   [][]byte
 //    songChanged     bool
