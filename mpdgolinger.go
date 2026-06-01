@@ -1863,13 +1863,13 @@ func wsWatcher(ctx *wsCtx) {
 
         hashMatch := art.Hash == lastArtHash
         log.Printf(
-          "[ART] selected %s hash=%d (%d bytes)",
+          "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
           art.Source,
           art.Hash,
           len(img),
         )
 
-        log.Printf("ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
+        log.Printf("[wsW] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
           hashMatch,
           art.Hash,
           lastArtHash,
