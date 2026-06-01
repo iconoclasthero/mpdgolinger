@@ -1798,6 +1798,7 @@ func wsWatcher(ctx *wsCtx) {
       // -----------------------
       // STATUS FRAME
       // -----------------------
+      log.Printf("PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
       env := map[string]any{
         "system": "subscribed",
         "cmd": "json-status",
