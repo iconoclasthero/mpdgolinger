@@ -1881,6 +1881,7 @@ func wsWatcher(ctx *wsCtx) {
             jsArt = map[string]any{
                 "system": "subscribed",
                    "cmd": "albumart",
+                  "note": "update",
               "response": art,
                  "debug": time.Now().UnixNano(),
             }
@@ -1889,6 +1890,7 @@ func wsWatcher(ctx *wsCtx) {
             jsArt = map[string]any{
                 "system": "subscribed",
                    "cmd": "albumart",
+                  "note": "noop",
                  "debug": time.Now().UnixNano(),
               "response": map[string]any{
                      "msg": "album art unchanged",
@@ -1915,8 +1917,9 @@ func wsWatcher(ctx *wsCtx) {
           jsArt = map[string]any{
               "system": "subscribed",
                  "cmd": "albumart",
-              "response": map[string]any{
-                  "msg":  "no albumart retrieved",
+                "note": "noart",
+            "response": map[string]any{
+                   "msg":  "no albumart retrieved",
                   "hash": 0,
               },
                  "debug": time.Now().UnixNano(),
@@ -2181,68 +2184,70 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
   switch system {   // mpd, player, playlist; linger; websocket; pulseaudio; search; pauseTimer //
   case "artwork":
 
-  switch cmd {
+    switch cmd {
 
-case "resolve":
+      case "resolve":
 
-//  type ArtworkArgs struct {
-//    Path string `json:"path"`
-//  }
-//
-//  var a ArtworkArgs
-//
-//  if err := json.Unmarshal(req.Args, &a); err != nil {
-//    js["response"] = "error"
-//    js["error"] = err.Error()
-//    out, _ := json.Marshal(js)
-//    return []string{string(out)}
-//  }
-//
-//  // build stdin payload for artwork.go
-//  in := map[string]string{
-//    "path": a.Path,
-//  }
-//
-//  b, _ := json.Marshal(in)
+      //  type ArtworkArgs struct {
+      //    Path string `json:"path"`
+      //  }
+      //
+      //  var a ArtworkArgs
+      //
+      //  if err := json.Unmarshal(req.Args, &a); err != nil {
+      //    js["response"] = "error"
+      //    js["error"] = err.Error()
+      //    out, _ := json.Marshal(js)
+      //    return []string{string(out)}
+      //  }
+      //
+      //  // build stdin payload for artwork.go
+      //  in := map[string]string{
+      //    "path": a.Path,
+      //  }
+      //
+      //  b, _ := json.Marshal(in)
 
-b := req.Args
+//      log.Printf(os.Stderr, "ARGS=%q\n", string(req.Args))
+      b := req.Args
 
-cmd := exec.Command("go", "run", ".")
-cmd.Dir = "/opt/mgl"
+      cmd := exec.Command("go", "run", ".")
+      cmd.Dir = "/opt/mgl"
 
-  cmd.Stdin = bytes.NewReader(b)
+        cmd.Stdin = bytes.NewReader(b)
 
-  var stdout, stderr bytes.Buffer
-  cmd.Stdout = &stdout
-  cmd.Stderr = &stderr
+        var stdout, stderr bytes.Buffer
+        cmd.Stdout = &stdout
+        cmd.Stderr = &stderr
 
-  err := cmd.Run()
-  if err != nil {
-    js["response"] = "error"
-    js["error"] = err.Error()
-    js["stderr"] = stderr.String()
-    js["stdout"] = stdout.String()
-    out, _ := json.Marshal(js)
-    return []string{string(out)}
-  }
+        err := cmd.Run()
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = err.Error()
+          js["stderr"] = stderr.String()
+          js["stdout"] = stdout.String()
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
 
-var resp any
+      var resp any
 
-if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
-  js["response"] = "error"
-  js["error"] = err.Error()
-  js["stdout"] = stdout.String()
+      if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+        js["response"] = "error"
+        js["error"] = err.Error()
+        js["stdout"] = stdout.String()
 
-  out, _ := json.Marshal(js)
-  return []string{string(out)}
-}
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
 
-js["response"] = resp
+      js["response"] = resp
 
-out, _ := json.Marshal(js)
-return []string{string(out)}
-}
-  return nil
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+      } // case "resolve"
+
+    return nil
 
   case "pause_timer":
     state.mu.Lock()
