@@ -1857,7 +1857,10 @@ func wsWatcher(ctx *wsCtx) {
 
         if art != nil {
           img = art.Img
-
+          if lastArtHash == 0 {
+            log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
+              lastArtHash)
+          }
           hashMatch := art.Hash == lastArtHash
           log.Printf(
             "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
@@ -2187,28 +2190,11 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
     switch cmd {
 
       case "resolve":
+      // EXPECTS:
+      // '{"system":"artwork","cmd":"resolve","args":"<path>"}'
 
-      //  type ArtworkArgs struct {
-      //    Path string `json:"path"`
-      //  }
-      //
-      //  var a ArtworkArgs
-      //
-      //  if err := json.Unmarshal(req.Args, &a); err != nil {
-      //    js["response"] = "error"
-      //    js["error"] = err.Error()
-      //    out, _ := json.Marshal(js)
-      //    return []string{string(out)}
-      //  }
-      //
-      //  // build stdin payload for artwork.go
-      //  in := map[string]string{
-      //    "path": a.Path,
-      //  }
-      //
-      //  b, _ := json.Marshal(in)
+      // want to expand to incude "args":{"path1","path2","path3", ..., "pathn"}
 
-//      log.Printf(os.Stderr, "ARGS=%q\n", string(req.Args))
       b := req.Args
 
       cmd := exec.Command("go", "run", ".")
