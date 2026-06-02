@@ -354,6 +354,7 @@ type     IdleEvent    struct {
      AlbumKey         string
      PulseData        PulseV1
      Subscribe        bool
+     Target           *websocket.Conn
 }
 
 var idleEvents = make(chan IdleEvent, 32)
@@ -5179,6 +5180,7 @@ log.Printf("abs: %s", abs)
         idleEvents <- IdleEvent{
           Subsystem: "player",
           Subscribe: true,
+             Target: ctx.conn,
         }
 
 //        out, _ = json.Marshal(js)
