@@ -1978,78 +1978,158 @@ func wsWatcher(ctx *wsCtx) {
       continue
     }
 
-    // --- push to all subscribed connections ---
-    ctx.mu.Lock()
-    dead := false
+//    // --- push to all subscribed connections ---
+//    ctx.mu.Lock()
+//
+//    var recipients []*websocket.Conn
+//
+//    if ev.Target != nil {
+//        recipients = []*websocket.Conn{ev.Target}
+//    } else {
+//        for conn := range ctx.conns {
+//            recipients = append(recipients, conn)
+//        }
+//    }
+//
+//    ctx.mu.Unlock()
+//
+////    for conn := range ctx.conns {
+//    for _, conn := range recipients {
+//      dead := false
+//      dbg("[wsW] primary for push loop: %v", conn)
+//      ctx.writeMu.Lock()
+//
+//      write := func(typ websocket.MessageType, payload []byte) bool {
+//        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+//        defer cancel()
+//
+//        err := conn.Write(wctx, typ, payload)
+//        if err != nil {
+//          log.Printf("[wsW] write failed, removing conn: %v", err)
+//          conn.Close(websocket.StatusNormalClosure, "")
+//          dead = true
+//          return false
+//        }
+//        return true
+//      }
+//
+//      dbg("broadcast start conn=%p", conn)
+//
+//      for _, m := range msgs {
+//        if !write(m.typ, m.data) {
+//          dead = true
+//          break
+//        } else if m.typ == 1 {
+//          var v any
+//          if err := json.Unmarshal(m.data, &v); err != nil {
+//            log.Printf("[wsW] bad json: %v", err)
+//          } else {
+//            data := truncateJSON(v)
+//            log.Printf("[wsW] websocket.MessageText: %#v", data)
+//          }
+//        } else if m.typ == 2 {
+//            var artHash uint64
+//            if art != nil {
+//              artHash = art.Hash
+//            }
+//            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
+//        }
+//      }
+//
+//      if dead {
+//        ctx.writeMu.Unlock()
+//        delete(ctx.conns, conn)
+//        continue
+//      }
+//
+//      ctx.writeMu.Unlock()
+//
+//      if dead {
+//        delete(ctx.conns, conn)
+//        continue
+//      }
+//
+//      dbg("broadcast complete conn=%p", conn)
+//    }
+//
+//    ctx.mu.Unlock()
+//  }
+//  time.Sleep(100 * time.Millisecond)
+//} // func wsWatcher()
 
-    for conn := range ctx.conns {
-      dbg("[wsW] primary for push loop: %v", conn)
+	    // --- push to subscribed connections ---
+	    ctx.mu.Lock()
 
-      ctx.writeMu.Lock()
+	    var recipients []*websocket.Conn
 
-      write := func(typ websocket.MessageType, payload []byte) bool {
-        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-        defer cancel()
+	    if ev.Target != nil {
+	        recipients = []*websocket.Conn{ev.Target}
+	    } else {
+	        for conn := range ctx.conns {
+	            recipients = append(recipients, conn)
+	        }
+	    }
 
-        err := conn.Write(wctx, typ, payload)
-        if err != nil {
-          log.Printf("[wsW] write failed, removing conn: %v", err)
-          conn.Close(websocket.StatusNormalClosure, "")
-          dead = true
-          return false
-        }
-        return true
-      }
+	    ctx.mu.Unlock()
 
-      dbg("broadcast start conn=%p", conn)
+	    for _, conn := range recipients {
+	      dead := false
 
-  //    for _, m := range msgs {
-  //      if !write(websocket.MessageText, m) {
-  //        break
-  //      }
-  //    }
-      for _, m := range msgs {
-        if !write(m.typ, m.data) {
-          dead = true
-          break
-        } else if m.typ == 1 {
-          var v any
-          if err := json.Unmarshal(m.data, &v); err != nil {
-            log.Printf("[wsW] bad json: %v", err)
-          } else {
-            data := truncateJSON(v)
-            log.Printf("[wsW] websocket.MessageText: %#v", data)
-          }
-        } else if m.typ == 2 {
-            var artHash uint64
-            if art != nil {
-              artHash = art.Hash
-            }
-            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
-        }
-      }
+	      dbg("[wsW] primary for push loop: %v", conn)
 
-      if dead {
-        ctx.writeMu.Unlock()
-        delete(ctx.conns, conn)
-        continue
-      }
+	      ctx.writeMu.Lock()
 
+	      write := func(typ websocket.MessageType, payload []byte) bool {
+	        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	        defer cancel()
 
-      ctx.writeMu.Unlock()
+	        err := conn.Write(wctx, typ, payload)
+	        if err != nil {
+	          log.Printf("[wsW] write failed, removing conn: %v", err)
+	          conn.Close(websocket.StatusNormalClosure, "")
+	          dead = true
+	          return false
+	        }
+	        return true
+	      }
 
-      if dead {
-        delete(ctx.conns, conn)
-        continue
-      }
+	      dbg("broadcast start conn=%p", conn)
 
-      dbg("broadcast complete conn=%p", conn)
+	      for _, m := range msgs {
+	        if !write(m.typ, m.data) {
+	          dead = true
+	          break
+	        } else if m.typ == 1 {
+	          var v any
+	          if err := json.Unmarshal(m.data, &v); err != nil {
+	            log.Printf("[wsW] bad json: %v", err)
+	          } else {
+	            data := truncateJSON(v)
+	            log.Printf("[wsW] websocket.MessageText: %#v", data)
+	          }
+	        } else if m.typ == 2 {
+	          var artHash uint64
+	          if art != nil {
+	            artHash = art.Hash
+	          }
+	          log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
+	        }
+	      }
+
+	      ctx.writeMu.Unlock()
+
+	      if dead {
+	        ctx.mu.Lock()
+	        delete(ctx.conns, conn)
+	        ctx.mu.Unlock()
+	        continue
+	      }
+
+	      dbg("broadcast complete conn=%p", conn)
+	    }
     }
-
-    ctx.mu.Unlock()
-  }
-  time.Sleep(100 * time.Millisecond)
-} // func wsWatcher()
+  time.Sleep(100 * time.Millisecond) 
+} //func wsWatcher()
 
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
 func truncateJSON(v any) any {
