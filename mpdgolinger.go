@@ -4565,7 +4565,9 @@ log.Printf("abs: %s", abs)
 
         state.mu.Lock()
         paused := !state.paused
+        state.mu.Unlock()
         expired, limit := setPaused(paused)
+        state.mu.Lock()
         state.paused = paused
         state.mu.Unlock()
         log.Printf("vPJ: after lock - toggle command")
