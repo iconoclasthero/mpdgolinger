@@ -2128,7 +2128,7 @@ func wsWatcher(ctx *wsCtx) {
 	      dbg("broadcast complete conn=%p", conn)
 	    }
     }
-  time.Sleep(100 * time.Millisecond) 
+  time.Sleep(100 * time.Millisecond)
 } //func wsWatcher()
 
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
@@ -4568,6 +4568,7 @@ log.Printf("abs: %s", abs)
         expired, limit := setPaused(paused)
         state.paused = paused
         state.mu.Unlock()
+        log.Printf("vPJ: after lock - toggle command")
 
         if !paused && expired {
           _ = mpdDo(func(c *mpd.Client) error {
