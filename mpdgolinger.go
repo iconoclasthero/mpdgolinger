@@ -1771,12 +1771,12 @@ func wsWatcher(ctx *wsCtx) {
       // -----------------------
       // STATUS FRAME
       // -----------------------
-      log.Printf("PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
+      log.Printf("[wsW] PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
       env := map[string]any{
           "system": "subscribed",
              "cmd": "json-status",
         "response": st,
-           "debug": time.Now().UnixNano(),
+//           "debug": time.Now().UnixNano(),
       }
 
       data, _ := json.Marshal(env)
@@ -1829,7 +1829,7 @@ func wsWatcher(ctx *wsCtx) {
           "system": "subscribed",
           "cmd":    "json-log",
           "response": logs,
-          "debug": time.Now().UnixNano(),
+//          "debug": time.Now().UnixNano(),
         }
 
         data, err := json.Marshal(msg)
@@ -1881,13 +1881,16 @@ func wsWatcher(ctx *wsCtx) {
           pushArt = false
           if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
             pushArt = true
-            if art.Hash != lastArtHash { lastArtHash = art.Hash }
+            if art.Hash != lastArtHash {
+              log.Printf("[wsW] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, lastArtHash)
+              lastArtHash = art.Hash
+            }
             jsArt = map[string]any{
                 "system": "subscribed",
                    "cmd": "albumart",
                   "note": "update",
               "response": art,
-                 "debug": time.Now().UnixNano(),
+//                 "debug": time.Now().UnixNano(),
             }
           } else if art.Size > 0 {
             pushArt = false
@@ -1895,7 +1898,7 @@ func wsWatcher(ctx *wsCtx) {
                 "system": "subscribed",
                    "cmd": "albumart",
                   "note": "noop",
-                 "debug": time.Now().UnixNano(),
+//                 "debug": time.Now().UnixNano(),
               "response": map[string]any{
                      "msg": "album art unchanged",
                     "hash": art.Hash,
@@ -1911,7 +1914,7 @@ func wsWatcher(ctx *wsCtx) {
                      "msg": "no albumart retrieved",
                     "hash": 0,
               },
-                 "debug": time.Now().UnixNano(),
+//                 "debug": time.Now().UnixNano(),
             }
           }
         } else {
@@ -1926,7 +1929,7 @@ func wsWatcher(ctx *wsCtx) {
                    "msg":  "no albumart retrieved",
                   "hash": 0,
               },
-                 "debug": time.Now().UnixNano(),
+//                 "debug": time.Now().UnixNano(),
           }
         }
 
@@ -4570,7 +4573,6 @@ log.Printf("abs: %s", abs)
         state.mu.Lock()
         state.paused = paused
         state.mu.Unlock()
-        log.Printf("vPJ: after lock - toggle command")
 
         if !paused && expired {
           _ = mpdDo(func(c *mpd.Client) error {
@@ -5461,9 +5463,9 @@ func startWS(port int) {
 
   go func() {
     addr := fmt.Sprintf(":%d", port)
-    log.Printf("WS listening on :%s (/ws)", addr)
+    log.Printf("[sWS] WS listening on :%s (/ws)", addr)
     if err := http.ListenAndServe(addr, nil); err != nil {
-      log.Fatalf("ws server failed: %v", err)
+      log.Fatalf("[sWS] ws server failed: %v", err)
     }
   }()
 } // func startWS()
@@ -5478,7 +5480,7 @@ func runXYStep(c *mpd.Client) error {
   }
   songZI, _ := strconv.Atoi(st["song"])
   if xy.end <= xy.start+1 {
-    log.Printf("[XY] completed: x=%d y=%d", xy.start, xy.end)
+    log.Printf("[rXYS] completed: x=%d y=%d", xy.start, xy.end)
     xy.active = false
     return nil
   }
@@ -5488,7 +5490,7 @@ func runXYStep(c *mpd.Client) error {
     xy.active = false
     _ = mpdDo(func(c *mpd.Client) error {
       if err := c.Consume(state.consume); err != nil {
-        log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
+        log.Printf("[rXYS] failed to restore consume=%t: %v", state.consume, err)
       }
       return nil
     }, "xy-restore-consume")
@@ -5501,7 +5503,7 @@ func runXYStep(c *mpd.Client) error {
   if verbose {
     log.Printf("[rXYS] debug: x=%d y=%d song=%d r=%d (range %d..%d)", xy.start, xy.end, songZI, r, xy.start+1, xy.end)
   } else {
-    log.Printf("[XY] pick: r=%d → %d", r, xy.start+1)
+    log.Printf("[rXYS] pick: r=%d → %d", r, xy.start+1)
   }
 
   // Move song at r → xy.start+1 (current+1)
@@ -6067,7 +6069,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         return fmt.Errorf("watcher closed")
       }
 
-      log.Printf("Idle event subsystem=%s", subsystem)
+      log.Printf("[rIL] Idle event subsystem=%s", subsystem)
 
       // For *every* idle event we:
       //   • Open a fresh short-lived MPD connection
@@ -6086,7 +6088,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         //   • what MPD *thought* was playing when idle fired
         //   • whether seek/pause events keep the same file
         //
-        logCurrentSong(c, "idle event (pre-status)")
+        logCurrentSong(c, "[rIL] idle event (pre-status)")
 
         // Fetch current player status.
         //
@@ -6208,7 +6210,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 //          state.mu.Unlock()
           // Log currentsong again so we can verify the *file*
           // really stayed the same across the idle break.
-          logCurrentSong(c, "idle event (songID unchanged)")
+          logCurrentSong(c, "[rIL] idle event (songID unchanged)")
           return nil
         }
 
