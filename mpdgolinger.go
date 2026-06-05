@@ -1630,6 +1630,7 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
   return c.AlbumArt(file)
 }
 
+var     lastArtHash     uint64
 
 func wsWatcher(ctx *wsCtx) {
   log.Println("wsWatcher started")
@@ -1658,7 +1659,7 @@ func wsWatcher(ctx *wsCtx) {
   var (
 //    lastSongID      int
     lastPlaylistRev int
-    lastArtHash     uint64
+//    lastArtHash     uint64
 //    lastAlbumKey string
   )
 
@@ -1926,7 +1927,7 @@ func wsWatcher(ctx *wsCtx) {
                  "cmd": "albumart",
                 "note": "noart",
             "response": map[string]any{
-                   "msg":  "no albumart retrieved",
+                   "msg": "no albumart retrieved",
                   "hash": 0,
               },
 //                 "debug": time.Now().UnixNano(),
@@ -2115,7 +2116,7 @@ func wsWatcher(ctx *wsCtx) {
 	          if art != nil {
 	            artHash = art.Hash
 	          }
-	          log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
+	          log.Printf("[wsW] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
 	        }
 	      }
 
