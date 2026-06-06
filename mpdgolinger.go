@@ -1748,6 +1748,7 @@ func wsWatcher(ctx *wsCtx) {
       }
 
     case "player":
+      log.Printf("ev: %v", ev)
       var (
         st          StatusV1
         img             []byte
