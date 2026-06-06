@@ -29,6 +29,7 @@ import (
   "os/exec"
   "path"
   "path/filepath"
+  "reflect"
   "regexp"
   "strconv"
   "strings"
@@ -478,6 +479,7 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
   scanner := bufio.NewScanner(stdout)
 
   for scanner.Scan() {
+    var lastpd PulseV1
     line := scanner.Text()
     // only care about sink events
     if !strings.Contains(line, "sink") {
@@ -490,13 +492,14 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
 
     pd, err := refreshPulse()
     log.Printf("[pW] pd, err := refreshPulse() %d", pd)
-    if err == nil {
+    if err == nil && !reflect.DeepEqual(pd, lastpd) {
       out <- pd
       idleEvents <- IdleEvent{
         Subsystem: "pulseaudio",
         PulseData:  pd,
       }
     }
+    lastpd = pd
   }
 } // func pulseWatcher
 
