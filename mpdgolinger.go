@@ -479,10 +479,11 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
 
   for scanner.Scan() {
     line := scanner.Text()
-    log.Printf("[pW] line := scanner.Text %s", line)
     // only care about sink events
     if !strings.Contains(line, "sink") {
       continue
+    } else {
+      log.Printf("[pW] line := scanner.Text %s", line)
     }
 
     pd, err := refreshPulse()
