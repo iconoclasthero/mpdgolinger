@@ -487,8 +487,8 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
 
   scanner := bufio.NewScanner(stdout)
 
+  var lastpd PulseV1
   for scanner.Scan() {
-    var lastpd PulseV1
     line := scanner.Text()
     // only care about sink events
     if !strings.Contains(line, "sink") {
