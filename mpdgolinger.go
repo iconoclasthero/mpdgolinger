@@ -418,7 +418,7 @@ func refreshPulse() (PulseV1, error) {
   }
 
   var s *sink
-
+  log.Printf("[rP] sink defaultName: %s", defaultName)
   for i := range sinks {
     if sinks[i].State == defaultName {
       s = &sinks[i]
