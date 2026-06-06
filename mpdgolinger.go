@@ -1650,11 +1650,12 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 
 func ShouldIgnore(current, last IdleEvent) bool {
   // Handle nil pointer protection for Status if it is a pointer
+/*
   if (current.Status == nil) != (last.Status == nil) {
     return false
   }
-
-/*  // 1. Compare Top Level Fields
+*/
+  // 1. Compare Top Level Fields
   if current.Subsystem != last.Subsystem ||
     current.SongID != last.SongID ||
     current.SongURI != last.SongURI ||
@@ -1692,7 +1693,6 @@ func ShouldIgnore(current, last IdleEvent) bool {
       return false // A meaningful value changed or is missing
     }
   }
-*/
 
   return true
 }
