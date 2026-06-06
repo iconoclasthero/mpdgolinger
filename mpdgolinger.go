@@ -482,12 +482,14 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
     // only care about sink events
     if !strings.Contains(line, "sink") {
       continue
+    } else if strings.Contains(line, "sink-input") {
+      continue
     } else {
       log.Printf("[pW] line := scanner.Text %s", line)
     }
 
     pd, err := refreshPulse()
-    log.Printf("[pW] pd, err := refreshPulse() %s", pd)
+    log.Printf("[pW] pd, err := refreshPulse() %d", pd)
     if err == nil {
       out <- pd
       idleEvents <- IdleEvent{
