@@ -395,7 +395,16 @@ func refreshPulse() (PulseV1, error) {
   }
 
   serverFlag := fmt.Sprintf("--server=%s:%d", pulseServer, pulsePort)
+
+  defaultNameBytes, err := exec.Command(
+    pulsePath,
+    serverFlag,
+    "get-default-sink",
+  ).Output()
+
 //  cmd := exec.Command("/usr/bin/pactl", "--server=127.0.0.1:4713", "--format=json", "list", "sinks")
+  defaultName := strings.TrimSpace(string(defaultNameBytes))
+
   cmd := exec.Command(pulsePath, serverFlag, "--format=json", "list", "sinks")
 
   out, err := cmd.CombinedOutput()
@@ -411,7 +420,7 @@ func refreshPulse() (PulseV1, error) {
   var s *sink
 
   for i := range sinks {
-    if sinks[i].State == "RUNNING" {
+    if sinks[i].State == defaultName {
       s = &sinks[i]
       break
     }
