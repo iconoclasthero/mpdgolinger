@@ -1831,6 +1831,7 @@ func wsWatcher(ctx *wsCtx) {
     	log.Printf("[wsW] +++++++++ ev:\n%s", string(b))
 
       if ShouldIgnore(ev, lastPlayerEV) {
+        log.Printf("[wsW] Skipping duplicate idle event!---------------------")
         continue
       }
 
