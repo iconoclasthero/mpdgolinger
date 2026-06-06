@@ -1645,9 +1645,87 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
   return c.AlbumArt(file)
 }
 
+
+
+
+func ShouldIgnore(current, last IdleEvent) bool {
+  // Handle nil pointer protection for Status if it is a pointer
+  if (current.Status == nil) != (last.Status == nil) {
+    return false
+  }
+
+  // 1. Compare Top Level Fields
+  if current.Subsystem != last.Subsystem ||
+    current.SongID != last.SongID ||
+    current.SongURI != last.SongURI ||
+    current.PlaylistRev != last.PlaylistRev ||
+    current.AlbumKey != last.AlbumKey ||
+    current.Subscribe != last.Subscribe {
+    return false
+  }
+
+  // 2. Compare Nested PulseData Fields
+  if current.PulseData.SinkName != last.PulseData.SinkName ||
+    current.PulseData.Volume != last.PulseData.Volume ||
+    current.PulseData.Mute != last.PulseData.Mute ||
+    current.PulseData.VolString != last.PulseData.VolString ||
+    current.PulseData.PulsePath != last.PulseData.PulsePath ||
+    current.PulseData.PulseServer != last.PulseData.PulseServer ||
+    current.PulseData.PulsePort != last.PulseData.PulsePort {
+    return false
+  }
+
+  // 3. Compare Map Status Fields
+  if len(current.Status) != len(last.Status) {
+    // If map sizes don't match, something structural changed
+    return false
+  }
+
+  for key, currentVal := range current.Status {
+    // --- CHOOSE WHAT TO IGNORE HERE ---
+    if key == "bitrate" || key == "elapsed" || key == "time" {
+      continue // Skip checking these keys entirely
+    }
+
+    lastVal, exists := last.Status[key]
+    if !exists || currentVal != lastVal {
+      return false // A meaningful value changed or is missing
+    }
+  }
+
+  return true
+}
+
 var     lastArtHash     uint64
 
 func wsWatcher(ctx *wsCtx) {
+
+/*
+  type mpdStatus struct {
+    Audio              string `json:"audio"`
+    Bitrate            string `json:"bitrate"` // <-- Delete from return to ignore
+    Consume            string `json:"consume"`
+    Duration           string `json:"duration"` // <-- Delete from return to ignore
+    Elapsed            string `json:"elapsed"`  // <-- Delete from return to ignore
+    LastLoadedPlaylist string `json:"lastloadedplaylist"`
+    MixRampDB          string `json:"mixrampdb"`
+    MixRampDelay       string `json:"mixrampdelay"`
+    NextSong           string `json:"nextsong"`
+    NextSongID         string `json:"nextsongid"`
+    Partition          string `json:"partition"`
+    Playlist           string `json:"playlist"`
+    PlaylistLength     string `json:"playlistlength"`
+    Random             string `json:"random"`
+    Repeat             string `json:"repeat"`
+    Single             string `json:"single"`
+    Song               string `json:"song"`
+    SongID             string `json:"songid"`
+    State              string `json:"state"`
+    Time               string `json:"time"`
+    Volume             string `json:"volume"`
+  }
+*/
+
   log.Println("[wsW] started")
 
   // add this connection to the set
@@ -1689,6 +1767,7 @@ func wsWatcher(ctx *wsCtx) {
       pushArt         bool
       uri             string
       art             *AlbumArtResult
+      lastPlayerEV    IdleEvent
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
@@ -1748,11 +1827,14 @@ func wsWatcher(ctx *wsCtx) {
       }
 
     case "player":
-//      log.Printf("[wsW] +++++++++ ev: %+v\n\n", ev)
-	b, _ := json.MarshalIndent(ev, "", "  ")
+	    b, _ := json.MarshalIndent(ev, "", "  ")
+    	log.Printf("[wsW] +++++++++ ev:\n%s", string(b))
 
-	// 2. Print it as a string (%s)
-	log.Printf("[wsW] +++++++++ ev:\n%s", string(b))
+      if ShouldIgnore(ev, lastPlayerEV) {
+        continue
+      }
+
+      lastPlayerEV = ev
 
       var (
         st          StatusV1
