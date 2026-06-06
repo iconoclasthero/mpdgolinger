@@ -1527,12 +1527,12 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 //    CompressionThreshold: 1024,
   })
 
-  log.Printf("WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
+  dbg("[wsH] WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
 
   conn.SetReadLimit(512 * 1024) // 512 KB max frame size
 
   if err != nil {
-    log.Printf("[WS] accept failed: %v", err)
+    log.Printf("[wsH] accept failed: %v", err)
     return
   }
 
@@ -1545,7 +1545,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   ctx.mu.Lock()
   ctx.conns[conn] = struct{}{}
   ctx.mu.Unlock()
-  log.Printf("[WS] connection added")
+  log.Printf("[wsH] connection added")
 
   // remove connection on exit
   defer func() {
@@ -1553,7 +1553,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     delete(ctx.conns, conn)
     ctx.mu.Unlock()
     conn.Close(websocket.StatusNormalClosure, "done")
-    log.Printf("[WS] connection removed")
+    log.Printf("[wsH] connection removed")
   }()
 
   // start wsWatcher for this connection
@@ -1565,7 +1565,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     err := c.Write(wctx, typ, payload)
     cancel()
     if err != nil {
-      log.Printf("[WS] write failed, removing conn: %v", err)
+      log.Printf("[wsH] write failed, removing conn: %v", err)
       c.Close(websocket.StatusNormalClosure, "")
       ctx.mu.Lock()
       delete(ctx.conns, c)
@@ -1579,22 +1579,22 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   for {
     _, msgBytes, err := conn.Read(r.Context())
     if err != nil {
-      log.Printf("[WS] read error: %v", err)
+      log.Printf("[wsH] read error: %v", err)
       break
     }
 
-    dbg("[WS] incoming raw size: %d bytes", len(msgBytes))
+    dbg("[wsH] incoming raw size: %d bytes", len(msgBytes))
 
     msg := string(msgBytes)
 
-    dbg("[WS] incoming decompressed size: %d bytes", len(msg))
+    dbg("[wsH] incoming decompressed size: %d bytes", len(msg))
 
     // detect JSON messages
     var js map[string]interface{}
     if err := json.Unmarshal(msgBytes, &js); err == nil {
-      log.Printf("[WS] received JSON: %s", msg)
+      log.Printf("[wsH] received JSON: %s", msg)
       // log raw incoming message for debugging
-      dbg("[WS] incoming: msg=%s", string(msg))
+      dbg("[wsH] incoming: msg=%s", string(msg))
 
       var req Request
       json.Unmarshal(msgBytes, &req)
@@ -1620,7 +1620,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     }
   }
 } // func wsHandler()
-
 
 
 func getLogHash() string               { return "" }
@@ -1711,19 +1710,19 @@ func wsWatcher(ctx *wsCtx) {
       // fetch MPD status first
       status, notes, err = MPDtags(nil, "status", "status")
       if err != nil {
-        log.Printf("wsWatcher MPDtags error in pauseTimer case: %v", err)
+        log.Printf("[wsW] MPDtags error in pauseTimer case: %v", err)
         continue
       }
 
       if err := convert2json(status, js); err != nil {
-        log.Printf("wsWatcher convert2json error in pauseTimer case: %v", err)
+        log.Printf("[wsW] convert2json error in pauseTimer case: %v", err)
         continue
       }
 
       // also add js to msgs
       data, err := json.Marshal(js)
       if err != nil {
-        log.Printf("[WS pauseTimer CASE marshal] %v", err)
+        log.Printf("[wsW] pauseTimer CASE marshal %v", err)
         break
       }
       msgs = append(msgs, wsMsg{websocket.MessageText, data})
@@ -1744,7 +1743,7 @@ func wsWatcher(ctx *wsCtx) {
 //      n []string
       )
 
-      log.Printf("[WS] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
+      log.Printf("[wsW] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
 
       // -----------------------
       // STATUS FRAME
@@ -1764,7 +1763,7 @@ func wsWatcher(ctx *wsCtx) {
       // ---------------------------
       if len(resp) > 0 {
         if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
-          log.Printf("wsWatcher unmarshal error: %v", err)
+          log.Printf("[wsW] unmarshal error: %v", err)
           continue
         }
       }
@@ -1835,7 +1834,7 @@ func wsWatcher(ctx *wsCtx) {
 
         data, err := json.Marshal(msg)
         if err != nil {
-          log.Printf("[LOG] marshal failed: %v", err)
+          log.Printf("[wsW] log marshal failed: %v", err)
           continue
         }
 
@@ -1860,7 +1859,7 @@ func wsWatcher(ctx *wsCtx) {
         if art != nil {
           img = art.Img
           if lastArtHash == 0 {
-            log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
+            log.Printf("[wsW] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
               lastArtHash)
           }
           hashMatch := art.Hash == lastArtHash
@@ -1906,7 +1905,7 @@ func wsWatcher(ctx *wsCtx) {
               },
             }
           } else if art.Size == 0 {
-            log.Printf("The art.Size == 0 branch should be unreachable!")
+            log.Printf("[wsW] The art.Size == 0 branch should be unreachable!")
             pushArt = false
             jsArt = map[string]any{
                 "system": "subscribed",
@@ -1952,7 +1951,7 @@ func wsWatcher(ctx *wsCtx) {
       }, "wsWatcher-gBAA")
 
       if err != nil {
-        log.Printf("[ART] mpdDo/gBAA failed: %v", err)
+        log.Printf("[wsW] Art: mpdDo/gBAA failed: %v", err)
         continue
       }
 
@@ -2097,7 +2096,7 @@ func wsWatcher(ctx *wsCtx) {
 	        return true
 	      }
 
-	      dbg("broadcast start conn=%p", conn)
+	      dbg("[wsW] broadcast start conn=%p", conn)
 
 	      for _, m := range msgs {
 	        if !write(m.typ, m.data) {
@@ -2129,7 +2128,7 @@ func wsWatcher(ctx *wsCtx) {
 	        continue
 	      }
 
-	      dbg("broadcast complete conn=%p", conn)
+	      dbg("[wsW] broadcast complete conn=%p", conn)
 	    }
     }
   time.Sleep(100 * time.Millisecond)
@@ -5911,23 +5910,23 @@ func logStateChange(src string, songID int, count, limit int, transition bool) {
 // logCurrentSong logs the current song’s file for debugging
 func logCurrentSong(c *mpd.Client, prefix string) {
   if c == nil {
-    log.Printf("%s: currentsong skipped (nil client)", prefix)
+    log.Printf("[lCS] %s: currentsong skipped (nil client)", prefix)
     return
   }
 
   song, err := c.CurrentSong()
   if err != nil {
-    log.Printf("%s: currentsong error: %v", prefix, err)
+    log.Printf("[lCS] %s: currentsong error: %v", prefix, err)
     return
   }
 
   file := song["file"]
   if file == "" {
-    log.Printf("%s: currentsong: <no file field>", prefix)
+    log.Printf("[lCS] %s: currentsong: <no file field>", prefix)
     return
   }
 
-  log.Printf("%s: currentsong file=%q", prefix, file)
+  log.Printf("[lCS] %s: currentsong file=%q", prefix, file)
 } // func logCurrentSong(c *mpd.Client, prefix string)
 
 
@@ -5938,7 +5937,7 @@ func daemonSupervisor() {
   for {
     select {
     case <-shutdown:
-      log.Println("Daemon supervisor shutting down")
+      log.Println("[dS] Daemon supervisor shutting down")
       return
     default:
     }
@@ -5946,7 +5945,7 @@ func daemonSupervisor() {
     // Ensure IPC socket exists (daemon responsibility)
     if _, err := os.Stat(socketPath); err != nil {
       if os.IsNotExist(err) && atomic.LoadInt32(&ipcRunning) == 0 {
-        log.Printf("IPC socket missing, recreating: %s", socketPath)
+        log.Printf("[dS] IPC socket missing, recreating: %s", socketPath)
         os.Remove(socketPath)
         go func() {
           atomic.StoreInt32(&ipcRunning, 1)
@@ -5954,12 +5953,12 @@ func daemonSupervisor() {
           atomic.StoreInt32(&ipcRunning, 0)
         }()
       } else {
-        log.Printf("IPC socket stat error: %v", err)
+        log.Printf("[dS] IPC socket stat error: %v", err)
       }
     }
 
 
-    log.Println("Connecting to MPD for idle loop...")
+    log.Println("[dS] Connecting to MPD for idle loop...")
 
     var w *mpd.Watcher
     var err error
@@ -5972,13 +5971,13 @@ func daemonSupervisor() {
     }
 
     if err != nil {
-      log.Printf("Watcher init failed: %v — retrying in 2s", err)
+      log.Printf("[dS] Watcher init failed: %v — retrying in 2s", err)
       time.Sleep(2 * time.Second)
       continue
     }
 
     if err := runIdleLoop(w); err != nil {
-      log.Printf("Idle loop exited: %v — reconnecting in 2s", err)
+      log.Printf("[dS] Idle loop exited: %v — reconnecting in 2s", err)
     }
     w.Close()
     time.Sleep(2 * time.Second)
@@ -5988,7 +5987,7 @@ func daemonSupervisor() {
 
 // runIdleLoop [rIL()] runs the MPD idle loop, updating state on song changes
 func runIdleLoop(w *mpd.Watcher) error {
-  log.Println("MPD connection established, entering idle loop")
+  log.Println("[rIL] MPD connection established, entering idle loop")
 
   // mpd.Watcher exposes an Error channel that reports lower-level
   // connection issues (EOF, broken pipe, protocol errors).
@@ -6005,10 +6004,10 @@ func runIdleLoop(w *mpd.Watcher) error {
     for err := range w.Error {
       log.SetFlags(log.LstdFlags | log.Lmicroseconds)
       // keep this very explicit so we can trace EOF vs broken pipe
-      log.Printf("Watcher error: %v", err)
+      log.Printf("[rIL] Watcher error: %v", err)
       log.SetFlags(log.LstdFlags)
       if errors.Is(err, io.EOF) {
-        log.Printf("Watcher got EOF, exiting watcher")
+        log.Printf("[rIL] Watcher got EOF, exiting watcher")
         return
       }
       time.Sleep(5 * time.Second)
@@ -6027,7 +6026,7 @@ func runIdleLoop(w *mpd.Watcher) error {
   for {
     select {
     case <-shutdown:
-      log.Println("Idle loop received shutdown")
+      log.Println("[rIL] received shutdown")
       return nil
 
     case <-ticker.C:
@@ -6041,7 +6040,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         continue
       }
 
-      log.Printf("[pauseTimer] expired")
+      log.Printf("[rIL] pauseTimer expired")
 
       shouldPause := state.MPDplaying
 
@@ -6059,7 +6058,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         }, "pauseTimer-expire-pause")
 
         if err != nil {
-          log.Printf("[pauseTimer] pause failed: %v", err)
+          log.Printf("[rIL] pauseTimer pause failed: %v", err)
         }
       }
 
@@ -6191,10 +6190,10 @@ func runIdleLoop(w *mpd.Watcher) error {
             state.lastSongURI  = songURI
             state.lastAlbumKey = albumKey
             state.count++ // keep counting while paused (matches bash behavior)
-            log.Printf("Paused: song advanced, count=%d (limit=%d)", state.count, limit)
-            log.Printf("Paused: state.lastSongURI=%s", state.lastSongURI)
+            log.Printf("[rIL] Paused: song advanced, count=%d (limit=%d)", state.count, limit)
+            log.Printf("[rIL] Paused: state.lastSongURI=%s", state.lastSongURI)
           } else {
-            log.Printf("Paused: idle event, song unchanged")
+            log.Printf("[rIL] Paused: idle event, song unchanged")
           }
           deriveStateLocked(songZI, songID, songURI, limit)  // <--- write after increment to update state count while paused
         }
@@ -6207,7 +6206,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         //
         if songID == state.lastSongID {
           // nothing changed; keep trace so we can see frequent idle hits
-          dbg("Idle event received but songID unchanged: %d", songID)
+          dbg("[rIL] Idle event received but songID unchanged: %d", songID)
 //          state.mu.Unlock()
           // Log currentsong again so we can verify the *file*
           // really stayed the same across the idle break.
@@ -6234,13 +6233,13 @@ func runIdleLoop(w *mpd.Watcher) error {
           // addresses https://github.com/iconoclasthero/mpdgolinger/issues/19
           plLen, err := strconv.Atoi(status["playlistlength"])
           if err != nil {
-            log.Printf("[XY] invalid playlistlength: %v", err)
+            log.Printf("[rIL] [XY] invalid playlistlength: %v", err)
             return nil
           }
           max := plLen - 1
           if xy.end > max {
             log.Printf(
-              "[XY] clamping Y from %d to %d (playlist shrank)",
+              "[rIL] [XY] clamping Y from %d to %d (playlist shrank)",
               xy.end, max,
             )
             xy.end = max
@@ -6250,7 +6249,7 @@ func runIdleLoop(w *mpd.Watcher) error {
             xy.active = false
 
             if err := c.Consume(state.consume); err != nil {
-              log.Printf("[XY] failed to restore consume=%t: %v", state.consume, err)
+              log.Printf("[rIL] [XY] failed to restore consume=%t: %v", state.consume, err)
             }
 
             log.Printf("[rIL] song %d not %d, disabling XY", songZI, xy.start)
@@ -6260,7 +6259,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           log.Printf("[rIL] Calling runXYStep, playlist postion: %d (ZI)", songZI)
           err = runXYStep(c)
           if err != nil {
-            log.Printf("runXYStep failed: %v", err)
+            log.Printf("[rIL] runXYStep failed: %v", err)
           }
 //          if err := mpdDo(func(c *mpd.Client) error {
 //            return runXYStep(c)
@@ -6279,7 +6278,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           //   • reset the block counter
           //
           if err := c.Random(false); err != nil {
-            log.Printf("random(false) failed: %v", err)
+            log.Printf("[rIL] random(false) failed: %v", err)
             // Do NOT abort: random failure should not desync FSM
           }
 
@@ -6287,7 +6286,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           state.blockOn = false
           state.count = 1
           state.transition = false
-          log.Printf("Transition: random off, count reset to 1")
+          log.Printf("[rIL] Transition: random off, count reset to 1")
 
         } else if ! xy.active && state.count == limit-1 { // <- uses computed local limit
           // This song completes the block.
@@ -6299,11 +6298,11 @@ func runIdleLoop(w *mpd.Watcher) error {
           //
           state.count++
           if err := c.Random(true); err != nil {
-            log.Printf("random(true) failed: %v", err)
+            log.Printf("[rIL] random(true) failed: %v", err)
           }
 
           state.transition = true
-          log.Printf("Last song in block reached: random on, transition true")
+          log.Printf("[rIL] Last song in block reached: random on, transition true")
 
           // Clear blockLimit after block completes
           state.blockLimit = 0
@@ -6344,15 +6343,15 @@ func runIdleLoop(w *mpd.Watcher) error {
 
       if err != nil {
         // Make the error explicit and return so daemonSupervisor can reconnect
-        log.Printf("MPD status fetch failed: %v — will attempt reconnect", err)
+        log.Printf("[rIL] MPD status fetch failed: %v — will attempt reconnect", err)
 
         // Best-effort logging of currentsong during failure path.
         _ = mpdDo(func(c *mpd.Client) error {
-          logCurrentSong(c, "idle error path")
+          logCurrentSong(c, "[rIL] idle error path")
           return nil
         }, "idle-error-log")
 
-        log.Println("MPD connection closed")
+        log.Println("[rIL] MPD connection closed")
         return fmt.Errorf("status error: %w", err)
       }
     }
@@ -8173,14 +8172,14 @@ func main() {
   // ------------------------------------------------------------------
   // Start daemon TCP listener for remote clients
   // ------------------------------------------------------------------
-  log.Printf("About to listen on %s:%d", listenIP, listenPort)
+  log.Printf("[main] About to listen on %s:%d", listenIP, listenPort)
 
   addr := fmt.Sprintf("%s:%d", listenIP, listenPort)
   ln, err := net.Listen("tcp", addr)
   if err != nil {
-    log.Fatalf("Failed to listen on %s: %v", addr, err)
+    log.Fatalf("[main] Failed to listen on %s: %v", addr, err)
   }
-  log.Printf("Listening for clients on %s", addr)
+  log.Printf("[main] Listening for clients on %s", addr)
 
   // Spawn a goroutine to accept clients
   go acceptClients(ln)
@@ -8202,12 +8201,12 @@ func main() {
   }()
 
   if p, err := refreshPulse(); err == nil {
-    log.Printf("[pulse] initial: %+v", p)
+    log.Printf("[main] pulse initial: %+v", p)
     pulseMu.Lock()
     PulseData = p
     pulseMu.Unlock()
   } else {
-    log.Printf("[pulse] initial ERROR: %v", err)
+    log.Printf("[main] pulse initial ERROR: %v", err)
   }
 
   go daemonSupervisor()
