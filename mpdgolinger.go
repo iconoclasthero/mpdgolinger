@@ -1650,9 +1650,9 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 
 func ShouldIgnore(current, last IdleEvent) bool {
   // Handle nil pointer protection for Status if it is a pointer
-  if (current.Status == nil) != (last.Status == nil) {
-    return false
-  }
+//  if (current.Status == nil) != (last.Status == nil) {
+//    return false
+//  }
 
   // 1. Compare Top Level Fields
   if current.Subsystem != last.Subsystem ||
@@ -1676,10 +1676,10 @@ func ShouldIgnore(current, last IdleEvent) bool {
   }
 
   // 3. Compare Map Status Fields
-  if len(current.Status) != len(last.Status) {
-    // If map sizes don't match, something structural changed
-    return false
-  }
+  //if len(current.Status) != len(last.Status) {
+  //  // If map sizes don't match, something structural changed
+  //  return false
+ // }
 
   for key, currentVal := range current.Status {
     // --- CHOOSE WHAT TO IGNORE HERE ---
