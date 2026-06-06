@@ -2508,7 +2508,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         return []string{string(out)}
 
       case "json-log":
-        log.Printf("vPJ: received json-log command")
+        dbg("[vPJ] received json-log command")
         nlines := 24 // default
 
         if f, ok := argsIface.(float64); ok {
@@ -6509,7 +6509,7 @@ func verbProcessor(csv string) []string {
       }
 
     case "json-status":
-      log.Printf("IPC: received json-status command")
+      log.Printf("[vP] IPC: received json-status command")
 
       // --- fetch status/current/next via MPDtags ---
       data, notes, err := MPDtags(nil, "status", "status")
