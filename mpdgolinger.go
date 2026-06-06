@@ -500,7 +500,7 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
     }
 
     pd, err := refreshPulse()
-    log.Printf("[pW] pd, err := refreshPulse() %d", pd)
+    log.Printf("[pW] pd, err := refreshPulse() %q", pd)
     if err == nil && !reflect.DeepEqual(pd, lastpd) {
       out <- pd
       idleEvents <- IdleEvent{
