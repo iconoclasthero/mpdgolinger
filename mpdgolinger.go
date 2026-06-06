@@ -6366,7 +6366,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 func startIPC(path string) {
   ln, err := net.Listen("unix", path)
   if err != nil {
-    log.Fatalf("Failed to listen on %s: %v", path, err)
+    log.Fatalf("[sIPC] Failed to listen on %s: %v", path, err)
   }
   defer ln.Close()
 
@@ -6374,12 +6374,12 @@ func startIPC(path string) {
   //  os.Chown(socketPath, uid, gid) // uid/gid for mpd user
   os.Chmod(socketPath, 0660)     // owner+group read/write
 
-  log.Printf("IPC listening on %s", path)
+  log.Printf("[sIPC] IPC listening on %s", path)
 
   for {
     conn, err := ln.Accept()
     if err != nil {
-      log.Printf("IPC accept error: %v", err)
+      log.Printf("[sIPC] IPC accept error: %v", err)
       continue
     }
     go handleUDS(conn)
@@ -7365,14 +7365,14 @@ func sendIPCCommand(cmd string) ([]string, error) {
 
 // acceptClients accepts TCP client connections and delegates handling
 func acceptClients(ln net.Listener) {
-  log.Printf("acceptClients started")
+  log.Printf("[aC] acceptClients started")
   for {
     conn, err := ln.Accept()
     if err != nil {
-      log.Printf("Accept error: %v", err)
+      log.Printf("[aC] Accept error: %v", err)
       continue
     }
-    log.Printf("Client connected from %s", conn.RemoteAddr())
+    log.Printf("[aC] Client connected from %s", conn.RemoteAddr())
     go handleTCP(conn)
   }
 } // func acceptClients(ln net.Listener)
