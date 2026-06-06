@@ -479,13 +479,14 @@ func pulseWatcher(ctx context.Context, out chan<- PulseV1) {
 
   for scanner.Scan() {
     line := scanner.Text()
-
+    log.Printf("[pW] line := scanner.Text %s", line)
     // only care about sink events
     if !strings.Contains(line, "sink") {
       continue
     }
 
     pd, err := refreshPulse()
+    log.Printf("[pW] pd, err := refreshPulse() %s", pd)
     if err == nil {
       out <- pd
       idleEvents <- IdleEvent{
@@ -1682,7 +1683,7 @@ func wsWatcher(ctx *wsCtx) {
 
     switch ev.Subsystem {
     case "pulseaudio":
-      dbg("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
+      log.Printf("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
       pd := ev.PulseData
 
       pulseMu.Lock()
