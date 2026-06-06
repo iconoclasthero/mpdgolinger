@@ -1633,7 +1633,7 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 var     lastArtHash     uint64
 
 func wsWatcher(ctx *wsCtx) {
-  log.Println("wsWatcher started")
+  log.Println("[wsW] started")
 
   // add this connection to the set
   ctx.mu.Lock()
@@ -1647,7 +1647,7 @@ func wsWatcher(ctx *wsCtx) {
     ctx.mu.Lock()
     delete(ctx.conns, ctx.conn)
     ctx.mu.Unlock()
-    log.Println("wsWatcher stopped for connection")
+    log.Println("[wsW] stopped for connection %q", ctx.conn)
   }()
 
   type wsMsg struct {
@@ -5248,7 +5248,7 @@ log.Printf("abs: %s", abs)
 //        return nil //[]string{string(out)}
 
       case "subscribe":
-        log.Printf("SUBSCRIBE handler entered")
+        log.Printf("[vPJ] SUBSCRIBE handler entered")
         clone := func(in map[string]any) map[string]any {
           out := make(map[string]any, len(in))
           for k, v := range in {
@@ -5902,7 +5902,7 @@ func directDialMPD() (net.Conn, error) {
 // logStateChange logs standardized state transition information
 func logStateChange(src string, songID int, count, limit int, transition bool) {
   log.Printf(
-    "STATE CHANGE: [%s]: songID=%d count=%d/limit=%d transition=%v",
+    "[lSC] STATE CHANGE: [%s]: songID=%d count=%d/limit=%d transition=%v",
     src, songID, count, limit, transition,
   )
 } // func logStateChange(src, songID string, count, limit int, transition bool)
@@ -6332,7 +6332,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         // Log the song again *after* state changes and random toggles.
         // This lets us confirm whether MPD advanced tracks as expected.
         //
-        logCurrentSong(c, "idle event (post-state-change)")
+        logCurrentSong(c, "[rIL] idle event (post-state-change)")
 
         _ = prevCount
         _ = prevTransition
@@ -6466,7 +6466,7 @@ func verbProcessor(csv string) []string {
 //      continue
 
     case "json-log":
-      log.Printf("IPC: received json-log command")
+      log.Printf("[vP] IPC: received json-log command")
 
       lines := mpdLogParse(24)
       responses = responses[:0]
