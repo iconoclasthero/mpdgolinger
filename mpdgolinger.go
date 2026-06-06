@@ -1650,11 +1650,10 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 
 func ShouldIgnore(current, last IdleEvent) bool {
   // Handle nil pointer protection for Status if it is a pointer
-/*
   if (current.Status == nil) != (last.Status == nil) {
     return false
   }
-*/
+
   // 1. Compare Top Level Fields
   if current.Subsystem != last.Subsystem ||
     current.SongID != last.SongID ||
@@ -1698,6 +1697,7 @@ func ShouldIgnore(current, last IdleEvent) bool {
 }
 
 var     lastArtHash     uint64
+var     lastPlayerEV    IdleEvent
 
 func wsWatcher(ctx *wsCtx) {
 
@@ -1768,7 +1768,7 @@ func wsWatcher(ctx *wsCtx) {
       pushArt         bool
       uri             string
       art             *AlbumArtResult
-      lastPlayerEV    IdleEvent
+//      lastPlayerEV    IdleEvent
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
