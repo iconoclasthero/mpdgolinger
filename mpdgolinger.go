@@ -1748,7 +1748,12 @@ func wsWatcher(ctx *wsCtx) {
       }
 
     case "player":
-      log.Printf("ev: %+v\n", ev)
+//      log.Printf("[wsW] +++++++++ ev: %+v\n\n", ev)
+	b, _ := json.MarshalIndent(ev, "", "  ")
+
+	// 2. Print it as a string (%s)
+	log.Printf("[wsW] +++++++++ ev:\n%s", string(b))
+
       var (
         st          StatusV1
         img             []byte
