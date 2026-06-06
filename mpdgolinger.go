@@ -1654,7 +1654,7 @@ func ShouldIgnore(current, last IdleEvent) bool {
 //    return false
 //  }
 
-  // 1. Compare Top Level Fields
+/*  // 1. Compare Top Level Fields
   if current.Subsystem != last.Subsystem ||
     current.SongID != last.SongID ||
     current.SongURI != last.SongURI ||
@@ -1663,7 +1663,7 @@ func ShouldIgnore(current, last IdleEvent) bool {
     current.Subscribe != last.Subscribe {
     return false
   }
-
+*/
   // 2. Compare Nested PulseData Fields
   if current.PulseData.SinkName != last.PulseData.SinkName ||
     current.PulseData.Volume != last.PulseData.Volume ||
