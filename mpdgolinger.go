@@ -7917,15 +7917,15 @@ func main() {
   if mpdLog == "" {
     if v, ok := kv["mpdlog"]; ok && v != "" {
       mpdLog = v
-      log.Printf("mpdLog set to .conf mpdlog: %s\n", mpdLog)
+      log.Printf("[main] mpdLog set to .conf mpdlog: %s\n", mpdLog)
     } else if env.mpdLog != "" {
       mpdLog = env.mpdLog
-      log.Printf("mpdLog set to env.mpdLog: %s\n", env.mpdLog)
+      log.Printf("[main] mpdLog set to env.mpdLog: %s\n", env.mpdLog)
     } else if defaultMPDlog != "" {
       mpdLog = defaultMPDlog
-      log.Printf("mpdLog set to defaultMPDlog: %s\n", defaultMPDlog)
+      log.Printf("[main] mpdLog set to defaultMPDlog: %s\n", defaultMPDlog)
     } else {
-      log.Printf("ERROR: mpdLog unset!\n")
+      log.Printf("[main] ERROR: mpdLog unset!\n")
     }
   } else {
     log.Printf("mpdLog set to --mpdlog: %s\n", mpdLog)
@@ -7935,41 +7935,41 @@ func main() {
   if mpdSocket == "" {
     if v, ok := kv["mpdsocket"]; ok && v != "" {
       mpdSocket = v
-      log.Printf("mpdSocket set to .conf mpdsocket: %s\n", mpdSocket)
+      log.Printf("[main] mpdSocket set to .conf mpdsocket: %s\n", mpdSocket)
     } else if env.mpdSocket != "" { // final fallback
       mpdSocket = env.mpdSocket
-      log.Printf("mpdSocket set to env.mpdSocket: %s\n", env.mpdSocket)
+      log.Printf("[main] mpdSocket set to env.mpdSocket: %s\n", env.mpdSocket)
     } else if defaultMPDsocket != "" {
       mpdSocket = defaultMPDsocket
     }
   } else {
-    log.Printf("mpdSocket set to --mpdsocket: %s\n", mpdSocket)
+    log.Printf("[main] mpdSocket set to --mpdsocket: %s\n", mpdSocket)
   }
 
   if mpdHost == "" {
     if v, ok := kv["mpdhost"]; ok && v != "" {
       mpdHost = v
-      log.Printf("mpdHost set to .conf mpdhost: %s\n", mpdHost)
+      log.Printf("[main] mpdHost set to .conf mpdhost: %s\n", mpdHost)
     } else if env.mpdHost != "" { // final fallback
       mpdHost = env.mpdHost
-      log.Printf("mpdHost set to env.mpdHost: %s\n", env.mpdHost)
+      log.Printf("[main] mpdHost set to env.mpdHost: %s\n", env.mpdHost)
     }
   } else {
-    log.Printf("mpdHost set to --mpdhost: %s\n", mpdHost)
+    log.Printf("[main] mpdHost set to --mpdhost: %s\n", mpdHost)
   }
 
   if mpdPort == 0 {
     if v, ok := kv["mpdport"]; ok && v != "" {
       if n, err := strconv.Atoi(v); err == nil {
         mpdPort = n
-        log.Printf("mpdPort set to .conf mpdport: %d\n", mpdPort)
+        log.Printf("[main] mpdPort set to .conf mpdport: %d\n", mpdPort)
       }
     } else if env.mpdPort != 0 { // final fallback
       mpdPort = env.mpdPort
-      log.Printf("mpdPort set to env.mpdPort: %d\n", env.mpdPort)
+      log.Printf("[main] mpdPort set to env.mpdPort: %d\n", env.mpdPort)
     }
   } else {
-    log.Printf("mpdPort set to --mpdport: %d\n", mpdPort)
+    log.Printf("[main] mpdPort set to --mpdport: %d\n", mpdPort)
   }
 
   if mpdPass == "" {
@@ -7977,10 +7977,10 @@ func main() {
       mpdPass = v
     } else if env.mpdPass != "" { // final fallback
       mpdPass = env.mpdPass
-      log.Printf("mpdPass set to env.mpdPass: %s\n", env.mpdPass)
+      log.Printf("[main] mpdPass set to env.mpdPass: %s\n", env.mpdPass)
     }
   } else {
-    log.Printf("mpdPass set to --mpdpass: %s\n", mpdPass)
+    log.Printf("[main] mpdPass set to --mpdpass: %s\n", mpdPass)
   }
 
   if v, ok := kv["limit"]; ok && v != "" && startupLimit == 0 {
@@ -8039,7 +8039,7 @@ func main() {
   if logPath != "" {
     f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
     if err != nil {
-      log.Fatalf("failed to open log file %s: %v", logPath, err)
+      log.Fatalf("[main] Failed to open log file %s: %v", logPath, err)
     }
     log.SetOutput(f)
   }
@@ -8096,7 +8096,7 @@ func main() {
   // Enforce daemon gate
   // ------------------------------------------------------------------
   if !daemonMode {
-    log.Fatalf("Refusing to start daemon without --daemon")
+    log.Fatalf("[main] Refusing to start daemon without --daemon")
   }
 
   // ------------------------------------------------------------------
@@ -8108,7 +8108,7 @@ func main() {
 
   client, err := dialMPD()
   if err != nil {
-    log.Printf("Failed to connect to MPD at startup: %v", err)
+    log.Printf("[main] Failed to connect to MPD at startup: %v", err)
     state.count = 0
     state.lastSongID = 0
     state.lastSongZI = 0
@@ -8117,7 +8117,7 @@ func main() {
     status, err := client.Status()
     current, err := client.CurrentSong()
     if err != nil {
-      log.Printf("Status error at startup: %v", err)
+      log.Printf("[main] Status error at startup: %v", err)
       state.count = 0
       state.lastSongID = 0
       state.lastSongZI = 0
@@ -8134,7 +8134,7 @@ func main() {
           state.MPDplaying = true
           state.count = 1
         default:
-          log.Printf("MPD status 'state' is neither 'play', 'pause', nor 'stop': %s!", status["state"])
+          log.Printf("[main] MPD status 'state' is neither 'play', 'pause', nor 'stop': %s!", status["state"])
           state.MPDplaying = false
           state.count = 0
       }
@@ -8143,7 +8143,7 @@ func main() {
   }
 
   log.Printf(
-      "Starting block count=%d, lastSongZI=%d; lastSongID=%s, baseLimit=%d, blockLimit=%d",
+      "[main] Starting block count=%d, lastSongZI=%d; lastSongID=%s, baseLimit=%d, blockLimit=%d",
       state.count,
       state.lastSongZI,
       state.lastSongID,
@@ -8215,26 +8215,26 @@ func main() {
 
   select {
   case <-shutdown:
-    log.Println("Shutdown requested")
+    log.Println("[main] Shutdown requested")
     exitCode := 0
 
     if err := os.Remove(socketPath); err != nil {
-      log.Printf("Failed to remove socket: %v\n", err)
+      log.Printf("[main] Failed to remove socket: %v\n", err)
       exitCode = 1
     } else {
-      log.Println("Socket removed")
+      log.Printf("[main] Socket removed")
     }
 
     if stateEnabled {
       if err := os.Remove(statePath); err != nil {
-        log.Printf("Failed to remove state file: %v\n", err)
+        log.Printf("[main] Failed to remove state file: %v\n", err)
         exitCode = 1
       } else {
-        log.Println("State file removed")
+        log.Printf("[main] State file removed")
       }
     }
 
-    log.Println("Cleanup steps completed, exiting")
+    log.Println("[main] Cleanup steps completed, exiting")
     os.Exit(exitCode)
   }
 } // func main()
