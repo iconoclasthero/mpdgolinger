@@ -1648,7 +1648,7 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 
 
 
-func ShouldIgnore(current, last IdleEvent) bool {
+func shouldIgnorePlayerEV(current, last IdleEvent) bool {
   // Handle nil pointer protection for Status if it is a pointer
   if (current.Status == nil) != (last.Status == nil) {
     return false
@@ -1694,38 +1694,15 @@ func ShouldIgnore(current, last IdleEvent) bool {
   }
 
   return true
-}
+} // func shouldIgnorePlayerEV
 
-var     lastArtHash     uint64
-var     lastPlayerEV    IdleEvent
+  // Globals for wsWatcher:
+  var (
+    lastArtHash     uint64
+    lastPlayerEV    IdleEvent
+  )
 
 func wsWatcher(ctx *wsCtx) {
-
-/*
-  type mpdStatus struct {
-    Audio              string `json:"audio"`
-    Bitrate            string `json:"bitrate"` // <-- Delete from return to ignore
-    Consume            string `json:"consume"`
-    Duration           string `json:"duration"` // <-- Delete from return to ignore
-    Elapsed            string `json:"elapsed"`  // <-- Delete from return to ignore
-    LastLoadedPlaylist string `json:"lastloadedplaylist"`
-    MixRampDB          string `json:"mixrampdb"`
-    MixRampDelay       string `json:"mixrampdelay"`
-    NextSong           string `json:"nextsong"`
-    NextSongID         string `json:"nextsongid"`
-    Partition          string `json:"partition"`
-    Playlist           string `json:"playlist"`
-    PlaylistLength     string `json:"playlistlength"`
-    Random             string `json:"random"`
-    Repeat             string `json:"repeat"`
-    Single             string `json:"single"`
-    Song               string `json:"song"`
-    SongID             string `json:"songid"`
-    State              string `json:"state"`
-    Time               string `json:"time"`
-    Volume             string `json:"volume"`
-  }
-*/
 
   log.Println("[wsW] started")
 
@@ -1768,7 +1745,7 @@ func wsWatcher(ctx *wsCtx) {
       pushArt         bool
       uri             string
       art             *AlbumArtResult
-//      lastPlayerEV    IdleEvent
+//    lastPlayerEV    IdleEvent
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
@@ -1828,11 +1805,10 @@ func wsWatcher(ctx *wsCtx) {
       }
 
     case "player":
-	    b, _ := json.MarshalIndent(ev, "", "  ")
-    	log.Printf("[wsW] +++++++++ ev:\n%s", string(b))
-
-      if ShouldIgnore(ev, lastPlayerEV) {
+      if shouldIgnorePlayerEV(ev, lastPlayerEV) {
         log.Printf("[wsW] Skipping duplicate idle event!---------------------")
+  	    b, _ := json.MarshalIndent(ev, "", "  ")
+      	log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
         continue
       }
 
@@ -1840,7 +1816,7 @@ func wsWatcher(ctx *wsCtx) {
 
       var (
         st          StatusV1
-        img             []byte
+        img         []byte
 //      albumKey    string
 //      songChanged bool
 //      uri         string
