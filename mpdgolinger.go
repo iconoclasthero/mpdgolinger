@@ -1535,7 +1535,7 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
   return entries, nil
 } // JSONLog
 
-var wsWatcherCount int32
+var wsWatcherCount int64
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -1581,9 +1581,9 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   // start wsWatcher for this connection
   log.Printf("[wsH] NEW conn ptr=%p remote=%v", conn, r.RemoteAddr)
   go wsWatcher(ctx)
-  atomic.AddInt32(&wsWatcherCount, 1)
-  log.Printf("[wsW] watcher count=%d START", atomic.LoadInt32(&wsWatcherCount))
-  defer atomic.AddInt32(&wsWatcherCount, -1)
+  atomic.AddInt64(&wsWatcherCount, 1)
+  log.Printf("[wsW] watcher count=%d START", atomic.LoadInt64(&wsWatcherCount))
+  defer atomic.AddInt64(&wsWatcherCount, -1)
 
   // helper write func: always use this for safe sends
   write := func(c *websocket.Conn, typ websocket.MessageType, payload []byte) bool {
@@ -1665,8 +1665,10 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
   )
 
 func wsWatcher(ctx *wsCtx) {
-  log.Printf("[wsW] START watcher ptr=%p conn=%p", ctx, ctx.conn)
   log.Printf("[wsW] started")
+  log.Printf("[wsW] START watcher ptr=%p conn=%p", ctx, ctx.conn)
+  var watcherID = atomic.AddInt64(&wsWatcherCount, 1)
+  log.Printf("[wsW] START watcher id=%d time=%d conn=%p", watcherID, time.Now().UnixNano(), ctx.conn)
 
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
     log.Printf("Started dedupePlayerEV")
@@ -1750,6 +1752,11 @@ func wsWatcher(ctx *wsCtx) {
 
 //  for range idleEvents {
   for ev := range idleEvents {
+
+log.Printf("[wsW] RECV watcher=%d rev=%d songID=%d",
+    watcherID, ev.PlaylistRev, ev.SongID)
+log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
+    watcherID, &ev, ev.SongID)
 
     var (
       msgs            []wsMsg  // accumulate messages to send
@@ -2167,7 +2174,7 @@ func wsWatcher(ctx *wsCtx) {
 	    ctx.mu.Lock()
 
 	    var recipients []*websocket.Conn
-/*
+
 	    if ev.Target != nil {
 	      recipients = []*websocket.Conn{ev.Target}
 	    } else {
@@ -2175,23 +2182,7 @@ func wsWatcher(ctx *wsCtx) {
 	        recipients = append(recipients, conn)
 	      }
 	    }
-*/
-/*
-if ev.Target != nil {
-  if ev.Target == ctx.conn {
-    recipients = []*websocket.Conn{ctx.conn}
-  } else {
-    recipients = nil
-  }
-} else {
-  recipients = []*websocket.Conn{ctx.conn}
-}
 
-if recipients == nil {
-  continue
-}
-*/
-  recipients = []*websocket.Conn{ctx.conn}
 	    ctx.mu.Unlock()
 
 	    for _, conn := range recipients {
@@ -6258,8 +6249,19 @@ func runIdleLoop(w *mpd.Watcher) error {
         dbg("[rIL] songURI = %s", songURI)
         dbg("[rIL] albumKey=%s", albumKey)
 
+ev := IdleEvent{
+    Subsystem:   subsystem,
+    SongID:      songID,
+    SongURI:     songURI,
+    Status:      status,
+    PlaylistRev: plRev,
+    AlbumKey:    albumKey,
+}
 
-        idleEvents <- IdleEvent{
+log.Printf("[rIL] EMIT event rev=%d evptr=%p songID=%d", ev.PlaylistRev, &ev, ev.SongID)
+idleEvents <- ev
+
+/*        idleEvents <- IdleEvent{
           Subsystem:   subsystem,
           SongID:      songID,
           SongURI:     songURI,
@@ -6267,6 +6269,7 @@ func runIdleLoop(w *mpd.Watcher) error {
           PlaylistRev: plRev,
           AlbumKey:    albumKey,
         }
+*/
 
         // Protect shared FSM state.
         state.mu.Lock()
