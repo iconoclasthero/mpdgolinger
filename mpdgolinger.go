@@ -1727,6 +1727,7 @@ func wsWatcher(ctx *wsCtx) {
   }
 
   // persistent state trackers
+  log.Printf("[wsW] start initializing func-scoped vars")
   var (
     lastPlaylistRev int
 //    lastPlayerEV    IdleEvent
@@ -1734,6 +1735,7 @@ func wsWatcher(ctx *wsCtx) {
 //    lastArtHash     uint64
 //    lastAlbumKey string
   )
+  log.Printf("[wsW] finsh initializing func-scoped vars")
 
 //  for range idleEvents {
   for ev := range idleEvents {
