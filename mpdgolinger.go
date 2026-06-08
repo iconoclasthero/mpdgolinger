@@ -1535,6 +1535,7 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
   return entries, nil
 } // JSONLog
 
+var wsWatcherCount int32
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
   conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
@@ -1573,7 +1574,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   }()
 
   // start wsWatcher for this connection
+  log.Printf("[wsH] NEW conn ptr=%p remote=%v", conn, r.RemoteAddr)
   go wsWatcher(ctx)
+  atomic.AddInt32(&wsWatcherCount, 1)
+  log.Printf("[wsW] watcher count=%d START", atomic.LoadInt32(&wsWatcherCount))
+  defer atomic.AddInt32(&wsWatcherCount, -1)
 
   // helper write func: always use this for safe sends
   write := func(c *websocket.Conn, typ websocket.MessageType, payload []byte) bool {
@@ -1655,6 +1660,9 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
   )
 
 func wsWatcher(ctx *wsCtx) {
+  log.Printf("[wsW] START watcher ptr=%p conn=%p", ctx, ctx.conn)
+  log.Printf("[wsW] started")
+
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
     log.Printf("Started dedupePlayerEV")
     // Handle nil pointer protection for Status if it is a pointer
@@ -1703,8 +1711,6 @@ func wsWatcher(ctx *wsCtx) {
 
     return true
   } // func dedupePlayerEV
-
-  log.Println("[wsW] started")
 
   // add this connection to the set
   ctx.mu.Lock()
@@ -1809,7 +1815,7 @@ func wsWatcher(ctx *wsCtx) {
     case "player":
       if dedupePlayerEV(ev, lastPlayerEV) {
         log.Printf("[wsW] Skipping duplicate idle event!---------------------")
-  	    if true {
+  	    if debug {
           b, _ := json.MarshalIndent(ev, "", "  ")
       	  log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
         }
