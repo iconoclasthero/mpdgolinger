@@ -1810,7 +1810,12 @@ func wsWatcher(ctx *wsCtx) {
   	    b, _ := json.MarshalIndent(ev, "", "  ")
       	log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
         continue
+      } else {
+        log.Printf("[wsW] Idle player event!---------------------------------")
+        b, _ := json.MarshalIndent(ev, "", "  ")
+        log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
       }
+
 
       lastPlayerEV = ev
 
@@ -2036,6 +2041,7 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("[wsW] Art: mpdDo/gBAA failed: %v", err)
         continue
       }
+    // case "player"
 
     case "playlist":
       if ev.PlaylistRev != lastPlaylistRev {
