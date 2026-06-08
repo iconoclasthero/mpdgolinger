@@ -1648,54 +1648,6 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 
 
 
-func dedupePlayerEV(current, last IdleEvent) bool {
-  // Handle nil pointer protection for Status if it is a pointer
-  if (current.Status == nil) != (last.Status == nil) {
-    return false
-  }
-
-  // 1. Compare Top Level Fields
-  if current.Subsystem != last.Subsystem ||
-    current.SongID != last.SongID ||
-    current.SongURI != last.SongURI ||
-    current.PlaylistRev != last.PlaylistRev ||
-    current.AlbumKey != last.AlbumKey ||
-    current.Subscribe != last.Subscribe {
-    return false
-  }
-
-  // 2. Compare Nested PulseData Fields
-  if current.PulseData.SinkName != last.PulseData.SinkName ||
-    current.PulseData.Volume != last.PulseData.Volume ||
-    current.PulseData.Mute != last.PulseData.Mute ||
-    current.PulseData.VolString != last.PulseData.VolString ||
-    current.PulseData.PulsePath != last.PulseData.PulsePath ||
-    current.PulseData.PulseServer != last.PulseData.PulseServer ||
-    current.PulseData.PulsePort != last.PulseData.PulsePort {
-    return false
-  }
-
-  // 3. Compare Map Status Fields
-  if len(current.Status) != len(last.Status) {
-    // If map sizes don't match, something structural changed
-    return false
-  }
-
-  for key, currentVal := range current.Status {
-    // --- CHOOSE WHAT TO IGNORE HERE ---
-    if key == "bitrate" || key == "elapsed" || key == "time" {
-      continue // Skip checking these keys entirely
-    }
-
-    lastVal, exists := last.Status[key]
-    if !exists || currentVal != lastVal {
-      return false // A meaningful value changed or is missing
-    }
-  }
-
-  return true
-} // func dedupePlayerEV
-
   // Globals for wsWatcher:
   var (
     lastArtHash     uint64
@@ -1703,6 +1655,54 @@ func dedupePlayerEV(current, last IdleEvent) bool {
   )
 
 func wsWatcher(ctx *wsCtx) {
+  dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
+    log.Printf("Started dedupePlayerEV")
+    // Handle nil pointer protection for Status if it is a pointer
+    if (current.Status == nil) != (last.Status == nil) {
+      return false
+    }
+
+    // 1. Compare Top Level Fields
+    if current.Subsystem != last.Subsystem ||
+      current.SongID != last.SongID ||
+      current.SongURI != last.SongURI ||
+      current.PlaylistRev != last.PlaylistRev ||
+      current.AlbumKey != last.AlbumKey ||
+      current.Subscribe != last.Subscribe {
+      return false
+    }
+
+    // 2. Compare Nested PulseData Fields
+    if current.PulseData.SinkName != last.PulseData.SinkName ||
+      current.PulseData.Volume != last.PulseData.Volume ||
+      current.PulseData.Mute != last.PulseData.Mute ||
+      current.PulseData.VolString != last.PulseData.VolString ||
+      current.PulseData.PulsePath != last.PulseData.PulsePath ||
+      current.PulseData.PulseServer != last.PulseData.PulseServer ||
+      current.PulseData.PulsePort != last.PulseData.PulsePort {
+      return false
+    }
+
+    // 3. Compare Map Status Fields
+    if len(current.Status) != len(last.Status) {
+      // If map sizes don't match, something structural changed
+      return false
+    }
+
+    for key, currentVal := range current.Status {
+      // --- CHOOSE WHAT TO IGNORE HERE ---
+      if key == "bitrate" || key == "elapsed" || key == "time" {
+        continue // Skip checking these keys entirely
+      }
+
+      lastVal, exists := last.Status[key]
+      if !exists || currentVal != lastVal {
+        return false // A meaningful value changed or is missing
+      }
+    }
+
+    return true
+  } // func dedupePlayerEV
 
   log.Println("[wsW] started")
 
@@ -1812,7 +1812,7 @@ func wsWatcher(ctx *wsCtx) {
       	  log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
         }
         continue
-      } else {
+//      } else {
 //        log.Printf("[wsW] Idle player event!---------------------------------")
 //        b, _ := json.MarshalIndent(ev, "", "  ")
 //        log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
