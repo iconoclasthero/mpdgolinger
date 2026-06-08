@@ -2167,15 +2167,28 @@ func wsWatcher(ctx *wsCtx) {
 	    ctx.mu.Lock()
 
 	    var recipients []*websocket.Conn
-
+/*
 	    if ev.Target != nil {
-	        recipients = []*websocket.Conn{ev.Target}
+	      recipients = []*websocket.Conn{ev.Target}
 	    } else {
-	        for conn := range ctx.conns {
-	            recipients = append(recipients, conn)
-	        }
+	      for conn := range ctx.conns {
+	        recipients = append(recipients, conn)
+	      }
 	    }
+*/
+if ev.Target != nil {
+  if ev.Target == ctx.conn {
+    recipients = []*websocket.Conn{ctx.conn}
+  } else {
+    recipients = nil
+  }
+} else {
+  recipients = []*websocket.Conn{ctx.conn}
+}
 
+if recipients == nil {
+  continue
+}
 	    ctx.mu.Unlock()
 
 	    for _, conn := range recipients {
