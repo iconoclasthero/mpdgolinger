@@ -1651,7 +1651,7 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
   // Globals for wsWatcher:
   var (
     lastArtHash     uint64
-//    lastPlayerEV    IdleEvent
+    lastPlayerEV    IdleEvent
   )
 
 func wsWatcher(ctx *wsCtx) {
@@ -1729,7 +1729,7 @@ func wsWatcher(ctx *wsCtx) {
   // persistent state trackers
   var (
     lastPlaylistRev int
-    lastPlayerEV    IdleEvent
+//    lastPlayerEV    IdleEvent
 //    lastSongID      int
 //    lastArtHash     uint64
 //    lastAlbumKey string
