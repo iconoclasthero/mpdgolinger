@@ -1538,11 +1538,15 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
 var wsWatcherCount int32
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
+
   conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
     InsecureSkipVerify: true,
     CompressionMode: websocket.CompressionContextTakeover, // or websocket.CompressionContextNone
 //    CompressionThreshold: 1024,
   })
+
+  log.Printf("[wsH] ACCEPT pid=%d conn=%p remote=%s", os.Getpid(), conn, r.RemoteAddr)
+  log.Printf("[wsH] UPGRADE hdrs=%+v", r.Header)
 
   dbg("[wsH] WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
 
