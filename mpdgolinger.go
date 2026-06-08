@@ -1648,7 +1648,7 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 
 
 
-func shouldIgnorePlayerEV(current, last IdleEvent) bool {
+func dedupePlayerEV(current, last IdleEvent) bool {
   // Handle nil pointer protection for Status if it is a pointer
   if (current.Status == nil) != (last.Status == nil) {
     return false
@@ -1694,12 +1694,12 @@ func shouldIgnorePlayerEV(current, last IdleEvent) bool {
   }
 
   return true
-} // func shouldIgnorePlayerEV
+} // func dedupePlayerEV
 
   // Globals for wsWatcher:
   var (
     lastArtHash     uint64
-    lastPlayerEV    IdleEvent
+//    lastPlayerEV    IdleEvent
   )
 
 func wsWatcher(ctx *wsCtx) {
@@ -1728,8 +1728,9 @@ func wsWatcher(ctx *wsCtx) {
 
   // persistent state trackers
   var (
-//    lastSongID      int
     lastPlaylistRev int
+    lastPlayerEV    IdleEvent
+//    lastSongID      int
 //    lastArtHash     uint64
 //    lastAlbumKey string
   )
@@ -1745,7 +1746,6 @@ func wsWatcher(ctx *wsCtx) {
       pushArt         bool
       uri             string
       art             *AlbumArtResult
-//    lastPlayerEV    IdleEvent
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
@@ -1805,15 +1805,15 @@ func wsWatcher(ctx *wsCtx) {
       }
 
     case "player":
-      if shouldIgnorePlayerEV(ev, lastPlayerEV) {
+      if dedupePlayerEV(ev, lastPlayerEV) {
         log.Printf("[wsW] Skipping duplicate idle event!---------------------")
   	    b, _ := json.MarshalIndent(ev, "", "  ")
       	log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
         continue
       } else {
-        log.Printf("[wsW] Idle player event!---------------------------------")
-        b, _ := json.MarshalIndent(ev, "", "  ")
-        log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
+//        log.Printf("[wsW] Idle player event!---------------------------------")
+//        b, _ := json.MarshalIndent(ev, "", "  ")
+//        log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
       }
 
 
