@@ -1547,6 +1547,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
   log.Printf("[wsH] ACCEPT pid=%d conn=%p remote=%s", os.Getpid(), conn, r.RemoteAddr)
   log.Printf("[wsH] UPGRADE hdrs=%+v", r.Header)
+  log.Printf("[wsH] conn=%p remote=%s xff=%v", conn, r.RemoteAddr, r.Header.Get("X-Forwarded-For"))
 
   dbg("[wsH] WS extension request: %s", r.Header.Get("Sec-WebSocket-Extensions"))
 
@@ -1821,7 +1822,7 @@ func wsWatcher(ctx *wsCtx) {
         log.Printf("[wsW] Skipping duplicate idle event!---------------------")
   	    if true {
           b, _ := json.MarshalIndent(ev, "", "  ")
-      	  log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
+      	  log.Printf("[wsW] skipped ev:--------------------------------------\n%s", string(b))
         }
         continue
       } else {
