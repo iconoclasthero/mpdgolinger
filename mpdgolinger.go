@@ -1667,7 +1667,7 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 func wsWatcher(ctx *wsCtx) {
   log.Printf("[wsW] started")
   log.Printf("[wsW] START watcher ptr=%p conn=%p", ctx, ctx.conn)
-  var watcherID = atomic.AddInt64(&wsWatcherCount, 1)
+  var watcherID = atomic.LoadInt64(&wsWatcherCount)
   log.Printf("[wsW] START watcher id=%d time=%d conn=%p", watcherID, time.Now().UnixNano(), ctx.conn)
 
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
