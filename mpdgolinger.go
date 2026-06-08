@@ -1819,15 +1819,15 @@ func wsWatcher(ctx *wsCtx) {
     case "player":
       if dedupePlayerEV(ev, lastPlayerEV) {
         log.Printf("[wsW] Skipping duplicate idle event!---------------------")
-  	    if debug {
+  	    if true {
           b, _ := json.MarshalIndent(ev, "", "  ")
       	  log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
         }
         continue
-//      } else {
-//        log.Printf("[wsW] Idle player event!---------------------------------")
-//        b, _ := json.MarshalIndent(ev, "", "  ")
-//        log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
+      } else {
+        log.Printf("[wsW] Idle player event!---------------------------------")
+        b, _ := json.MarshalIndent(ev, "", "  ")
+        log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
       }
 
 
