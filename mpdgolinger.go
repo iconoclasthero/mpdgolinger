@@ -2176,6 +2176,7 @@ func wsWatcher(ctx *wsCtx) {
 	      }
 	    }
 */
+/*
 if ev.Target != nil {
   if ev.Target == ctx.conn {
     recipients = []*websocket.Conn{ctx.conn}
@@ -2189,6 +2190,8 @@ if ev.Target != nil {
 if recipients == nil {
   continue
 }
+*/
+  recipients = []*websocket.Conn{ctx.conn}
 	    ctx.mu.Unlock()
 
 	    for _, conn := range recipients {
