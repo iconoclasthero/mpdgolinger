@@ -1905,6 +1905,7 @@ func eventProcessor(){
     )
 
   for ev := range idleEvents {
+    log.Printf("[eP] for ev := range idleEvents started, ev.Subsystem: %s", ev.Subsystem)
     switch ev.Subsystem {
       case "pulseaudio":
         log.Printf("[eP] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
@@ -2221,11 +2222,11 @@ func eventProcessor(){
         log.Printf("[eP] default case of func eventProcessor hit; ev.Subsytem: %s", ev.Subsystem)
     } // end of switch
 
-    wsBroadcastMsgs(msgs, ev.Target, pushArt)
+    wsBroadcastMsgs(msgs, ev.Target)
   }
 } // func eventProcessor
 
-func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
+func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
 
