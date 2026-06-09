@@ -2227,7 +2227,7 @@ func eventProcessor(){
 } // func eventProcessor
 
 func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
-  log.Printf("[wsBM] started")
+  log.Printf("[wsBM] started, msgs[0]: %s", truncateJSON(msgs[0]))
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
 
@@ -2305,6 +2305,9 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
 func truncateJSON(v any) any {
   switch val := v.(type) {
+  case []byte:
+    return "msg is binary data"
+
   case float64:
     // Truncate decimals (e.g., 3.14159 -> 3)
     return math.Trunc(val)
