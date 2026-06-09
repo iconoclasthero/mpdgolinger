@@ -2383,8 +2383,8 @@ func truncateJSON(v any) any {
   case string:
     // Truncate long string values (e.g., limit to 10 characters)
     runes := []rune(val)
-    if len(runes) > 10 {
-      return string(runes[:10]) + "..."
+    if len(runes) > 11 {
+      return string(runes[:11]) + "..."
     }
     return val
 
