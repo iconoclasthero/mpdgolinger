@@ -2190,6 +2190,7 @@ func eventProcessor(){
 
             if pushArt && len(img) > 0 {
               msgs = append(msgs, wsMsg{websocket.MessageBinary, img})
+              log.Printf("[eP] Attaching img, len: %d", len(img))
   //          } else {
   //            msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte{}})
             }
