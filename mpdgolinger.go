@@ -2246,10 +2246,14 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
         recipients = append(recipients, conn)
       }
     }
+    log.Printf("[wsBM] recepient count=%d", len(recipients))
 
     globalWSHub.mu.Unlock()
 
+
     log.Printf("[wsBM] after globalWSHub.mu.Unlock()")
+
+    log.Printf("[wsBM] recepient count=%d", len(recipients))
 
     for _, conn := range recipients {
       log.Printf("[wsBM] conn: %s", cid(conn))
