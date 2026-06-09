@@ -2305,6 +2305,10 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
 func truncateJSON(v any) any {
   switch val := v.(type) {
+  case []byte:
+    binaryframe := "this is a binary frame"
+    return binaryframe
+
   case float64:
     // Truncate decimals (e.g., 3.14159 -> 3)
     return math.Trunc(val)
