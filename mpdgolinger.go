@@ -338,13 +338,14 @@ var (
 
 ) // var
 
-
 type       wsCtx      struct {
      conn             *websocket.Conn
-     mu               sync.Mutex
+//     mu               sync.Mutex
 //     conns            map[*websocket.Conn]struct{}
 //     watcherRunning   bool // <- add this
      writeMu          sync.Mutex
+    mu      *sync.Mutex
+    conns   *map[*websocket.Conn]struct{}
 }
 
 type wsHub struct {
@@ -1722,7 +1723,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
       var req Request
       _ = json.Unmarshal(msgBytes, &req)
 
-      responses := verbProcessorJSON(js, req, nil)
+      responses := verbProcessorJSON(js, req, conn)
 
       for _, line := range responses {
         if line != "" {
@@ -2323,7 +2324,8 @@ func truncateJSON(v any) any {
 
 // verbProcessorJSON handles JSON commands from the WebSocket and returns
 // JSON-formatted responses. Does NOT send over the WebSocket — wsHandler does that.
-func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []string {
+//func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []string {
+func verbProcessorJSON(js map[string]interface{}, req Request, conn *websocket.Conn) []string {
 
   // --- validate cmd ---
   cmdIface, ok := js["cmd"]
@@ -2727,7 +2729,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
           js["response"] = "error"
           js["error"] = "Argument must be nil or an integer."
           out, _ := json.Marshal(js)
-          ctx.conn.Write(context.Background(), websocket.MessageText, out)
+          conn.Write(context.Background(), websocket.MessageText, out)
           return nil
         }
 
@@ -2768,7 +2770,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
 //            out, _ := json.Marshal(js)
 
             out, _ := json.Marshal(entry)
-            err = ctx.conn.Write(context.Background(), websocket.MessageText, out)
+            err = conn.Write(context.Background(), websocket.MessageText, out)
             if err != nil {
               return err
             }
@@ -2784,7 +2786,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
             "error": err.Error(),
           }
           out, _ := json.Marshal(js)
-          ctx.conn.Write(context.Background(), websocket.MessageText, out)
+          conn.Write(context.Background(), websocket.MessageText, out)
           return nil
         }
 
@@ -2793,7 +2795,7 @@ func verbProcessorJSON(js map[string]interface{}, req Request, ctx *wsCtx) []str
         }
 
         out, _ := json.Marshal(js)
-        ctx.conn.Write(context.Background(), websocket.MessageText, out)
+        conn.Write(context.Background(), websocket.MessageText, out)
 
         return nil
 
@@ -4238,12 +4240,12 @@ log.Printf("abs: %s", abs)
 
         // --- websocket push ---
         if len(img) > 0 {
-          ctx.conn.Write(context.Background(), websocket.MessageText, out)
-          ctx.conn.Write(context.Background(), websocket.MessageBinary, img)
+          conn.Write(context.Background(), websocket.MessageText, out)
+          conn.Write(context.Background(), websocket.MessageBinary, img)
           log.Printf("[vPJ] pushed album art (%d bytes) to albumart request", art.Size)
         } else {
-          ctx.conn.Write(context.Background(), websocket.MessageText, out)
-          ctx.conn.Write(context.Background(), websocket.MessageBinary, []byte{})
+          conn.Write(context.Background(), websocket.MessageText, out)
+          conn.Write(context.Background(), websocket.MessageBinary, []byte{})
           log.Printf("[vPJ] pushed empty album art frame to albumart request")
         }
 
@@ -4665,7 +4667,7 @@ log.Printf("abs: %s", abs)
             jsreq["args"] = args
           }
 
-          resp := verbProcessorJSON(jsreq, req, ctx)
+          resp := verbProcessorJSON(jsreq, req, conn)
 
           var obj map[string]any
           log.Printf("%#v", obj["response"])
@@ -5406,12 +5408,12 @@ log.Printf("abs: %s", abs)
         jsSubscribe := clone(js)
         jsSubscribe["response"] = "subscribed"
         out, _ := json.Marshal(jsSubscribe)
-        ctx.conn.Write(context.Background(), websocket.MessageText, out)
+        conn.Write(context.Background(), websocket.MessageText, out)
 
         idleEvents <- IdleEvent{
           Subsystem: "player",
           Subscribe: true,
-             Target: ctx.conn,
+             Target: conn,
         }
 
 //        out, _ = json.Marshal(js)
@@ -5563,7 +5565,7 @@ log.Printf("abs: %s", abs)
     case "ping":
       js["response"] = "pong"
       out, _ := json.Marshal(js)
-      ctx.conn.Write(context.Background(), websocket.MessageText, out)
+      conn.Write(context.Background(), websocket.MessageText, out)
       return nil
 
     case "debug":
@@ -5590,7 +5592,7 @@ log.Printf("abs: %s", abs)
         js["response"] = "pong"
         js["timestamp"] = "implement timestamp"
         out, _ := json.Marshal(js)
-        ctx.conn.Write(context.Background(), websocket.MessageText, out)
+        conn.Write(context.Background(), websocket.MessageText, out)
         return nil
 
     default:
