@@ -326,8 +326,15 @@ var (
 
   // global context for all WS connections
   globalWSCtx = &wsCtx{
+//    conns: make(map[*websocket.Conn]struct{}),
+  }
+
+  globalWSHub = &wsHub{
     conns: make(map[*websocket.Conn]struct{}),
   }
+
+  wsMu sync.Mutex
+  wsConns = map[*websocket.Conn]struct{}{}
 
 ) // var
 
@@ -335,9 +342,14 @@ var (
 type       wsCtx      struct {
      conn             *websocket.Conn
      mu               sync.Mutex
-     conns            map[*websocket.Conn]struct{}
-     watcherRunning   bool // <- add this
+//     conns            map[*websocket.Conn]struct{}
+//     watcherRunning   bool // <- add this
      writeMu          sync.Mutex
+}
+
+type wsHub struct {
+    mu    sync.Mutex
+    conns map[*websocket.Conn]struct{}
 }
 
 type      Request     struct {
@@ -359,13 +371,6 @@ type     IdleEvent    struct {
 }
 
 var idleEvents = make(chan IdleEvent, 32)
-
-var wsGlobal = &wsCtx{
-  conns: make(map[*websocket.Conn]struct{}),
-}
-
-
-
 
 
 /* ---------------- mpdtags -------------- */
@@ -1535,8 +1540,10 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
   return entries, nil
 } // JSONLog
 
+
 var wsWatcherCount int64
 
+/*
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 
   conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
@@ -1560,7 +1567,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
   ctx := &wsCtx{
     conn:  conn,
-    conns: globalWSCtx.conns, // share map for all watchers
+//    conns: globalWSCtx.conns, // share map for all watchers
   }
 
   // add connection to global set
@@ -1646,6 +1653,94 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     }
   }
 } // func wsHandler()
+*/
+
+
+func wsHandler(w http.ResponseWriter, r *http.Request) {
+
+  conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+    InsecureSkipVerify: true,
+    CompressionMode: websocket.CompressionContextTakeover,
+  })
+  if err != nil {
+    log.Printf("[wsH] accept failed: %v", err)
+    return
+  }
+
+  log.Printf("[wsH] connected %p", conn)
+
+  // register connection
+  wsMu.Lock()
+  wsConns[conn] = struct{}{}
+  wsMu.Unlock()
+
+  // cleanup on exit
+  defer func() {
+    wsMu.Lock()
+    delete(wsConns, conn)
+    wsMu.Unlock()
+
+    conn.Close(websocket.StatusNormalClosure, "bye")
+    log.Printf("[wsH] disconnected %p", conn)
+  }()
+
+  conn.SetReadLimit(512 * 1024)
+
+  // helper write
+  write := func(c *websocket.Conn, typ websocket.MessageType, payload []byte) bool {
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
+
+    err := c.Write(ctx, typ, payload)
+    if err != nil {
+      log.Printf("[wsH] write failed: %v", err)
+
+      wsMu.Lock()
+      delete(wsConns, c)
+      wsMu.Unlock()
+
+      c.Close(websocket.StatusNormalClosure, "")
+      return false
+    }
+    return true
+  }
+
+  // read loop
+  for {
+    _, msgBytes, err := conn.Read(r.Context())
+    if err != nil {
+      log.Printf("[wsH] read error: %v", err)
+      break
+    }
+
+    msg := string(msgBytes)
+
+    // JSON path
+    var js map[string]any
+    if json.Unmarshal(msgBytes, &js) == nil {
+
+      var req Request
+      _ = json.Unmarshal(msgBytes, &req)
+
+      responses := verbProcessorJSON(js, req, nil)
+
+      for _, line := range responses {
+        if line != "" {
+          write(conn, websocket.MessageText, []byte(line))
+        }
+      }
+      continue
+    }
+
+    // text path
+    responses := verbProcessor(msg)
+    for _, line := range responses {
+      if line != "" {
+        write(conn, websocket.MessageText, []byte(line))
+      }
+    }
+  }
+} // func wsHandler
 
 
 func getLogHash() string               { return "" }
@@ -1674,6 +1769,7 @@ type eventState struct {
     evState           eventState
   )
 
+/*
 func wsWatcher(ctx *wsCtx) {
   log.Printf("[wsW] started")
   log.Printf("[wsW] START watcher ptr=%p conn=%p", ctx, ctx.conn)
@@ -1705,91 +1801,20 @@ func wsWatcher(ctx *wsCtx) {
   )
   log.Printf("[wsW] finsh initializing func-scoped vars")
 
-//  for range idleEvents {
-  for ev := range idleEvents {
-    var (
-        msgs []wsMsg
-    )
-
-    msgs, _ = eventProcessor(ev)
-
-
-	    // --- push to subscribed connections ---
-	    ctx.mu.Lock()
-
-	    var recipients []*websocket.Conn
-
-	    if ev.Target != nil {
-	      recipients = []*websocket.Conn{ev.Target}
-	    } else {
-	      for conn := range ctx.conns {
-	        recipients = append(recipients, conn)
-	      }
-	    }
-
-	    ctx.mu.Unlock()
-
-	    for _, conn := range recipients {
-	      dead := false
-
-	      dbg("[wsW] primary for push loop: %v", conn)
-
-	      ctx.writeMu.Lock()
-
-	      write := func(typ websocket.MessageType, payload []byte) bool {
-	        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	        defer cancel()
-
-	        err := conn.Write(wctx, typ, payload)
-	        if err != nil {
-	          log.Printf("[wsW] write failed, removing conn: %v", err)
-	          conn.Close(websocket.StatusNormalClosure, "")
-	          dead = true
-	          return false
-	        }
-	        return true
-	      }
-
-	      dbg("[wsW] broadcast start conn=%p", conn)
-
-	      for _, m := range msgs {
-	        if !write(m.typ, m.data) {
-	          dead = true
-	          break
-	        } else if m.typ == 1 {
-	          var v any
-	          if err := json.Unmarshal(m.data, &v); err != nil {
-	            log.Printf("[wsW] bad json: %v", err)
-	          } else {
-	            data := truncateJSON(v)
-	            log.Printf("[wsW] websocket.MessageText: %#v", data)
-	          }
-	        } else if m.typ == 2 {
-//	          var artHash uint64
-//	          if art != nil {
-//	            artHash = art.Hash
-//	          }
-//	          log.Printf("[wsW] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
-            log.Printf("[wsW] Pushed binary data frame message")
-	        }
-	      }
-
-	      ctx.writeMu.Unlock()
-
-	      if dead {
-	        ctx.mu.Lock()
-	        delete(ctx.conns, conn)
-	        ctx.mu.Unlock()
-	        continue
-	      }
-
-	      dbg("[wsW] broadcast complete conn=%p", conn)
-	    }
-    }
+//  for ev := range idleEvents {
+//    var (
+//        msgs []wsMsg
+//    )
+//
+//    msgs, _ = eventProcessor(ev)
+//
+//
+//    }
   time.Sleep(100 * time.Millisecond)
 } //func wsWatcher()
+*/
 
-func eventProcessor(ev IdleEvent) ([]wsMsg, bool) {
+func eventProcessor(){
 
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
     log.Printf("Started dedupePlayerEV")
@@ -1859,323 +1884,400 @@ func eventProcessor(ev IdleEvent) ([]wsMsg, bool) {
 //    playlistRev     int
     )
 
+  for ev := range idleEvents {
     switch ev.Subsystem {
-    case "pulseaudio":
-      log.Printf("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
-      pd := ev.PulseData
+      case "pulseaudio":
+        log.Printf("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
+        pd := ev.PulseData
 
-      pulseMu.Lock()
-      PulseData = pd
-      pulseMu.Unlock()
+        pulseMu.Lock()
+        PulseData = pd
+        pulseMu.Unlock()
 
-      msg := map[string]interface{}{
-          "system": "pulseaudio",
-             "cmd": "changed",
-        "response": pd,
-      }
-
-      log.Printf("[wsW] pulseaudio case, adding msg: %v", msg)
-
-      data, _ := json.Marshal(msg)
-      msgs = append(msgs, wsMsg{websocket.MessageText, data})
-
-    case "pauseTimer":
-      var (
-        err     error
-        status  map[string]string
-        notes   []string
-      )
-      js := &StatusV1{}  // declare a fresh StatusV1 just for the pauseTimer case
-      // fetch MPD status first
-      status, notes, err = MPDtags(nil, "status", "status")
-      if err != nil {
-        log.Printf("[wsW] MPDtags error in pauseTimer case: %v", err)
-        return nil, false
-      }
-
-      if err := convert2json(status, js); err != nil {
-        log.Printf("[wsW] convert2json error in pauseTimer case: %v", err)
-        return nil, false
-      }
-
-      // also add js to msgs
-      data, err := json.Marshal(js)
-      if err != nil {
-        log.Printf("[wsW] pauseTimer CASE marshal %v", err)
-        break
-      }
-
-      msgs = append(msgs, wsMsg{websocket.MessageText, data})
-      for _, note := range notes {
-        // msgs = append(msgs, []byte(note))
-        msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte(note)})
-      }
-
-
-    case "player":
-      if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
-        log.Printf("[wsW] Skipping duplicate idle event!---------------------")
-  	    if true {
-          b, _ := json.MarshalIndent(ev, "", "  ")
-      	  log.Printf("[wsW] skipped ev:--------------------------------------\n%s", string(b))
-        }
-        return nil, false
-      } else {
-        log.Printf("[wsW] Idle player event!---------------------------------")
-        b, _ := json.MarshalIndent(ev, "", "  ")
-        log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
-      }
-
-
-      evState.lastPlayerEV = ev
-
-      var (
-        st          StatusV1
-        img         []byte
-//      albumKey    string
-//      songChanged bool
-//      uri         string
-//      err error
-//      status map[string]string
-//      n []string
-      )
-
-      log.Printf("[wsW] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
-
-      // -----------------------
-      // STATUS FRAME
-      // -----------------------
-      resp := verbProcessor("json-status")
-
-      for _, entry := range resp {
-        if entry == "" {
-          return nil, false
-        }
-//        msgs = append(msgs, []byte(entry))
-//        _ = append(msgs, []byte(entry))
-      }
-
-      // ---------------------------
-      // UNMARSHAL JSON TO STATUSV1
-      // ---------------------------
-      if len(resp) > 0 {
-        if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
-          log.Printf("[wsW] unmarshal error: %v", err)
-          return nil, false
-        }
-      }
-
-      // -----------------------
-      // STATUS FRAME
-      // -----------------------
-      log.Printf("[wsW] PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
-      env := map[string]any{
-          "system": "subscribed",
-             "cmd": "json-status",
-        "response": st,
-//           "debug": time.Now().UnixNano(),
-      }
-
-      data, _ := json.Marshal(env)
-      msgs = append(msgs, wsMsg{websocket.MessageText, data})
-
-      // -----------------------
-      // SONG / ALBUM STATE
-      // -----------------------
-      song := st.Current
-      songID := st.Player.SongID
-      uri = song.File               // uri needs to exist outside scope
-
-//      if lastSongID == 0 || songID != lastSongID {
-//        songChanged = true
-//        lastSongID = songID
-//      }
-
-      state.mu.Lock()
-      songChanged := false
-
-      if state.lastSongID == 0 || songID != state.lastSongID {
-        songChanged = true
-        state.lastSongID = songID
-      }
-
-      state.mu.Unlock()
-
-
-      // -----------------------
-      // LOG FRAME (SEPARATE)
-      // -----------------------
-      if songChanged || ev.Subscribe {
-        resp := verbProcessor("json-log")
-
-        var logs []any
-        for _, entry := range resp {
-          if entry == "" {
-            continue
-          }
-
-          var parsed any
-          if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
-            parsed = entry
-          }
-
-          logs = append(logs, parsed)
+        msg := map[string]interface{}{
+            "system": "pulseaudio",
+               "cmd": "changed",
+          "response": pd,
         }
 
-        msg := map[string]any{
-          "system": "subscribed",
-          "cmd":    "json-log",
-          "response": logs,
-//          "debug": time.Now().UnixNano(),
-        }
+        log.Printf("[wsW] pulseaudio case, adding msg: %v", msg)
 
-        data, err := json.Marshal(msg)
+        data, _ := json.Marshal(msg)
+        msgs = append(msgs, wsMsg{websocket.MessageText, data})
+
+      case "pauseTimer":
+        var (
+          err     error
+          status  map[string]string
+          notes   []string
+        )
+        js := &StatusV1{}  // declare a fresh StatusV1 just for the pauseTimer case
+        // fetch MPD status first
+        status, notes, err = MPDtags(nil, "status", "status")
         if err != nil {
-          log.Printf("[wsW] log marshal failed: %v", err)
-          return nil, false
+          log.Printf("[wsW] MPDtags error in pauseTimer case: %v", err)
+//          return nil, ev.Target, false
+        }
+
+        if err := convert2json(status, js); err != nil {
+          log.Printf("[wsW] convert2json error in pauseTimer case: %v", err)
+//          return nil, ev.Target, false
+        }
+
+        // also add js to msgs
+        data, err := json.Marshal(js)
+        if err != nil {
+          log.Printf("[wsW] pauseTimer CASE marshal %v", err)
+          break
         }
 
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
-      }
-
-      // -----------------------
-      // ALBUM ART (HASH-BASED)
-      // -----------------------
-      img = nil
-      art = nil
-      err := mpdDo(func(c *mpd.Client) error {
-        var err2 error
-        var jsArt map[string]any
-        art, err2 = getBestAlbumArt(c, uri)
-        if err2 != nil {
-          log.Printf("[wsW] getBestAlbumArt error for %q: %v", uri, err2)
-          img = nil
-          return err2
+        for _, note := range notes {
+          // msgs = append(msgs, []byte(note))
+          msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte(note)})
         }
 
-        if art != nil {
-          img = art.Img
-          if evState.lastArtHash == 0 {
-            log.Printf("[wsW] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
-              evState.lastArtHash)
-          }
-          hashMatch := art.Hash ==  evState.lastArtHash
-          log.Printf(
-            "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
-            art.Source,
-            art.Hash,
-            len(img),
-          )
 
-          log.Printf("[wsW] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
-            hashMatch,
-            art.Hash,
-            evState.lastArtHash,
-            ev.Subscribe,
-            ev.Subsystem,
-          )
-          // dedupe based on image hash (NOT albumKey)
-          pushArt = false
-          if art.Size > 0 && (art.Hash != evState.lastArtHash || ev.Subscribe) {
-            pushArt = true
-            if art.Hash != evState.lastArtHash {
-              log.Printf("[wsW] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, evState.lastArtHash)
-              evState.lastArtHash = art.Hash
+      case "player":
+        if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
+          log.Printf("[wsW] Skipping duplicate idle event!---------------------")
+    	    if true {
+            b, _ := json.MarshalIndent(ev, "", "  ")
+        	  log.Printf("[wsW] skipped ev:--------------------------------------\n%s", string(b))
+          }
+//          return nil, ev.Target, false
+        } else {
+          log.Printf("[wsW] Idle player event!---------------------------------")
+          b, _ := json.MarshalIndent(ev, "", "  ")
+          log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
+        }
+
+
+        evState.lastPlayerEV = ev
+
+        var (
+          st          StatusV1
+          img         []byte
+  //      albumKey    string
+  //      songChanged bool
+  //      uri         string
+  //      err error
+  //      status map[string]string
+  //      n []string
+        )
+
+        log.Printf("[wsW] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
+
+        // -----------------------
+        // STATUS FRAME
+        // -----------------------
+        resp := verbProcessor("json-status")
+
+        for _, entry := range resp {
+          if entry == "" {
+//            return nil, ev.Target, false
+          }
+  //        msgs = append(msgs, []byte(entry))
+  //        _ = append(msgs, []byte(entry))
+        }
+
+        // ---------------------------
+        // UNMARSHAL JSON TO STATUSV1
+        // ---------------------------
+        if len(resp) > 0 {
+          if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
+            log.Printf("[wsW] unmarshal error: %v", err)
+//            return nil, ev.Target, false
+          }
+        }
+
+        // -----------------------
+        // STATUS FRAME
+        // -----------------------
+        log.Printf("[wsW] PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
+        env := map[string]any{
+            "system": "subscribed",
+               "cmd": "json-status",
+          "response": st,
+  //           "debug": time.Now().UnixNano(),
+        }
+
+        data, _ := json.Marshal(env)
+        msgs = append(msgs, wsMsg{websocket.MessageText, data})
+
+        // -----------------------
+        // SONG / ALBUM STATE
+        // -----------------------
+        song := st.Current
+        songID := st.Player.SongID
+        uri = song.File               // uri needs to exist outside scope
+
+  //      if lastSongID == 0 || songID != lastSongID {
+  //        songChanged = true
+  //        lastSongID = songID
+  //      }
+
+        state.mu.Lock()
+        songChanged := false
+
+        if state.lastSongID == 0 || songID != state.lastSongID {
+          songChanged = true
+          state.lastSongID = songID
+        }
+
+        state.mu.Unlock()
+
+
+        // -----------------------
+        // LOG FRAME (SEPARATE)
+        // -----------------------
+        if songChanged || ev.Subscribe {
+          resp := verbProcessor("json-log")
+
+          var logs []any
+          for _, entry := range resp {
+            if entry == "" {
+              continue
             }
-            jsArt = map[string]any{
-                "system": "subscribed",
-                   "cmd": "albumart",
-                  "note": "update",
-              "response": art,
-//                 "debug": time.Now().UnixNano(),
+
+            var parsed any
+            if err := json.Unmarshal([]byte(entry), &parsed); err != nil {
+              parsed = entry
             }
-          } else if art.Size > 0 {
+
+            logs = append(logs, parsed)
+          }
+
+          msg := map[string]any{
+            "system": "subscribed",
+            "cmd":    "json-log",
+            "response": logs,
+  //          "debug": time.Now().UnixNano(),
+          }
+
+          data, err := json.Marshal(msg)
+          if err != nil {
+            log.Printf("[wsW] log marshal failed: %v", err)
+//            return nil, ev.Target, false
+          }
+
+          msgs = append(msgs, wsMsg{websocket.MessageText, data})
+        }
+
+        // -----------------------
+        // ALBUM ART (HASH-BASED)
+        // -----------------------
+        img = nil
+        art = nil
+        err := mpdDo(func(c *mpd.Client) error {
+          var err2 error
+          var jsArt map[string]any
+          art, err2 = getBestAlbumArt(c, uri)
+          if err2 != nil {
+            log.Printf("[wsW] getBestAlbumArt error for %q: %v", uri, err2)
+            img = nil
+            return err2
+          }
+
+          if art != nil {
+            img = art.Img
+            if evState.lastArtHash == 0 {
+              log.Printf("[wsW] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
+                evState.lastArtHash)
+            }
+            hashMatch := art.Hash ==  evState.lastArtHash
+            log.Printf(
+              "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
+              art.Source,
+              art.Hash,
+              len(img),
+            )
+
+            log.Printf("[wsW] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
+              hashMatch,
+              art.Hash,
+              evState.lastArtHash,
+              ev.Subscribe,
+              ev.Subsystem,
+            )
+            // dedupe based on image hash (NOT albumKey)
             pushArt = false
-            jsArt = map[string]any{
-                "system": "subscribed",
-                   "cmd": "albumart",
-                  "note": "noop",
-//                 "debug": time.Now().UnixNano(),
-              "response": map[string]any{
-                     "msg": "album art unchanged",
-                    "hash": art.Hash,
-              },
+            if art.Size > 0 && (art.Hash != evState.lastArtHash || ev.Subscribe) {
+              pushArt = true
+              if art.Hash != evState.lastArtHash {
+                log.Printf("[wsW] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, evState.lastArtHash)
+                evState.lastArtHash = art.Hash
+              }
+              jsArt = map[string]any{
+                  "system": "subscribed",
+                     "cmd": "albumart",
+                    "note": "update",
+                "response": art,
+  //                 "debug": time.Now().UnixNano(),
+              }
+            } else if art.Size > 0 {
+              pushArt = false
+              jsArt = map[string]any{
+                  "system": "subscribed",
+                     "cmd": "albumart",
+                    "note": "noop",
+  //                 "debug": time.Now().UnixNano(),
+                "response": map[string]any{
+                       "msg": "album art unchanged",
+                      "hash": art.Hash,
+                },
+              }
+            } else if art.Size == 0 {
+              log.Printf("[wsW] The art.Size == 0 branch should be unreachable!")
+              pushArt = false
+              jsArt = map[string]any{
+                  "system": "subscribed",
+                     "cmd": "albumart",
+                "response": map[string]any{
+                       "msg": "no albumart retrieved",
+                      "hash": 0,
+                },
+  //                 "debug": time.Now().UnixNano(),
+              }
             }
-          } else if art.Size == 0 {
-            log.Printf("[wsW] The art.Size == 0 branch should be unreachable!")
-            pushArt = false
+          } else {
+            img = nil
+
+            // synthesize a fake "art" state WITHOUT touching art
             jsArt = map[string]any{
                 "system": "subscribed",
                    "cmd": "albumart",
+                  "note": "noart",
               "response": map[string]any{
                      "msg": "no albumart retrieved",
                     "hash": 0,
-              },
-//                 "debug": time.Now().UnixNano(),
+                },
+  //                 "debug": time.Now().UnixNano(),
             }
           }
-        } else {
-          img = nil
 
-          // synthesize a fake "art" state WITHOUT touching art
-          jsArt = map[string]any{
-              "system": "subscribed",
-                 "cmd": "albumart",
-                "note": "noart",
-            "response": map[string]any{
-                   "msg": "no albumart retrieved",
-                  "hash": 0,
-              },
-//                 "debug": time.Now().UnixNano(),
+          data, err := json.Marshal(jsArt)
+          if err != nil {
+            log.Printf("[wsW] Art mashal failed %v", err)
+          } else {
+            // Important: enforce ordering contract
+            msgs = append(msgs, wsMsg{websocket.MessageText, data})
+
+            if pushArt && len(img) > 0 {
+              msgs = append(msgs, wsMsg{websocket.MessageBinary, img})
+  //          } else {
+  //            msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte{}})
+            }
           }
-        }
 
-        data, err := json.Marshal(jsArt)
+          return err
+        }, "wsWatcher-gBAA")
+
         if err != nil {
-          log.Printf("[wsW] Art mashal failed %v", err)
-        } else {
-          // Important: enforce ordering contract
-          msgs = append(msgs, wsMsg{websocket.MessageText, data})
+          log.Printf("[wsW] Art: mpdDo/gBAA failed: %v", err)
+//          return nil, ev.Target, false
+        }
+      // case "player"
 
-          if pushArt && len(img) > 0 {
-            msgs = append(msgs, wsMsg{websocket.MessageBinary, img})
-//          } else {
-//            msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte{}})
-          }
+      case "playlist":
+        if ev.PlaylistRev != lastPlaylistRev {
+          lastPlaylistRev = ev.PlaylistRev
+
+        msg := map[string]interface{}{
+          "system": ev.Subsystem,
+          "cmd": "changed",
+          "response": map[string]interface{} {
+            "playlist_rev": ev.PlaylistRev,
+          },
+        }
+        data, _ := json.Marshal(msg)
+        msgs = append(msgs, wsMsg{websocket.MessageText, data})
+        } else {
+//         return nil, ev.Target, false
         }
 
-        return err
-      }, "wsWatcher-gBAA")
-
-      if err != nil {
-        log.Printf("[wsW] Art: mpdDo/gBAA failed: %v", err)
-        return nil, false
-      }
-    // case "player"
-
-    case "playlist":
-      if ev.PlaylistRev != lastPlaylistRev {
-        lastPlaylistRev = ev.PlaylistRev
-
-      msg := map[string]interface{}{
-        "system": ev.Subsystem,
-        "cmd": "changed",
-        "response": map[string]interface{} {
-          "playlist_rev": ev.PlaylistRev,
-        },
-      }
-      data, _ := json.Marshal(msg)
-      msgs = append(msgs, wsMsg{websocket.MessageText, data})
-      } else {
-       return nil, false
-      }
-
-    default:
-      return nil, false
+      default:
+//        return nil, ev.Target, false
+        log.Printf("default case of func eventProcessor hit")
     } // end of switch
 
-  return msgs, pushArt
+    wsBroadcastMsgs(msgs, ev.Target, pushArt)
+  }
 } // func eventProcessor
+
+func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
+    // --- push to subscribed connections ---
+    globalWSHub.mu.Lock()
+
+    var recipients []*websocket.Conn
+
+    if target != nil {
+      recipients = []*websocket.Conn{target}
+    } else {
+      for conn := range globalWSHub.conns {
+        recipients = append(recipients, conn)
+      }
+    }
+
+    globalWSHub.mu.Unlock()
+
+    for _, conn := range recipients {
+      dead := false
+
+      dbg("[wsW] primary for push loop: %v", conn)
+
+//      globalWSHub.writeMu.Lock()
+
+      write := func(typ websocket.MessageType, payload []byte) bool {
+        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+        defer cancel()
+
+        err := conn.Write(wctx, typ, payload)
+        if err != nil {
+          log.Printf("[wsW] write failed, removing conn: %v", err)
+          conn.Close(websocket.StatusNormalClosure, "")
+          dead = true
+          return false
+        }
+        return true
+      }
+
+      dbg("[wsW] broadcast start conn=%p", conn)
+
+      for _, m := range msgs {
+        if !write(m.typ, m.data) {
+          dead = true
+          break
+        } else if m.typ == 1 {
+          var v any
+          if err := json.Unmarshal(m.data, &v); err != nil {
+            log.Printf("[wsW] bad json: %v", err)
+          } else {
+            data := truncateJSON(v)
+            log.Printf("[wsW] websocket.MessageText: %#v", data)
+          }
+        } else if m.typ == 2 {
+//          var artHash uint64
+//          if art != nil {
+//            artHash = art.Hash
+//          }
+//          log.Printf("[wsW] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
+            log.Printf("[wsW] Pushed binary data frame message")
+        }
+      }
+
+//      globalWSHub.writeMu.Unlock()
+
+      if dead {
+        globalWSHub.mu.Lock()
+        delete(globalWSHub.conns, conn)
+        globalWSHub.mu.Unlock()
+        continue
+      }
+
+      dbg("[wsW] broadcast complete conn=%p", conn)
+    }
+} // func wsBroadcastMsgs
 
 
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
@@ -3664,7 +3766,7 @@ log.Printf("abs: %s", abs)
         }, "JSON-next-postStatus"); err != nil {
           errors = append(errors, fmt.Sprintf("Fetch status failed: %s", err))
         } else if newSongID == songID {
-          errors = append(errors, fmt.Sprintf("Song ID unchanged; newSongID: %s; lastSongID: %s", newSongID, songID))
+          errors = append(errors, fmt.Sprintf("Song ID unchanged; newSongID: %d; lastSongID: %d", newSongID, songID))
         } else {
           responses = append(responses, fmt.Sprintf("playing %d", newSongZI+1))
         }
@@ -4967,7 +5069,7 @@ log.Printf("abs: %s", abs)
             xyErr = fmt.Errorf("Nothing to do, X = Y: %d = %d", xy.start, xy.end)
             xy.active = false
             if err := c.Consume(state.consume); err != nil {
-              log.Print("[XY] failed to return consume or original %v state: %v", state.consume, err)
+              log.Printf("[XY] failed to return consume or original %v state: %v", state.consume, err)
             }
           }
 
@@ -6623,7 +6725,7 @@ func verbProcessor(csv string) []string {
       responses = append(responses,
         fmt.Sprintf("writetime=%s", ds.WriteTime),
         fmt.Sprintf("lingersong=%d", ds.SongZI+1),
-        fmt.Sprintf("lingersongid=%s", ds.SongID),
+        fmt.Sprintf("lingersongid=%d", ds.SongID),
         fmt.Sprintf("lingerpause=%d", ds.Paused),
         fmt.Sprintf("lingercount=%d", ds.Count),
         fmt.Sprintf("lingerbase=%d", ds.BaseLimit),
@@ -7484,7 +7586,7 @@ func deriveStateLocked(songZI int, songID int, songURI string, limit int) *deriv
 func formatState(w io.Writer, ds *derivedState) {
   fmt.Fprintf(w, "writetime=%s\n", ds.WriteTime)
   fmt.Fprintf(w, "lingersong=%d\n", ds.SongZI+1)
-  fmt.Fprintf(w, "lingersongid=%s\n", ds.SongID)
+  fmt.Fprintf(w, "lingersongid=%d\n", ds.SongID)
   fmt.Fprintf(w, "lingerpause=%d\n", ds.Paused)
   fmt.Fprintf(w, "lingercount=%d\n", ds.Count)
   fmt.Fprintf(w, "lingerbase=%d\n", ds.BaseLimit)
@@ -8199,7 +8301,7 @@ func main() {
   }
 
   log.Printf(
-      "[main] Starting block count=%d, lastSongZI=%d; lastSongID=%s, baseLimit=%d, blockLimit=%d",
+      "[main] Starting block count=%d, lastSongZI=%d; lastSongID=%d, baseLimit=%d, blockLimit=%d",
       state.count,
       state.lastSongZI,
       state.lastSongID,
@@ -8237,9 +8339,11 @@ func main() {
   }
   log.Printf("[main] Listening for clients on %s", addr)
 
+  // Spawn a goroutine to process idleEvents channel
+  go eventProcessor()
+
   // Spawn a goroutine to accept clients
   go acceptClients(ln)
-
 
   pulseChan := make(chan PulseV1, 1)
 
