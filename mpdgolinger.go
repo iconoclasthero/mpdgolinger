@@ -2284,89 +2284,90 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
     return out
   }
 
+  var b []byte
   to := "all"
   if target != nil { to = cid(target) }
 
-  b, _ := json.MarshalIndent(debugMsgs(msgs), "", "  ")
+  if debug {
+    b, _ = json.MarshalIndent(debugMsgs(msgs), "", "  ")
+  }
+
   log.Printf("[wsBM] started, to: %s, %s\n", to, string(b))
-    // --- push to subscribed connections ---
-    globalWSHub.mu.Lock()
 
-    var recipients []*websocket.Conn
+  // --- push to subscribed connections ---
+  globalWSHub.mu.Lock()
 
-    if target != nil {
-      recipients = []*websocket.Conn{target}
-    } else {
-      for conn := range globalWSHub.conns {
-        recipients = append(recipients, conn)
+  var recipients []*websocket.Conn
+
+  if target != nil {
+    recipients = []*websocket.Conn{target}
+  } else {
+    for conn := range globalWSHub.conns {
+      recipients = append(recipients, conn)
+    }
+  }
+
+  globalWSHub.mu.Unlock()
+
+  log.Printf("[wsBM] recepient count=%d", len(recipients))
+
+  for _, conn := range recipients {
+    log.Printf("[wsBM] conn: %s", cid(conn))
+  }
+
+
+  for _, conn := range recipients {
+    dead := false
+
+    log.Printf("[wsBM] primary for push loop: %v", cid(conn))
+
+    write := func(typ websocket.MessageType, payload []byte) bool {
+      wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+      defer cancel()
+
+      err := conn.Write(wctx, typ, payload)
+      if err != nil {
+        log.Printf("[wsBM] write failed, removing conn: %v", err)
+        conn.Close(websocket.StatusNormalClosure, "")
+        dead = true
+        return false
       }
+      return true
     }
 
-    globalWSHub.mu.Unlock()
+    log.Printf("[wsBM] broadcast start conn=%p", cid(conn))
 
-    log.Printf("[wsBM] recepient count=%d", len(recipients))
-
-    for _, conn := range recipients {
-      log.Printf("[wsBM] conn: %s", cid(conn))
-    }
-
-
-    for _, conn := range recipients {
-      dead := false
-
-      log.Printf("[wsBM] primary for push loop: %v", cid(conn))
-
-//      globalWSHub.writeMu.Lock()
-
-      write := func(typ websocket.MessageType, payload []byte) bool {
-        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-        defer cancel()
-
-        err := conn.Write(wctx, typ, payload)
-        if err != nil {
-          log.Printf("[wsBM] write failed, removing conn: %v", err)
-          conn.Close(websocket.StatusNormalClosure, "")
-          dead = true
-          return false
+    for _, m := range msgs {
+      if !write(m.typ, m.data) {
+        dead = true
+        break
+      } else if m.typ == 1 {
+        var v any
+        if err := json.Unmarshal(m.data, &v); err != nil {
+          log.Printf("[wsBM] bad json: %v", err)
+        } else {
+          data := truncateJSON(v)
+          log.Printf("[wsBM] to: %s, websocket.MessageText: %#v", cid(conn), data)
         }
-        return true
-      }
-
-      log.Printf("[wsBM] broadcast start conn=%p", cid(conn))
-
-      for _, m := range msgs {
-        if !write(m.typ, m.data) {
-          dead = true
-          break
-        } else if m.typ == 1 {
-          var v any
-          if err := json.Unmarshal(m.data, &v); err != nil {
-            log.Printf("[wsBM] bad json: %v", err)
-          } else {
-            data := truncateJSON(v)
-            log.Printf("[wsBM] to: %s, websocket.MessageText: %#v", cid(conn), data)
-          }
-        } else if m.typ == 2 {
+      } else if m.typ == 2 {
 //          var artHash uint64
 //          if art != nil {
 //            artHash = art.Hash
 //          }
 //          log.Printf("[wsBM] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
-            log.Printf("[wsBM] Pushed binary data frame message to %s", cid(conn))
-        }
+          log.Printf("[wsBM] Pushed binary data frame message to %s", cid(conn))
       }
-
-//      globalWSHub.writeMu.Unlock()
-
-      if dead {
-        globalWSHub.mu.Lock()
-        delete(globalWSHub.conns, conn)
-        globalWSHub.mu.Unlock()
-        continue
-      }
-
-      dbg("[wsBM] broadcast complete conn=%p", cid(conn))
     }
+
+    if dead {
+      globalWSHub.mu.Lock()
+      delete(globalWSHub.conns, conn)
+      globalWSHub.mu.Unlock()
+      continue
+    }
+
+    dbg("[wsBM] broadcast complete conn=%p", cid(conn))
+  }
 } // func wsBroadcastMgr
 
 
