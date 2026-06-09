@@ -2252,7 +2252,27 @@ func eventProcessor(){
 } // func eventProcessor
 
 func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
-  log.Printf("[wsBM] started, target: %s", cid(target)) // msgs[0]") //: %v", truncateJSON(msgs[0]))
+  debugMsgs := func(m wsMsg) any {
+    if m.typ == websocket.MessageBinary {
+      return map[string]any{
+        "type": "binary",
+        "len":  len(m.data),
+      }
+    }
+
+    var v any
+    if err := json.Unmarshal(m.data, &v); err != nil {
+      return map[string]any{
+        "type": "text",
+        "error": err.Error(),
+        "raw":   string(m.data),
+      }
+    }
+
+    return truncateJSON(v)
+  }
+
+  log.Printf("[wsBM] started, to: %s", cid(target), debugMsgs(msgs[0]))
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
 
