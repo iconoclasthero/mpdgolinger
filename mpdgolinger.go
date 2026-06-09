@@ -1942,12 +1942,12 @@ func eventProcessor(){
         status, notes, err = MPDtags(nil, "status", "status")
         if err != nil {
           log.Printf("[eP] MPDtags error in pauseTimer case: %v", err)
-//          return nil, ev.Target, false
+          continue
         }
 
         if err := convert2json(status, js); err != nil {
           log.Printf("[eP] convert2json error in pauseTimer case: %v", err)
-//          return nil, ev.Target, false
+          continue
         }
 
         // also add js to msgs
@@ -1971,7 +1971,7 @@ func eventProcessor(){
             b, _ := json.MarshalIndent(ev, "", "  ")
         	  log.Printf("[eP] skipped ev:--------------------------------------\n%s", string(b))
           }
-//          return nil, ev.Target, false
+          continue
         } else {
           log.Printf("[eP] Idle player event!---------------------------------")
           b, _ := json.MarshalIndent(ev, "", "  ")
@@ -2001,7 +2001,7 @@ func eventProcessor(){
 
         for _, entry := range resp {
           if entry == "" {
-//            return nil, ev.Target, false
+            continue
           }
   //        msgs = append(msgs, []byte(entry))
   //        _ = append(msgs, []byte(entry))
@@ -2013,7 +2013,7 @@ func eventProcessor(){
         if len(resp) > 0 {
           if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
             log.Printf("[eP] unmarshal error: %v", err)
-//            return nil, ev.Target, false
+            continue
           }
         }
 
@@ -2084,7 +2084,7 @@ func eventProcessor(){
           data, err := json.Marshal(msg)
           if err != nil {
             log.Printf("[eP] log marshal failed: %v", err)
-//            return nil, ev.Target, false
+            continue
           }
 
           msgs = append(msgs, wsMsg{websocket.MessageText, data})
@@ -2202,7 +2202,7 @@ func eventProcessor(){
 
         if err != nil {
           log.Printf("[eP] Art: mpdDo/gBAA failed: %v", err)
-//          return nil, ev.Target, false
+          continue
         }
       // case "player"
 
@@ -2220,11 +2220,10 @@ func eventProcessor(){
         data, _ := json.Marshal(msg)
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
         } else {
-//         return nil, ev.Target, false
+          continue
         }
 
       default:
-//        return nil, ev.Target, false
         log.Printf("[eP] default case of eventProcessor switch, continuing; ev.Subsytem: %s", ev.Subsystem)
         continue
     } // end of switch
