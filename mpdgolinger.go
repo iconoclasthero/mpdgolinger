@@ -1687,6 +1687,13 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   wsConns[conn] = struct{}{}
   wsMu.Unlock()
 
+  // assign connIDs
+  id := fmt.Sprintf("ws-%d", nextID.Add(1))
+
+  connIDMu.Lock()
+  connID[conn] = id
+  connIDMu.Unlock()
+
   // cleanup on exit
   defer func() {
     wsMu.Lock()
