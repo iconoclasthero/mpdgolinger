@@ -1912,7 +1912,7 @@ func eventProcessor(ev IdleEvent) ([]wsMsg, bool) {
 
 
     case "player":
-      if dedupePlayerEV(ev, evState.lastPlayerEV) && ! ev.Subscribe {
+      if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
         log.Printf("[wsW] Skipping duplicate idle event!---------------------")
   	    if true {
           b, _ := json.MarshalIndent(ev, "", "  ")
