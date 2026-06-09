@@ -1909,7 +1909,7 @@ func eventProcessor(){
     )
 
   for ev := range idleEvents {
-    log.Printf("[eP] for ev := range idleEvents started, ev.Subsystem: %s", ev.Subsystem)
+    log.Printf("[eP] for ev := range idleEvents started, ev.Subsystem: %s, # msgs: %d", ev.Subsystem, len(msgs))
     switch ev.Subsystem {
       case "pulseaudio":
         log.Printf("[eP] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
@@ -2224,7 +2224,7 @@ func eventProcessor(){
 
       default:
 //        return nil, ev.Target, false
-        log.Printf("[eP] default case of func eventProcessor hit, continuing; ev.Subsytem: %s", ev.Subsystem)
+        log.Printf("[eP] default case of eventProcessor switch, continuing; ev.Subsytem: %s", ev.Subsystem)
         continue
     } // end of switch
 
