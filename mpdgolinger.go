@@ -2222,7 +2222,9 @@ func eventProcessor(){
         log.Printf("[eP] default case of func eventProcessor hit; ev.Subsytem: %s", ev.Subsystem)
     } // end of switch
 
-    wsBroadcastMsgs(msgs, ev.Target)
+    if msgs != nil {
+      wsBroadcastMsgs(msgs, ev.Target)
+    }
   }
 } // func eventProcessor
 
