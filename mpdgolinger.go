@@ -2223,13 +2223,16 @@ func eventProcessor(){
     } // end of switch
 
     if msgs != nil {
+      log.Printf("[eP] calling wsBroadcastMsgs")
       wsBroadcastMsgs(msgs, ev.Target)
+    } else {
+      log.Printf("[eP] NOT calling wsBroadcastMsgs, ev.Subsystem: %s", ev.Subsystem)
     }
   }
 } // func eventProcessor
 
 func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
-  log.Printf("[wsBM] started, msgs[0]: %v", truncateJSON(msgs[0]))
+  log.Printf("[wsBM] started, msgs[0]") //: %v", truncateJSON(msgs[0]))
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
 
