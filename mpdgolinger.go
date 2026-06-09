@@ -2272,7 +2272,7 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
     return truncateJSON(v)
   }
 
-  log.Printf("[wsBM] started, to: %s", cid(target), debugMsgs(msgs[0]))
+  log.Printf("[wsBM] started, to: %s, %#v", cid(target), debugMsgs(msgs[0]))
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
 
