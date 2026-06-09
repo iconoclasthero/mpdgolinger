@@ -1764,12 +1764,13 @@ func wsWatcher(ctx *wsCtx) {
 	            data := truncateJSON(v)
 	            log.Printf("[wsW] websocket.MessageText: %#v", data)
 	          }
-//	        } else if m.typ == 2 {
+	        } else if m.typ == 2 {
 //	          var artHash uint64
 //	          if art != nil {
 //	            artHash = art.Hash
 //	          }
 //	          log.Printf("[wsW] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
+            log.Printf("[wsW] Pushed binary data frame message")
 	        }
 	      }
 
