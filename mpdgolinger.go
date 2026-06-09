@@ -2219,11 +2219,12 @@ func eventProcessor(){
 
       default:
 //        return nil, ev.Target, false
-        log.Printf("[eP] default case of func eventProcessor hit; ev.Subsytem: %s", ev.Subsystem)
+        log.Printf("[eP] default case of func eventProcessor hit, continuing; ev.Subsytem: %s", ev.Subsystem)
+        continue
     } // end of switch
 
     if msgs != nil {
-      log.Printf("[eP] calling wsBroadcastMsgs")
+      log.Printf("[eP] calling wsBroadcastMsgs, ev.Subsystem: %s", ev.Subsystem)
       wsBroadcastMsgs(msgs, ev.Target)
     } else {
       log.Printf("[eP] NOT calling wsBroadcastMsgs, ev.Subsystem: %s", ev.Subsystem)
