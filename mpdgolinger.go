@@ -2227,6 +2227,7 @@ func eventProcessor(){
 } // func eventProcessor
 
 func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
+  log.Printf("[wsBM] started, %s", truncateJSON(msgs))
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
 
