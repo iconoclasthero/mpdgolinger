@@ -2287,7 +2287,8 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
   to := "all"
   if target != nil { to = cid(target) }
 
-  log.Printf("[wsBM] started, to: %s, %v\n", to, debugMsgs(msgs))
+  b, _ := json.MarshalIndent(debugMsgs(msgs), "", "  ")
+  log.Printf("[wsBM] started, to: %s, %s\n", to, string(b))
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
 
@@ -2300,12 +2301,8 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
         recipients = append(recipients, conn)
       }
     }
-    log.Printf("[wsBM] recepient count=%d", len(recipients))
 
     globalWSHub.mu.Unlock()
-
-
-    log.Printf("[wsBM] after globalWSHub.mu.Unlock()")
 
     log.Printf("[wsBM] recepient count=%d", len(recipients))
 
