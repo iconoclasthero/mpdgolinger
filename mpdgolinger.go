@@ -1909,6 +1909,7 @@ func eventProcessor(){
     )
 
   for ev := range idleEvents {
+    msgs = nil
     log.Printf("[eP] for ev := range idleEvents started, ev.Subsystem: %s, # msgs: %d", ev.Subsystem, len(msgs))
     switch ev.Subsystem {
       case "pulseaudio":
