@@ -1866,8 +1866,8 @@ func eventProcessor(){
     return true
   } // func dedupePlayerEV
 
-//  log.Printf("[wsW] RECV watcher=%d rev=%d songID=%d", watcherID, ev.PlaylistRev, ev.SongID)
-//  log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d", watcherID, &ev, ev.SongID)
+//  log.Printf("[eP] RECV watcher=%d rev=%d songID=%d", watcherID, ev.PlaylistRev, ev.SongID)
+//  log.Printf("[eP] RECV watcher=%d evPtr=%p songID=%d", watcherID, &ev, ev.SongID)
 
     var (
       msgs            []wsMsg  // accumulate messages to send
@@ -1888,7 +1888,7 @@ func eventProcessor(){
   for ev := range idleEvents {
     switch ev.Subsystem {
       case "pulseaudio":
-        log.Printf("[wsW] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
+        log.Printf("[eP] pulseaudio case started; ev:PulseData: %v", ev.PulseData)
         pd := ev.PulseData
 
         pulseMu.Lock()
@@ -1901,7 +1901,7 @@ func eventProcessor(){
           "response": pd,
         }
 
-        log.Printf("[wsW] pulseaudio case, adding msg: %v", msg)
+        log.Printf("[eP] pulseaudio case, adding msg: %v", msg)
 
         data, _ := json.Marshal(msg)
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
@@ -1916,19 +1916,19 @@ func eventProcessor(){
         // fetch MPD status first
         status, notes, err = MPDtags(nil, "status", "status")
         if err != nil {
-          log.Printf("[wsW] MPDtags error in pauseTimer case: %v", err)
+          log.Printf("[eP] MPDtags error in pauseTimer case: %v", err)
 //          return nil, ev.Target, false
         }
 
         if err := convert2json(status, js); err != nil {
-          log.Printf("[wsW] convert2json error in pauseTimer case: %v", err)
+          log.Printf("[eP] convert2json error in pauseTimer case: %v", err)
 //          return nil, ev.Target, false
         }
 
         // also add js to msgs
         data, err := json.Marshal(js)
         if err != nil {
-          log.Printf("[wsW] pauseTimer CASE marshal %v", err)
+          log.Printf("[eP] pauseTimer CASE marshal %v", err)
           break
         }
 
@@ -1941,16 +1941,16 @@ func eventProcessor(){
 
       case "player":
         if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
-          log.Printf("[wsW] Skipping duplicate idle event!---------------------")
+          log.Printf("[eP] Skipping duplicate idle event!---------------------")
     	    if true {
             b, _ := json.MarshalIndent(ev, "", "  ")
-        	  log.Printf("[wsW] skipped ev:--------------------------------------\n%s", string(b))
+        	  log.Printf("[eP] skipped ev:--------------------------------------\n%s", string(b))
           }
 //          return nil, ev.Target, false
         } else {
-          log.Printf("[wsW] Idle player event!---------------------------------")
+          log.Printf("[eP] Idle player event!---------------------------------")
           b, _ := json.MarshalIndent(ev, "", "  ")
-          log.Printf("[wsW] ev:------------------------------------------------\n%s", string(b))
+          log.Printf("[eP] ev:------------------------------------------------\n%s", string(b))
         }
 
 
@@ -1967,7 +1967,7 @@ func eventProcessor(){
   //      n []string
         )
 
-        log.Printf("[wsW] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
+        log.Printf("[eP] idle event subsystem=%s rev=%d", ev.Subsystem, ev.PlaylistRev)
 
         // -----------------------
         // STATUS FRAME
@@ -1987,7 +1987,7 @@ func eventProcessor(){
         // ---------------------------
         if len(resp) > 0 {
           if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
-            log.Printf("[wsW] unmarshal error: %v", err)
+            log.Printf("[eP] unmarshal error: %v", err)
 //            return nil, ev.Target, false
           }
         }
@@ -1995,7 +1995,7 @@ func eventProcessor(){
         // -----------------------
         // STATUS FRAME
         // -----------------------
-        log.Printf("[wsW] PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
+        log.Printf("[eP] PUSH subscribed status subsystem=%s subscribe=%v", ev.Subsystem, ev.Subscribe)
         env := map[string]any{
             "system": "subscribed",
                "cmd": "json-status",
@@ -2058,7 +2058,7 @@ func eventProcessor(){
 
           data, err := json.Marshal(msg)
           if err != nil {
-            log.Printf("[wsW] log marshal failed: %v", err)
+            log.Printf("[eP] log marshal failed: %v", err)
 //            return nil, ev.Target, false
           }
 
@@ -2075,7 +2075,7 @@ func eventProcessor(){
           var jsArt map[string]any
           art, err2 = getBestAlbumArt(c, uri)
           if err2 != nil {
-            log.Printf("[wsW] getBestAlbumArt error for %q: %v", uri, err2)
+            log.Printf("[eP] getBestAlbumArt error for %q: %v", uri, err2)
             img = nil
             return err2
           }
@@ -2083,18 +2083,18 @@ func eventProcessor(){
           if art != nil {
             img = art.Img
             if evState.lastArtHash == 0 {
-              log.Printf("[wsW] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
+              log.Printf("[eP] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
                 evState.lastArtHash)
             }
             hashMatch := art.Hash ==  evState.lastArtHash
             log.Printf(
-              "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
+              "[eP] AlbumArt selected %s hash=%d (%d bytes)",
               art.Source,
               art.Hash,
               len(img),
             )
 
-            log.Printf("[wsW] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
+            log.Printf("[eP] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
               hashMatch,
               art.Hash,
               evState.lastArtHash,
@@ -2106,7 +2106,7 @@ func eventProcessor(){
             if art.Size > 0 && (art.Hash != evState.lastArtHash || ev.Subscribe) {
               pushArt = true
               if art.Hash != evState.lastArtHash {
-                log.Printf("[wsW] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, evState.lastArtHash)
+                log.Printf("[eP] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, evState.lastArtHash)
                 evState.lastArtHash = art.Hash
               }
               jsArt = map[string]any{
@@ -2129,7 +2129,7 @@ func eventProcessor(){
                 },
               }
             } else if art.Size == 0 {
-              log.Printf("[wsW] The art.Size == 0 branch should be unreachable!")
+              log.Printf("[eP] The art.Size == 0 branch should be unreachable!")
               pushArt = false
               jsArt = map[string]any{
                   "system": "subscribed",
@@ -2159,7 +2159,7 @@ func eventProcessor(){
 
           data, err := json.Marshal(jsArt)
           if err != nil {
-            log.Printf("[wsW] Art mashal failed %v", err)
+            log.Printf("[eP] Art mashal failed %v", err)
           } else {
             // Important: enforce ordering contract
             msgs = append(msgs, wsMsg{websocket.MessageText, data})
@@ -2175,7 +2175,7 @@ func eventProcessor(){
         }, "wsWatcher-gBAA")
 
         if err != nil {
-          log.Printf("[wsW] Art: mpdDo/gBAA failed: %v", err)
+          log.Printf("[eP] Art: mpdDo/gBAA failed: %v", err)
 //          return nil, ev.Target, false
         }
       // case "player"
