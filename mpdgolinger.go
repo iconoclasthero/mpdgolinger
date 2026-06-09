@@ -2249,6 +2249,13 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
 
     globalWSHub.mu.Unlock()
 
+    log.Printf("[wsBM] after globalWSHub.mu.Unlock()")
+
+    for _, conn := range recipients {
+      log.Printf("[wsBM] conn: %s", cid(conn))
+    }
+
+
     for _, conn := range recipients {
       dead := false
 
