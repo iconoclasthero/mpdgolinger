@@ -1656,12 +1656,22 @@ func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
 }
 
 
+  type wsMsg struct {
+    typ websocket.MessageType
+    data []byte
+  }
 
+type eventState struct {
+    lastPlaylistRev int
+    lastPlayerEV    IdleEvent
+    lastArtHash     uint64
+}
 
   // Globals for wsWatcher:
   var (
-    lastArtHash     uint64
-    lastPlayerEV    IdleEvent
+//    lastArtHash     uint64
+//    lastPlayerEV    IdleEvent
+    evState           eventState
   )
 
 func wsWatcher(ctx *wsCtx) {
@@ -1669,6 +1679,116 @@ func wsWatcher(ctx *wsCtx) {
   log.Printf("[wsW] START watcher ptr=%p conn=%p", ctx, ctx.conn)
   var watcherID = atomic.LoadInt64(&wsWatcherCount)
   log.Printf("[wsW] START watcher id=%d time=%d conn=%p", watcherID, time.Now().UnixNano(), ctx.conn)
+
+  // add this connection to the set
+  ctx.mu.Lock()
+  if ctx.conns == nil {
+    ctx.conns = make(map[*websocket.Conn]struct{})
+  }
+  ctx.conns[ctx.conn] = struct{}{}
+  ctx.mu.Unlock()
+
+  defer func() {
+    ctx.mu.Lock()
+    delete(ctx.conns, ctx.conn)
+    ctx.mu.Unlock()
+    log.Println("[wsW] stopped for connection %q", ctx.conn)
+  }()
+
+  // persistent state trackers
+  log.Printf("[wsW] start initializing func-scoped vars")
+  var (
+//    lastPlayerEV    IdleEvent
+//    lastSongID      int
+//    lastArtHash     uint64
+//    lastAlbumKey string
+  )
+  log.Printf("[wsW] finsh initializing func-scoped vars")
+
+//  for range idleEvents {
+  for ev := range idleEvents {
+    var (
+        msgs []wsMsg
+    )
+
+    msgs, _ = eventProcessor(ev)
+
+
+	    // --- push to subscribed connections ---
+	    ctx.mu.Lock()
+
+	    var recipients []*websocket.Conn
+
+	    if ev.Target != nil {
+	      recipients = []*websocket.Conn{ev.Target}
+	    } else {
+	      for conn := range ctx.conns {
+	        recipients = append(recipients, conn)
+	      }
+	    }
+
+	    ctx.mu.Unlock()
+
+	    for _, conn := range recipients {
+	      dead := false
+
+	      dbg("[wsW] primary for push loop: %v", conn)
+
+	      ctx.writeMu.Lock()
+
+	      write := func(typ websocket.MessageType, payload []byte) bool {
+	        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	        defer cancel()
+
+	        err := conn.Write(wctx, typ, payload)
+	        if err != nil {
+	          log.Printf("[wsW] write failed, removing conn: %v", err)
+	          conn.Close(websocket.StatusNormalClosure, "")
+	          dead = true
+	          return false
+	        }
+	        return true
+	      }
+
+	      dbg("[wsW] broadcast start conn=%p", conn)
+
+	      for _, m := range msgs {
+	        if !write(m.typ, m.data) {
+	          dead = true
+	          break
+	        } else if m.typ == 1 {
+	          var v any
+	          if err := json.Unmarshal(m.data, &v); err != nil {
+	            log.Printf("[wsW] bad json: %v", err)
+	          } else {
+	            data := truncateJSON(v)
+	            log.Printf("[wsW] websocket.MessageText: %#v", data)
+	          }
+//	        } else if m.typ == 2 {
+//	          var artHash uint64
+//	          if art != nil {
+//	            artHash = art.Hash
+//	          }
+//	          log.Printf("[wsW] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
+	        }
+	      }
+
+	      ctx.writeMu.Unlock()
+
+	      if dead {
+	        ctx.mu.Lock()
+	        delete(ctx.conns, conn)
+	        ctx.mu.Unlock()
+	        continue
+	      }
+
+	      dbg("[wsW] broadcast complete conn=%p", conn)
+	    }
+    }
+  time.Sleep(100 * time.Millisecond)
+} //func wsWatcher()
+
+func eventProcessor(ev IdleEvent) ([]wsMsg, bool) {
 
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
     log.Printf("Started dedupePlayerEV")
@@ -1719,50 +1839,15 @@ func wsWatcher(ctx *wsCtx) {
     return true
   } // func dedupePlayerEV
 
-  // add this connection to the set
-  ctx.mu.Lock()
-  if ctx.conns == nil {
-    ctx.conns = make(map[*websocket.Conn]struct{})
-  }
-  ctx.conns[ctx.conn] = struct{}{}
-  ctx.mu.Unlock()
-
-  defer func() {
-    ctx.mu.Lock()
-    delete(ctx.conns, ctx.conn)
-    ctx.mu.Unlock()
-    log.Println("[wsW] stopped for connection %q", ctx.conn)
-  }()
-
-  type wsMsg struct {
-    typ websocket.MessageType
-    data []byte
-  }
-
-  // persistent state trackers
-  log.Printf("[wsW] start initializing func-scoped vars")
-  var (
-    lastPlaylistRev int
-//    lastPlayerEV    IdleEvent
-//    lastSongID      int
-//    lastArtHash     uint64
-//    lastAlbumKey string
-  )
-  log.Printf("[wsW] finsh initializing func-scoped vars")
-
-//  for range idleEvents {
-  for ev := range idleEvents {
-
-log.Printf("[wsW] RECV watcher=%d rev=%d songID=%d",
-    watcherID, ev.PlaylistRev, ev.SongID)
-log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
-    watcherID, &ev, ev.SongID)
+//  log.Printf("[wsW] RECV watcher=%d rev=%d songID=%d", watcherID, ev.PlaylistRev, ev.SongID)
+//  log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d", watcherID, &ev, ev.SongID)
 
     var (
       msgs            []wsMsg  // accumulate messages to send
 //    data            []byte
 //    notes           []string
 //      img             []byte
+      lastPlaylistRev int
       pushArt         bool
       uri             string
       art             *AlbumArtResult
@@ -1804,12 +1889,12 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
       status, notes, err = MPDtags(nil, "status", "status")
       if err != nil {
         log.Printf("[wsW] MPDtags error in pauseTimer case: %v", err)
-        continue
+        return nil, false
       }
 
       if err := convert2json(status, js); err != nil {
         log.Printf("[wsW] convert2json error in pauseTimer case: %v", err)
-        continue
+        return nil, false
       }
 
       // also add js to msgs
@@ -1818,20 +1903,22 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
         log.Printf("[wsW] pauseTimer CASE marshal %v", err)
         break
       }
+
       msgs = append(msgs, wsMsg{websocket.MessageText, data})
       for _, note := range notes {
         // msgs = append(msgs, []byte(note))
         msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte(note)})
       }
 
+
     case "player":
-      if dedupePlayerEV(ev, lastPlayerEV) {
+      if dedupePlayerEV(ev, evState.lastPlayerEV) {
         log.Printf("[wsW] Skipping duplicate idle event!---------------------")
   	    if true {
           b, _ := json.MarshalIndent(ev, "", "  ")
       	  log.Printf("[wsW] skipped ev:--------------------------------------\n%s", string(b))
         }
-        continue
+        return nil, false
       } else {
         log.Printf("[wsW] Idle player event!---------------------------------")
         b, _ := json.MarshalIndent(ev, "", "  ")
@@ -1839,7 +1926,7 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
       }
 
 
-      lastPlayerEV = ev
+      evState.lastPlayerEV = ev
 
       var (
         st          StatusV1
@@ -1861,7 +1948,7 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
 
       for _, entry := range resp {
         if entry == "" {
-          continue
+          return nil, false
         }
 //        msgs = append(msgs, []byte(entry))
 //        _ = append(msgs, []byte(entry))
@@ -1873,7 +1960,7 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
       if len(resp) > 0 {
         if err := json.Unmarshal([]byte(resp[0]), &st); err != nil {
           log.Printf("[wsW] unmarshal error: %v", err)
-          continue
+          return nil, false
         }
       }
 
@@ -1944,7 +2031,7 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
         data, err := json.Marshal(msg)
         if err != nil {
           log.Printf("[wsW] log marshal failed: %v", err)
-          continue
+          return nil, false
         }
 
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
@@ -1962,16 +2049,16 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
         if err2 != nil {
           log.Printf("[wsW] getBestAlbumArt error for %q: %v", uri, err2)
           img = nil
-          return nil
+          return err2
         }
 
         if art != nil {
           img = art.Img
-          if lastArtHash == 0 {
+          if evState.lastArtHash == 0 {
             log.Printf("[wsW] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
-              lastArtHash)
+              evState.lastArtHash)
           }
-          hashMatch := art.Hash == lastArtHash
+          hashMatch := art.Hash ==  evState.lastArtHash
           log.Printf(
             "[wsW] AlbumArt selected %s hash=%d (%d bytes)",
             art.Source,
@@ -1982,17 +2069,17 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
           log.Printf("[wsW] ART CHECK hashMatch: %v art=%d last=%d subscribe=%v subsystem=%s",
             hashMatch,
             art.Hash,
-            lastArtHash,
+            evState.lastArtHash,
             ev.Subscribe,
             ev.Subsystem,
           )
           // dedupe based on image hash (NOT albumKey)
           pushArt = false
-          if art.Size > 0 && (art.Hash != lastArtHash || ev.Subscribe) {
+          if art.Size > 0 && (art.Hash != evState.lastArtHash || ev.Subscribe) {
             pushArt = true
-            if art.Hash != lastArtHash {
-              log.Printf("[wsW] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, lastArtHash)
-              lastArtHash = art.Hash
+            if art.Hash != evState.lastArtHash {
+              log.Printf("[wsW] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, evState.lastArtHash)
+              evState.lastArtHash = art.Hash
             }
             jsArt = map[string]any{
                 "system": "subscribed",
@@ -2056,12 +2143,12 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
           }
         }
 
-        return nil
+        return err
       }, "wsWatcher-gBAA")
 
       if err != nil {
         log.Printf("[wsW] Art: mpdDo/gBAA failed: %v", err)
-        continue
+        return nil, false
       }
     // case "player"
 
@@ -2079,170 +2166,16 @@ log.Printf("[wsW] RECV watcher=%d evPtr=%p songID=%d",
       data, _ := json.Marshal(msg)
       msgs = append(msgs, wsMsg{websocket.MessageText, data})
       } else {
-       continue
+       return nil, false
       }
 
     default:
-      continue
+      return nil, false
     } // end of switch
 
-    // nothing to send → skip
-    if len(msgs) == 0 && !pushArt {
-      continue
-    }
+  return msgs, pushArt
+} // func eventProcessor
 
-//    // --- push to all subscribed connections ---
-//    ctx.mu.Lock()
-//
-//    var recipients []*websocket.Conn
-//
-//    if ev.Target != nil {
-//        recipients = []*websocket.Conn{ev.Target}
-//    } else {
-//        for conn := range ctx.conns {
-//            recipients = append(recipients, conn)
-//        }
-//    }
-//
-//    ctx.mu.Unlock()
-//
-////    for conn := range ctx.conns {
-//    for _, conn := range recipients {
-//      dead := false
-//      dbg("[wsW] primary for push loop: %v", conn)
-//      ctx.writeMu.Lock()
-//
-//      write := func(typ websocket.MessageType, payload []byte) bool {
-//        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-//        defer cancel()
-//
-//        err := conn.Write(wctx, typ, payload)
-//        if err != nil {
-//          log.Printf("[wsW] write failed, removing conn: %v", err)
-//          conn.Close(websocket.StatusNormalClosure, "")
-//          dead = true
-//          return false
-//        }
-//        return true
-//      }
-//
-//      dbg("broadcast start conn=%p", conn)
-//
-//      for _, m := range msgs {
-//        if !write(m.typ, m.data) {
-//          dead = true
-//          break
-//        } else if m.typ == 1 {
-//          var v any
-//          if err := json.Unmarshal(m.data, &v); err != nil {
-//            log.Printf("[wsW] bad json: %v", err)
-//          } else {
-//            data := truncateJSON(v)
-//            log.Printf("[wsW] websocket.MessageText: %#v", data)
-//          }
-//        } else if m.typ == 2 {
-//            var artHash uint64
-//            if art != nil {
-//              artHash = art.Hash
-//            }
-//            log.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>[wsW] websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
-//        }
-//      }
-//
-//      if dead {
-//        ctx.writeMu.Unlock()
-//        delete(ctx.conns, conn)
-//        continue
-//      }
-//
-//      ctx.writeMu.Unlock()
-//
-//      if dead {
-//        delete(ctx.conns, conn)
-//        continue
-//      }
-//
-//      dbg("broadcast complete conn=%p", conn)
-//    }
-//
-//    ctx.mu.Unlock()
-//  }
-//  time.Sleep(100 * time.Millisecond)
-//}
-
-	    // --- push to subscribed connections ---
-	    ctx.mu.Lock()
-
-	    var recipients []*websocket.Conn
-
-	    if ev.Target != nil {
-	      recipients = []*websocket.Conn{ev.Target}
-	    } else {
-	      for conn := range ctx.conns {
-	        recipients = append(recipients, conn)
-	      }
-	    }
-
-	    ctx.mu.Unlock()
-
-	    for _, conn := range recipients {
-	      dead := false
-
-	      dbg("[wsW] primary for push loop: %v", conn)
-
-	      ctx.writeMu.Lock()
-
-	      write := func(typ websocket.MessageType, payload []byte) bool {
-	        wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	        defer cancel()
-
-	        err := conn.Write(wctx, typ, payload)
-	        if err != nil {
-	          log.Printf("[wsW] write failed, removing conn: %v", err)
-	          conn.Close(websocket.StatusNormalClosure, "")
-	          dead = true
-	          return false
-	        }
-	        return true
-	      }
-
-	      dbg("[wsW] broadcast start conn=%p", conn)
-
-	      for _, m := range msgs {
-	        if !write(m.typ, m.data) {
-	          dead = true
-	          break
-	        } else if m.typ == 1 {
-	          var v any
-	          if err := json.Unmarshal(m.data, &v); err != nil {
-	            log.Printf("[wsW] bad json: %v", err)
-	          } else {
-	            data := truncateJSON(v)
-	            log.Printf("[wsW] websocket.MessageText: %#v", data)
-	          }
-	        } else if m.typ == 2 {
-	          var artHash uint64
-	          if art != nil {
-	            artHash = art.Hash
-	          }
-	          log.Printf("[wsW] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
-	        }
-	      }
-
-	      ctx.writeMu.Unlock()
-
-	      if dead {
-	        ctx.mu.Lock()
-	        delete(ctx.conns, conn)
-	        ctx.mu.Unlock()
-	        continue
-	      }
-
-	      dbg("[wsW] broadcast complete conn=%p", conn)
-	    }
-    }
-  time.Sleep(100 * time.Millisecond)
-} //func wsWatcher()
 
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
 func truncateJSON(v any) any {
