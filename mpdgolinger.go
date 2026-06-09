@@ -1841,7 +1841,7 @@ func wsWatcher(ctx *wsCtx) {
 func eventProcessor(){
 
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
-    log.Printf("Started dedupePlayerEV")
+    log.Printf("[eP/dPEV] Started dedupePlayerEV")
     // Handle nil pointer protection for Status if it is a pointer
     if (current.Status == nil) != (last.Status == nil) {
       return false
@@ -1885,7 +1885,7 @@ func eventProcessor(){
         return false // A meaningful value changed or is missing
       }
     }
-
+    log.Printf("[eP/dPEV] dedupePlayerEV returning TRUE")
     return true
   } // func dedupePlayerEV
 
@@ -2243,15 +2243,15 @@ func eventProcessor(){
     } // end of switch
 
     if msgs != nil {
-      log.Printf("[eP] calling wsBroadcastMsgs, ev.Subsystem: %s", ev.Subsystem)
-      wsBroadcastMsgs(msgs, ev.Target)
+      log.Printf("[eP] calling wsBroadcastMgr, ev.Subsystem: %s", ev.Subsystem)
+      wsBroadcastMgr(msgs, ev.Target)
     } else {
-      log.Printf("[eP] NOT calling wsBroadcastMsgs, ev.Subsystem: %s", ev.Subsystem)
+      log.Printf("[eP] NOT calling wsBroadcastMgr, ev.Subsystem: %s", ev.Subsystem)
     }
   }
 } // func eventProcessor
 
-func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
+func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
   log.Printf("[wsBM] started, target: %s", cid(target)) // msgs[0]") //: %v", truncateJSON(msgs[0]))
     // --- push to subscribed connections ---
     globalWSHub.mu.Lock()
@@ -2335,7 +2335,7 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn) {
 
       dbg("[wsBM] broadcast complete conn=%p", cid(conn))
     }
-} // func wsBroadcastMsgs
+} // func wsBroadcastMgr
 
 
 // truncateJSON recursively finds and truncates floats and strings inside the JSON any value
