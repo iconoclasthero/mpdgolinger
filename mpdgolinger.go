@@ -2225,7 +2225,7 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
     for _, conn := range recipients {
       dead := false
 
-      dbg("[wsW] primary for push loop: %v", conn)
+      dbg("[wsBM] primary for push loop: %v", conn)
 
 //      globalWSHub.writeMu.Lock()
 
@@ -2235,7 +2235,7 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
 
         err := conn.Write(wctx, typ, payload)
         if err != nil {
-          log.Printf("[wsW] write failed, removing conn: %v", err)
+          log.Printf("[wsBM] write failed, removing conn: %v", err)
           conn.Close(websocket.StatusNormalClosure, "")
           dead = true
           return false
@@ -2243,7 +2243,7 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
         return true
       }
 
-      dbg("[wsW] broadcast start conn=%p", conn)
+      dbg("[wsBM] broadcast start conn=%p", conn)
 
       for _, m := range msgs {
         if !write(m.typ, m.data) {
@@ -2252,18 +2252,18 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
         } else if m.typ == 1 {
           var v any
           if err := json.Unmarshal(m.data, &v); err != nil {
-            log.Printf("[wsW] bad json: %v", err)
+            log.Printf("[wsBM] bad json: %v", err)
           } else {
             data := truncateJSON(v)
-            log.Printf("[wsW] websocket.MessageText: %#v", data)
+            log.Printf("[wsBM] websocket.MessageText: %#v", data)
           }
         } else if m.typ == 2 {
 //          var artHash uint64
 //          if art != nil {
 //            artHash = art.Hash
 //          }
-//          log.Printf("[wsW] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
-            log.Printf("[wsW] Pushed binary data frame message")
+//          log.Printf("[wsBM] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
+            log.Printf("[wsBM] Pushed binary data frame message")
         }
       }
 
@@ -2276,7 +2276,7 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
         continue
       }
 
-      dbg("[wsW] broadcast complete conn=%p", conn)
+      dbg("[wsBM] broadcast complete conn=%p", conn)
     }
 } // func wsBroadcastMsgs
 
