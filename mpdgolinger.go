@@ -2199,7 +2199,7 @@ func eventProcessor(){
 
       default:
 //        return nil, ev.Target, false
-        log.Printf("default case of func eventProcessor hit")
+        log.Printf("[eP] default case of func eventProcessor hit; ev.Subsytem: %s", ev.Subsystem)
     } // end of switch
 
     wsBroadcastMsgs(msgs, ev.Target, pushArt)
@@ -2255,7 +2255,7 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
             log.Printf("[wsBM] bad json: %v", err)
           } else {
             data := truncateJSON(v)
-            log.Printf("[wsBM] websocket.MessageText: %#v", data)
+            log.Printf("[wsBM] to: %s, websocket.MessageText: %#v", conn, data)
           }
         } else if m.typ == 2 {
 //          var artHash uint64
@@ -2263,7 +2263,7 @@ func wsBroadcastMsgs(msgs []wsMsg, target *websocket.Conn, pushArt bool) {
 //            artHash = art.Hash
 //          }
 //          log.Printf("[wsBM] >>>>>>>>>>>>>>>>>>>>>>>>>>> websocket.MessageBinary len(m.data): %d; art.hash: %d; lastArtHash: %d", len(m.data), artHash, lastArtHash)
-            log.Printf("[wsBM] Pushed binary data frame message")
+            log.Printf("[wsBM] Pushed binary data frame message to %s", conn)
         }
       }
 
