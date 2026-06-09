@@ -1968,14 +1968,28 @@ func eventProcessor(){
         if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
           log.Printf("[eP] Skipping duplicate idle event!---------------------")
     	    if true {
-            b, _ := json.MarshalIndent(ev, "", "  ")
-        	  log.Printf("[eP] skipped ev:--------------------------------------\n%s", string(b))
+            log.Printf(
+              "[eP] player dbg songID=%d bitrate=%v elapsed=%v time=%v",
+              ev.SongID,
+              ev.Status["bitrate"],
+              ev.Status["elapsed"],
+              ev.Status["time"],
+            )
+//            b, _ := json.MarshalIndent(ev, "", "  ")
+//        	  log.Printf("[eP] skipped ev:--------------------------------------\n%s", string(b))
           }
           continue
         } else {
           log.Printf("[eP] Idle player event!---------------------------------")
-          b, _ := json.MarshalIndent(ev, "", "  ")
-          log.Printf("[eP] ev:------------------------------------------------\n%s", string(b))
+          log.Printf(
+            "[eP] player dbg songID=%d bitrate=%v elapsed=%v time=%v",
+            ev.SongID,
+            ev.Status["bitrate"],
+            ev.Status["elapsed"],
+            ev.Status["time"],
+          )
+//          b, _ := json.MarshalIndent(ev, "", "  ")
+//          log.Printf("[eP] ev:------------------------------------------------\n%s", string(b))
         }
 
 
