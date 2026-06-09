@@ -2243,7 +2243,11 @@ func eventProcessor(){
     } // end of switch
 
     if msgs != nil {
-      log.Printf("[eP] calling wsBroadcastMgr, ev.Subsystem: %s", ev.Subsystem)
+      if ev.Target == nil {
+        log.Printf("[eP] calling wsBroadcastMgr, ev.Subsystem: %s", ev.Subsystem)
+      } else {
+        log.Printf("[eP] calling wsBroadcastMgr, ev.Subsystem: %s, TARGET=%s", ev.Subsystem, ev.Target)
+      }
       wsBroadcastMgr(msgs, ev.Target)
     } else {
       log.Printf("[eP] NOT calling wsBroadcastMgr, ev.Subsystem: %s", ev.Subsystem)
