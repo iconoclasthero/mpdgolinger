@@ -1844,7 +1844,6 @@ func eventProcessor(){
     var (
       msgs            []wsMsg  // accumulate messages to send
       ε               float64 = 1.0
-
 //    data            []byte
 //    notes           []string
 //      img             []byte
