@@ -2049,7 +2049,9 @@ func eventProcessor(){
               evState.lastPlayerEV.Status["elapsed"],
             )
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
-          log.Printf("[ep] Δ elapsed: %.3f", delta)
+          if ev.SongID == evState.lastPlayerEV.SongID {
+            log.Printf("[ep] Δ elapsed: %.3f", delta)
+          }
           log.Printf("[eP] Idle player event!---------------------------------")
         }
 
