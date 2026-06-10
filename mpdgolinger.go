@@ -2025,7 +2025,7 @@ func eventProcessor(){
               evState.lastPlayerEV.Status["time"],
             )
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
-          log.Printf("[ep] Δ elapsed: %d", delta)
+          log.Printf("[ep] Δ elapsed: %.3f", delta)
 
           log.Printf("[eP] Skipping duplicate idle event!---------------------")
           }
@@ -2049,7 +2049,7 @@ func eventProcessor(){
               evState.lastPlayerEV.Status["time"],
             )
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
-          log.Printf("[ep] Δ elapsed: %d", delta)
+          log.Printf("[ep] Δ elapsed: %.3f", delta)
           log.Printf("[eP] Idle player event!---------------------------------")
         }
 
