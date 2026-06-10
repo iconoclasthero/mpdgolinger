@@ -1945,7 +1945,7 @@ func eventProcessor(){
           return false
         } else if Δt <= ε || ( e0 != 0 || e1 != 0 ) {
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events    Δt <= ε      s apart || lastElapsed:  e0 = elapsed: e1 = 0")
+          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart || lastElapsed:    e0 = elapsed: e1 = 0")
           log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || lastElapsed: %.3f; elapsed: %.3f", Δt, ε, e0, e1)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         } else if e0 != 0 || e1 != 0 {
