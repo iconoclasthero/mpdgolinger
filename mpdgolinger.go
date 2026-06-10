@@ -1937,12 +1937,12 @@ func eventProcessor(){
         t0, _  := strconv.ParseFloat(lastVal, 64)
         t1, _ := strconv.ParseFloat(currentVal, 64)
         if float64(time.Now().UnixNano()) / 1e9 - lastEVtime > ε {
-          if  t0 == 0 && t1 == 0 {
+          if t0 == 0 && t1 == 0 {
             log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but player events > %.3f s apart: return false", ε)
             return false
-          } else {
-            log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but player events <= %.3f s apart", ε)
           }
+        } else if t0 == 0 && t1 == 0 {
+          log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but player events <= %.3f s apart: likely duplicate", ε)
         }
         exceedsEpsilon, _, err := checkDuration(currentVal, lastVal, ε)
         if err != nil || exceedsEpsilon {
