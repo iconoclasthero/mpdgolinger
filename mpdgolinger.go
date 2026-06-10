@@ -1943,17 +1943,17 @@ func eventProcessor(){
           log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f > %.3f s apart: return false", e0, e1, Δt, ε)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
           return false
-        } else if Δt > ε || (e0 == 0 && e1 == 0) {
+        } else if Δt > ε || ( e0 == 0 && e1 == 0 ) {
           log.Printf("[eP/dPEV] either/or case")
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart || lastElapsed:     e0 = elapsed: e1 = 0")
-          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || lastElapsed: %.3f; elapsed: %.3f", Δt, ε, e0, e1)
+          log.Printf("[eP/dPEV] true? player events   Δt > ε      s apart || (lastElapsed:  e0 = elapsed: e1 = 0)")
+          log.Printf("[eP/dPEV] true? player events %.3f > %.3f s apart || lastElapsed: %.3f; elapsed: %.3f", Δt, ε, e0, e1)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         } else if Δt <= ε && ( e0 != 0 && e1 != 0 ) {
           log.Printf("[eP/dPEV] neither/nor case")
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart || lastElapsed:     e0 = elapsed: e1 = 0")
-          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || lastElapsed: %.3f; elapsed: %.3f", Δt, ε, e0, e1)
+          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart || (lastElapsed:    e0 != elapsed: e1 != 0)")
+          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || (lastElapsed: %.3f && elapsed: %.3f)", Δt, ε, e0, e1)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         }
 
