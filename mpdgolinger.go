@@ -1938,7 +1938,14 @@ func eventProcessor(){
         e1, _ := strconv.ParseFloat(currentVal, 64)
         Δt := float64(time.Now().UnixNano()) / 1e9 - lastEVtime
         log.Printf("e0: %.3f; e1: %.3f; Δtime: %.3f; ε: %.3f", e0, e1, Δt, ε)
-        if Δt > ε && e0 == 0 && e1 == 0 {
+        if Δt <= ε && e0 == 0 && e1 == 0 {
+          log.Printf("[eP/dPEV] both true case: return true")
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart && (lastElapsed:    e0 == elapsed: e1 != 0)")
+          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart && (lastElapsed: %.3f == elapsed: %.3f)", Δt, ε, e0, e1)
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          return true
+        } else if Δt > ε && e0 == 0 && e1 == 0 {
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
           log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f > %.3f s apart: return false", e0, e1, Δt, ε)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
@@ -1946,8 +1953,8 @@ func eventProcessor(){
         } else if Δt > ε || ( e0 == 0 && e1 == 0 ) {
           log.Printf("[eP/dPEV] either/or case")
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events   Δt > ε      s apart || (lastElapsed:  e0 = elapsed: e1 = 0)")
-          log.Printf("[eP/dPEV] true? player events %.3f > %.3f s apart || lastElapsed: %.3f; elapsed: %.3f", Δt, ε, e0, e1)
+          log.Printf("[eP/dPEV] true? player events    Δt > ε     s apart || (lastElapsed:   e0 = elapsed: e1 = 0)")
+          log.Printf("[eP/dPEV] true? player events %.3f > %.3f s apart || (lastElapsed: %.3f ? elapsed: %.3f ? 0)", Δt, ε, e0, e1)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         } else if Δt <= ε && ( e0 != 0 && e1 != 0 ) {
           log.Printf("[eP/dPEV] neither/nor case")
