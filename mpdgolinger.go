@@ -1839,7 +1839,8 @@ func wsWatcher(ctx *wsCtx) {
 */
 
 func eventProcessor(){
-
+  // ε = Threhold for dedupe elapsed to be false; Δ = 0394 ε = 03b5
+  ε := 1.0
   checkDuration := func(s1, s2 string, ε float64) (bool, float64, error) {
   	// 1. Parse strings to float64
   	v1, err := strconv.ParseFloat(s1, 64)
@@ -1914,8 +1915,8 @@ func eventProcessor(){
       // --- ignore only elapsed changes <= delta of n seconds --- //
       // ---    required for user time changes to function     --- //
       if key == "elapsed" {
-        epsilon := 1.0
-        exceedsEpsilon, _, err := checkDuration(currentVal, lastVal, epsilon)
+        // epsilon := 1.0
+        exceedsEpsilon, _, err := checkDuration(currentVal, lastVal, ε)
         if err != nil || exceedsEpsilon {
           return false
         }
@@ -2025,7 +2026,7 @@ func eventProcessor(){
               evState.lastPlayerEV.Status["elapsed"],
             )
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
-          log.Printf("[ep] Δ elapsed: %.3f", delta)
+          log.Printf("[ep] elapsed Δ: %.3f ε: %.3f ", delta, ε)
 
           log.Printf("[eP] Skipping duplicate idle event!---------------------")
           }
@@ -2050,7 +2051,7 @@ func eventProcessor(){
             )
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
           if ev.SongID == evState.lastPlayerEV.SongID {
-            log.Printf("[ep] Δ elapsed: %.3f", delta)
+            log.Printf("[ep] elapsed Δ: %.3f ε: %.3f ", delta, ε)
           }
           log.Printf("[eP] Idle player event!---------------------------------")
         }
