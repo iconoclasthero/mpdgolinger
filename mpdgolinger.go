@@ -2074,6 +2074,7 @@ func eventProcessor(){
           log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------")
 //          log.Printf("[eP] Skipping duplicate idle event!---------------------")
           }
+          lastEVtime = float64(time.Now().UnixNano()) / 1e9
           continue
         } else {
           log.Printf("[eP] Idle player event!---------------------------------")
