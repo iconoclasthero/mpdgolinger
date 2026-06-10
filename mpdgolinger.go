@@ -1784,6 +1784,7 @@ type eventState struct {
     lastPlaylistRev int
     lastPlayerEV    IdleEvent
     lastArtHash     uint64
+    lastTime        float64
 }
 
   // Globals for wsWatcher:
@@ -1840,7 +1841,25 @@ func wsWatcher(ctx *wsCtx) {
 
 func eventProcessor(){
   // ε = Threhold for dedupe elapsed to be false; Δ = 0394 ε = 03b5
-  ε := 1.0
+    var (
+      msgs            []wsMsg  // accumulate messages to send
+      ε               float64 = 1.0
+
+//    data            []byte
+//    notes           []string
+//      img             []byte
+      lastPlaylistRev int
+      pushArt         bool
+      uri             string
+      art             *AlbumArtResult
+      lastEVtime      float64
+//    allLogEntries   [][]byte
+//    songChanged     bool
+//    status          map[string]string
+//    playlistChanged bool
+//    playlistRev     int
+    )
+
   checkDuration := func(s1, s2 string, ε float64) (bool, float64, error) {
   	// 1. Parse strings to float64
   	v1, err := strconv.ParseFloat(s1, 64)
@@ -1916,6 +1935,11 @@ func eventProcessor(){
       // ---    required for user time changes to function     --- //
       if key == "elapsed" {
         // epsilon := 1.0
+        t0, _  := strconv.ParseFloat(lastVal, 64)
+        t1, _ := strconv.ParseFloat(currentVal, 64)
+        if float64(time.Now().UnixNano()) / 1e9 - lastEVtime > ε && t0 == 0 && t1 == 0 {
+          return false
+        }
         exceedsEpsilon, _, err := checkDuration(currentVal, lastVal, ε)
         if err != nil || exceedsEpsilon {
           return false
@@ -1932,22 +1956,6 @@ func eventProcessor(){
 
 //  log.Printf("[eP] RECV watcher=%d rev=%d songID=%d", watcherID, ev.PlaylistRev, ev.SongID)
 //  log.Printf("[eP] RECV watcher=%d evPtr=%p songID=%d", watcherID, &ev, ev.SongID)
-
-    var (
-      msgs            []wsMsg  // accumulate messages to send
-//    data            []byte
-//    notes           []string
-//      img             []byte
-      lastPlaylistRev int
-      pushArt         bool
-      uri             string
-      art             *AlbumArtResult
-//    allLogEntries   [][]byte
-//    songChanged     bool
-//    status          map[string]string
-//    playlistChanged bool
-//    playlistRev     int
-    )
 
   for ev := range idleEvents {
     msgs = nil
@@ -2058,8 +2066,9 @@ func eventProcessor(){
           log.Printf("[eP] Idle player event!---------------------------------")
         }
 
-log.Printf("[eP] UPDATING lastPlayerEV elapsed=%s", ev.Status["elapsed"])
         evState.lastPlayerEV = ev
+//        evState.lastTime = float64(time.Now().UnixNano()) / 1e9
+        lastEVtime = float64(time.Now().UnixNano()) / 1e9
 
         var (
           st          StatusV1
