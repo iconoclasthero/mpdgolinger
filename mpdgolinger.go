@@ -2029,7 +2029,7 @@ func eventProcessor(){
         } else {
           log.Printf("[eP] Idle player event!---------------------------------")
           log.Printf(
-            "[eP] player dbg songID=%d bitrate=%v elapsed=%v time=%v",
+            "[eP] dedupePlayerEV ev: songID=%d bitrate=%v elapsed=%v time=%v",
             ev.SongID,
             ev.Status["bitrate"],
             ev.Status["elapsed"],
@@ -2037,6 +2037,14 @@ func eventProcessor(){
           )
 //          b, _ := json.MarshalIndent(ev, "", "  ")
 //          log.Printf("[eP] ev:------------------------------------------------\n%s", string(b))
+            log.Printf(
+              "[eP] dedupePlayerEV last.ev: songID=%d bitrate=%v elapsed=%v time=%v",
+              evState.lastPlayerEV.SongID,
+              evState.lastPlayerEV.Status["bitrate"],
+              evState.lastPlayerEV.Status["elapsed"],
+              evState.lastPlayerEV.Status["time"],
+            )
+          log.Printf("[eP] Idle player event!---------------------------------")
         }
 
 
