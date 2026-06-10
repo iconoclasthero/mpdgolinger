@@ -1934,9 +1934,11 @@ func eventProcessor(){
       // ---    required for user time changes to function     --- //
       if key == "elapsed" {
         // epsilon := 1.0
-        t0, _  := strconv.ParseFloat(lastVal, 64)
-        t1, _ := strconv.ParseFloat(currentVal, 64)
-        if float64(time.Now().UnixNano()) / 1e9 - lastEVtime > ε && t0 == 0 && t1 == 0 {
+        e0, _ := strconv.ParseFloat(lastVal, 64)
+        e1, _ := strconv.ParseFloat(currentVal, 64)
+        Δt := float64(time.Now().UnixNano()) / 1e9 - lastEVtime
+        log.Printf("e0: %.3f; e1: %.3f; Δtime: %.3f; ε: %.3f", e0, e1, Δt, ε)
+        if Δt > ε && e0 == 0 && e1 == 0 {
           log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but player events > %.3f s apart: return false", ε)
           return false
         } else {
