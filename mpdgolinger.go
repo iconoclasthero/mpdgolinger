@@ -1937,10 +1937,10 @@ func eventProcessor(){
         t0, _  := strconv.ParseFloat(lastVal, 64)
         t1, _ := strconv.ParseFloat(currentVal, 64)
         if float64(time.Now().UnixNano()) / 1e9 - lastEVtime > ε && t0 == 0 && t1 == 0 {
-          log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but > %s s apart: return false", ε)
+          log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but > %.3f s apart: return false", ε)
           return false
         } else {
-          log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but <= %s s apart", ε)
+          log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but <= %.3f s apart", ε)
         }
         exceedsEpsilon, _, err := checkDuration(currentVal, lastVal, ε)
         if err != nil || exceedsEpsilon {
