@@ -2007,7 +2007,8 @@ func eventProcessor(){
 
       case "player":
         if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
-          log.Printf("[eP] Skipping duplicate idle event!---------------------")
+//          log.Printf("[eP] Skipping duplicate idle event!---------------------")
+          log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------")
     	    if true {
             log.Printf(
               "[eP] dedupePlayerEV ev: songID=%d bitrate=%v time=%v elapsed=%v",
@@ -2028,7 +2029,8 @@ func eventProcessor(){
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
           log.Printf("[ep] elapsed Δ: %.3f ε: %.3f ", delta, ε)
 
-          log.Printf("[eP] Skipping duplicate idle event!---------------------")
+          log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------")
+//          log.Printf("[eP] Skipping duplicate idle event!---------------------")
           }
           continue
         } else {
