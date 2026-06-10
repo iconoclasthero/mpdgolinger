@@ -2009,20 +2009,20 @@ func eventProcessor(){
           log.Printf("[eP] Skipping duplicate idle event!---------------------")
     	    if true {
             log.Printf(
-              "[eP] dedupePlayerEV ev: songID=%d bitrate=%v elapsed=%v time=%v",
+              "[eP] dedupePlayerEV ev: songID=%d bitrate=%v time=%v elapsed=%v",
               ev.SongID,
               ev.Status["bitrate"],
-              ev.Status["elapsed"],
               ev.Status["time"],
+              ev.Status["elapsed"],
             )
 //            b, _ := json.MarshalIndent(ev, "", "  ")
 //        	  log.Printf("[eP] skipped ev:--------------------------------------\n%s", string(b))
             log.Printf(
-              "[eP] dedupePlayerEV last.ev: songID=%d bitrate=%v elapsed=%v time=%v",
+              "[eP] dedupePlayerEV last.ev: songID=%d bitrate=%v time=%v elapsed=%v",
               evState.lastPlayerEV.SongID,
               evState.lastPlayerEV.Status["bitrate"],
-              evState.lastPlayerEV.Status["elapsed"],
               evState.lastPlayerEV.Status["time"],
+              evState.lastPlayerEV.Status["elapsed"],
             )
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
           log.Printf("[ep] Δ elapsed: %.3f", delta)
@@ -2033,20 +2033,20 @@ func eventProcessor(){
         } else {
           log.Printf("[eP] Idle player event!---------------------------------")
           log.Printf(
-            "[eP] dedupePlayerEV ev: songID=%d bitrate=%v elapsed=%v time=%v",
+            "[eP] dedupePlayerEV ev: songID=%d bitrate=%v time=%v elapsed=%v",
             ev.SongID,
             ev.Status["bitrate"],
-            ev.Status["elapsed"],
             ev.Status["time"],
+            ev.Status["elapsed"],
           )
 //          b, _ := json.MarshalIndent(ev, "", "  ")
 //          log.Printf("[eP] ev:------------------------------------------------\n%s", string(b))
             log.Printf(
-              "[eP] dedupePlayerEV last.ev: songID=%d bitrate=%v elapsed=%v time=%v",
+              "[eP] dedupePlayerEV last.ev: songID=%d bitrate=%v time=%v elapsed=%v",
               evState.lastPlayerEV.SongID,
               evState.lastPlayerEV.Status["bitrate"],
-              evState.lastPlayerEV.Status["elapsed"],
               evState.lastPlayerEV.Status["time"],
+              evState.lastPlayerEV.Status["elapsed"],
             )
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
           log.Printf("[ep] Δ elapsed: %.3f", delta)
