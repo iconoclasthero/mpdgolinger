@@ -2058,7 +2058,7 @@ func eventProcessor(){
           log.Printf("[eP] Idle player event!---------------------------------")
         }
 
-
+log.Printf("[eP] UPDATING lastPlayerEV elapsed=%s", ev.Status["elapsed"])
         evState.lastPlayerEV = ev
 
         var (
