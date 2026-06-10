@@ -1939,11 +1939,15 @@ func eventProcessor(){
         Δt := float64(time.Now().UnixNano()) / 1e9 - lastEVtime
         log.Printf("e0: %.3f; e1: %.3f; Δtime: %.3f; ε: %.3f", e0, e1, Δt, ε)
         if Δt > ε && e0 == 0 && e1 == 0 {
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
           log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f > %.3f s apart: return false", e0, e1, Δt, ε)
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
           return false
         } else if Δt <= ε || ( e0 != 0 || e1 != 0 ) {
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
           log.Printf("[eP/dPEV] true? player events   Δt <= ε    s apart || lastElapsed:  e0 = elapsed: e1 = 0", Δt, ε, e0, e1)
           log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || lastElapsed: %.3f; elapsed: %.3f", Δt, ε, e0, e1)
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         } else if e0 != 0 || e1 != 0 {
           log.Printf("[eP/dEPV] should never reach this branch now")
           log.Printf("[eP/dPEV] true? lastElapsed: %.3f != 0 || elapsed: %.3f != 0? player events %.3f <= %.3f s apart", e0, e1, Δt, ε)
