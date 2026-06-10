@@ -1840,31 +1840,32 @@ func wsWatcher(ctx *wsCtx) {
 
 func eventProcessor(){
 
+  checkDuration := func(s1, s2 string, ε float64) (bool, float64, error) {
+  	// 1. Parse strings to float64
+  	v1, err := strconv.ParseFloat(s1, 64)
+  	if err != nil {
+  		return false, 0, fmt.Errorf("failed to parse first string: %w", err)
+  	}
+
+  	v2, err := strconv.ParseFloat(s2, 64)
+  	if err != nil {
+  		return false, 0, fmt.Errorf("failed to parse second string: %w", err)
+  	}
+
+  	// 2. Safety check: Catch strings like "NaN", "Inf", or "-Inf"
+  	if math.IsNaN(v1) || math.IsNaN(v2) || math.IsNaN(ε) {
+  		return false, 0, fmt.Errorf("cannot compare: one or more values are NaN")
+  	}
+  	if math.IsInf(v1, 0) || math.IsInf(v2, 0) || math.IsInf(ε , 0) {
+  		return false, 0, fmt.Errorf("cannot compare: one or more values are Infinite")
+  	}
+
+    Δ := math.Abs(v1-v2)
+  	// 3. Perform standard threshold check
+  	return math.Abs(v1-v2) > ε, Δ, nil
+  }
+
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
-    checkDuration := func(s1, s2 string, d float64) (bool, error) {
-    	// 1. Parse strings to float64
-    	v1, err := strconv.ParseFloat(s1, 64)
-    	if err != nil {
-    		return false, fmt.Errorf("failed to parse first string: %w", err)
-    	}
-
-    	v2, err := strconv.ParseFloat(s2, 64)
-    	if err != nil {
-    		return false, fmt.Errorf("failed to parse second string: %w", err)
-    	}
-
-    	// 2. Safety check: Catch strings like "NaN", "Inf", or "-Inf"
-    	if math.IsNaN(v1) || math.IsNaN(v2) || math.IsNaN(d) {
-    		return false, fmt.Errorf("cannot compare: one or more values are NaN")
-    	}
-    	if math.IsInf(v1, 0) || math.IsInf(v2, 0) || math.IsInf(d, 0) {
-    		return false, fmt.Errorf("cannot compare: one or more values are Infinite")
-    	}
-
-    	// 3. Perform standard threshold check
-    	return math.Abs(v1-v2) > d, nil
-    }
-
 
     log.Printf("[eP/dPEV] Started dedupePlayerEV")
     // Handle nil pointer protection for Status if it is a pointer
@@ -1913,9 +1914,9 @@ func eventProcessor(){
       // --- ignore only elapsed changes <= delta of n seconds --- //
       // ---    required for user time changes to function     --- //
       if key == "elapsed" {
-        delta := 1.0
-        exceedsDelta, err := checkDuration(currentVal, lastVal, delta)
-        if err != nil || exceedsDelta {
+        epsilon := 1.0
+        exceedsEpsilon, _, err := checkDuration(currentVal, lastVal, epsilon)
+        if err != nil || exceedsEpsilon {
           return false
         }
         continue
@@ -2023,6 +2024,9 @@ func eventProcessor(){
               evState.lastPlayerEV.Status["elapsed"],
               evState.lastPlayerEV.Status["time"],
             )
+          _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
+          log.Printf("[ep] Δ elapsed: %d", delta)
+
           log.Printf("[eP] Skipping duplicate idle event!---------------------")
           }
           continue
@@ -2044,6 +2048,8 @@ func eventProcessor(){
               evState.lastPlayerEV.Status["elapsed"],
               evState.lastPlayerEV.Status["time"],
             )
+          _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
+          log.Printf("[ep] Δ elapsed: %d", delta)
           log.Printf("[eP] Idle player event!---------------------------------")
         }
 
