@@ -1898,20 +1898,22 @@ func eventProcessor(){
       current.SongURI != last.SongURI ||
       current.PlaylistRev != last.PlaylistRev ||
       current.AlbumKey != last.AlbumKey ||
-      current.Subscribe != last.Subscribe {
+      current.Subscribe != last.Subscribe ||
+    // 2. Compare Nested PulseData Fields
+      !reflect.DeepEqual(current.PulseData, last.PulseData){
       return false
     }
 
-    // 2. Compare Nested PulseData Fields
-    if current.PulseData.SinkName != last.PulseData.SinkName ||
-      current.PulseData.Volume != last.PulseData.Volume ||
-      current.PulseData.Mute != last.PulseData.Mute ||
-      current.PulseData.VolString != last.PulseData.VolString ||
-      current.PulseData.PulsePath != last.PulseData.PulsePath ||
-      current.PulseData.PulseServer != last.PulseData.PulseServer ||
-      current.PulseData.PulsePort != last.PulseData.PulsePort {
-      return false
-    }
+//    // 2. Compare Nested PulseData Fields
+//    if current.PulseData.SinkName != last.PulseData.SinkName ||
+//      current.PulseData.Volume != last.PulseData.Volume ||
+//      current.PulseData.Mute != last.PulseData.Mute ||
+//      current.PulseData.VolString != last.PulseData.VolString ||
+//      current.PulseData.PulsePath != last.PulseData.PulsePath ||
+//      current.PulseData.PulseServer != last.PulseData.PulseServer ||
+//      current.PulseData.PulsePort != last.PulseData.PulsePort {
+//      return false
+//    }
 
     // 3. Compare Map Status Fields
     if len(current.Status) != len(last.Status) {
@@ -1938,14 +1940,7 @@ func eventProcessor(){
         e1, _ := strconv.ParseFloat(currentVal, 64)
         Δt := float64(time.Now().UnixNano()) / 1e9 - lastEVtime
         log.Printf("e0: %.3f; e1: %.3f; Δtime: %.3f; ε: %.3f", e0, e1, Δt, ε)
-        if Δt <= ε && e0 == 0 && e1 == 0 {
-          log.Printf("[eP/dPEV] both true case: return true")
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart && (lastElapsed:    e0 == elapsed: e1 != 0)")
-          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart && (lastElapsed: %.3f == elapsed: %.3f)", Δt, ε, e0, e1)
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          return true
-        } else if Δt > ε && e0 == 0 && e1 == 0 {
+        if Δt > ε && e0 == 0 && e1 == 0 {
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
           log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f > %.3f s apart: return false", e0, e1, Δt, ε)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
@@ -1961,6 +1956,12 @@ func eventProcessor(){
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
           log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart || (lastElapsed:    e0 != elapsed: e1 != 0)")
           log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || (lastElapsed: %.3f && elapsed: %.3f)", Δt, ε, e0, e1)
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+        } else if Δt <= ε && e0 == 0 && e1 == 0 {
+          log.Printf("[eP/dPEV] both true case: return true")
+          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart && (lastElapsed:    e0 == elapsed: e1 != 0)")
+          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart && (lastElapsed: %.3f == elapsed: %.3f)", Δt, ε, e0, e1)
           log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
         }
 
