@@ -1941,9 +1941,10 @@ func eventProcessor(){
         if Δt > ε && e0 == 0 && e1 == 0 {
           log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f > %.3f s apart: return false", e0, e1, Δt, ε)
           return false
-        } else {
-          log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f <= %.3f s apart: return false", e0, e1, Δt, ε)
-          log.Printf("[ep/dPEV] elapsed=lastElapsed=0 but player events <= %.3f s apart", ε)
+        } else if Δt <= ε {
+          log.Printf("[ep/dPEV] lastElapsed: %.3f; elapsed: %.3f; player events %.3f <= %.3f s apart", e0, e1, Δt, ε)
+        } else if e0 != 0 || e1 != 0 {
+          log.Printf("[ep/dPEV] lastElapsed: %.3f != 0 || elapsed: %.3f != 0; player events %.3f <= %.3f s apart", e0, e1, Δt, ε)
         }
 
 //        if float64(time.Now().UnixNano()) / 1e9 - lastEVtime > ε {
