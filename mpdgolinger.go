@@ -2238,7 +2238,7 @@ func eventProcessor(){
         }
 
       default:
-        log.Printf("[eP] default case of eventProcessor switch, continuing; ev.Subsytem: %s", ev.Subsystem)
+        dbg("[eP] default case of eventProcessor switch, continuing; ev.Subsytem: %s", ev.Subsystem)
         continue
     } // end of switch
 
@@ -2285,14 +2285,14 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
   }
 
   var b []byte
-  to := "all"
+  to := "all subscribed clients"
   if target != nil { to = cid(target) }
 
   if debug {
     b, _ = json.MarshalIndent(debugMsgs(msgs), "", "  ")
   }
 
-  log.Printf("[wsBM] started, to: %s, %s\n", to, string(b))
+  log.Printf("[wsBM] started, broadcasting to: %s. %s\n", to, string(b))
 
   // --- push to subscribed connections ---
   globalWSHub.mu.Lock()
@@ -2311,15 +2311,16 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
 
   log.Printf("[wsBM] recepient count=%d", len(recipients))
 
-  for _, conn := range recipients {
-    log.Printf("[wsBM] conn: %s", cid(conn))
+  if debug {
+    for _, conn := range recipients {
+      log.Printf("[wsBM] conn: %s", cid(conn))
+    }
   }
-
 
   for _, conn := range recipients {
     dead := false
 
-    log.Printf("[wsBM] primary for push loop: %v", cid(conn))
+    dbg("[wsBM] primary for push loop: %v", cid(conn))
 
     write := func(typ websocket.MessageType, payload []byte) bool {
       wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -2335,7 +2336,7 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
       return true
     }
 
-    log.Printf("[wsBM] broadcast start conn=%p", cid(conn))
+    log.Printf("[wsBM] broadcast start conn=%s", cid(conn))
 
     for _, m := range msgs {
       if !write(m.typ, m.data) {
