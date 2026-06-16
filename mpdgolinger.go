@@ -5005,9 +5005,12 @@ log.Printf("abs: %s", abs)
 
         log.Printf("STATE CHANGE: [IPC] count set=%d", n)
 
-        out, _ := json.Marshal([]string{
-          fmt.Sprintf("Count set to %d", n),
-        })
+        js["response"] = fmt.Sprintf("Count set to %d", n)
+        out, _ := json.Marshal(js)
+
+//        out, _ := json.Marshal([]string{
+//          fmt.Sprintf("Count set to %d", n),
+//        })
 
         return []string{string(out)}
 
