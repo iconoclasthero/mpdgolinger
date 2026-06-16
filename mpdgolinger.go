@@ -2047,7 +2047,7 @@ func eventProcessor(){
         }
 
       case "player", "linger":
-        if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
+        if ! ( ev.Subscribe || ev.Subsystem == "linger" ) && dedupePlayerEV(ev, evState.lastPlayerEV) {
 //          log.Printf("[eP] Skipping duplicate idle event!---------------------")
           log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------")
     	    if true {
@@ -5014,7 +5014,7 @@ log.Printf("abs: %s", abs)
           Subsystem: "linger",
         }
 
-        log.Printf("STATE CHANGE: [IPC] count set=%d", n)
+        log.Printf("[vPJ] STATE CHANGE: count set=%d", n)
         js["response"] = fmt.Sprintf("Count set to %d", n)
         out, _ := json.Marshal(js)
         return []string{string(out)}
