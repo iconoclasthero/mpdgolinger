@@ -2046,8 +2046,7 @@ func eventProcessor(){
           msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte(note)})
         }
 
-
-      case "player":
+      case "player", "linger":
         if ! ev.Subscribe && dedupePlayerEV(ev, evState.lastPlayerEV) {
 //          log.Printf("[eP] Skipping duplicate idle event!---------------------")
           log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------")
@@ -4947,20 +4946,23 @@ log.Printf("abs: %s", abs)
         return []string{string(out)}
 
       case "count":
-        n := 0
+        n := -1
         hasArg := false
+        var err error
+        var x   int
+        var y   int
+
 
         switch v := argsIface.(type) {
         case []interface{}:
           if len(v) > 0 {
+            hasArg = true
             switch x := v[0].(type) {
             case float64:
               n = int(x)
-              hasArg = true
             case string:
-              if y, err := strconv.Atoi(x); err == nil {
+              if y, err = strconv.Atoi(x); err == nil {
                 n = y
-                hasArg = true
               }
             }
           }
@@ -4968,20 +4970,23 @@ log.Printf("abs: %s", abs)
           n = int(v)
           hasArg = true
         case string:
-          if x, err := strconv.Atoi(v); err == nil {
+          if x, err = strconv.Atoi(v); err == nil {
             n = x
             hasArg = true
           }
         }
 
         if !hasArg {
-          out, _ := json.Marshal([]string{"ERR count requires a value"})
+          js["response"] = "error"
+          js["error"] = "count requires a value"
+          out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
-//        n, err := strconv.Atoi(fields[1])
         if err != nil || n < 0 {
-          out, _ := json.Marshal([]string{"ERR invalid count"})
+          js["response"] = "error"
+          js["error"] = "invalid count"
+          out, _ := json.Marshal(js)
           return []string{string(out)}
         }
 
@@ -4995,23 +5000,23 @@ log.Printf("abs: %s", abs)
         }
 
         state.transition = state.count >= limit
+        transition := state.transition
+
         deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
 
         state.mu.Unlock()
 
         _ = mpdDo(func(c *mpd.Client) error {
-          return c.Random(state.transition)
+          return c.Random(transition)
         }, "count")
 
-        log.Printf("STATE CHANGE: [IPC] count set=%d", n)
+        idleEvents <- IdleEvent{
+          Subsystem: "linger",
+        }
 
+        log.Printf("STATE CHANGE: [IPC] count set=%d", n)
         js["response"] = fmt.Sprintf("Count set to %d", n)
         out, _ := json.Marshal(js)
-
-//        out, _ := json.Marshal([]string{
-//          fmt.Sprintf("Count set to %d", n),
-//        })
-
         return []string{string(out)}
 
       case "limit":
