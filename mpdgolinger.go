@@ -1056,7 +1056,20 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
   dbg("mpdtags target=%q action=%q\n", target, action)
 
   if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-    return nil, []string{"stream URL"}, nil
+    m := make(map[string]string)
+      m["Title"] = "target"
+//      m.Artist = audioMap["artist"]
+//      m.Album = audioMap["album"]
+//      m.Year = audioMap["year"]
+//      m.Duration, _ = strconv.ParseFloat(audioMap["duration"], 64)
+//      m.Time = atoi(audioMap["time"])
+//      m.Disc = atoi(audioMap["disc"])
+//      m.Track = atoi(audioMap["track"])
+//      m.MBAlbumID = audioMap["musicbrainz_albumid"]
+//      m.MBReleaseTrackID = audioMap["musicbrainz_releasetrackid"]
+//      m.MBArtistID = audioMap["musicbrainz_artistid"]
+
+    return m, []string{"stream URL"}, nil
   }
 
   // --- Status fetch ---
