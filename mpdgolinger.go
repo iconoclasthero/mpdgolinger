@@ -2951,6 +2951,9 @@ if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://
 
           for _, ll := range lines {
             if ll.Path == "" { continue }
+if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://") {
+    fmt.Printf("case: \"json-log-stream\"\nHTTP URL: %s\n", ll.Path)
+}
 
             tags, notes, err := MPDtags(c, ll.Path, ll.Action)
             if err != nil {
@@ -6853,6 +6856,9 @@ func verbProcessor(csv string) []string {
 
       err := mpdDo(func(c *mpd.Client) error {
         for _, ll := range lines {
+if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://") {
+    fmt.Printf("[vP] case: \"json-log\"\nHTTP URL: %s\n", ll.Path)
+}
           tags, notes, err := MPDtags(c, ll.Path, ll.Action)
           if err != nil {
             return err
