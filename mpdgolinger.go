@@ -1055,6 +1055,10 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
   var notes []string
   dbg("mpdtags target=%q action=%q\n", target, action)
 
+  if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+    return nil, []string{"stream URL"}, nil
+  }
+
   // --- Status fetch ---
   if target == "status" {
     m := make(map[string]string)
@@ -1521,12 +1525,6 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
   lines := mpdLogParse(numEntries)
 
   for _, ll := range lines {
-    if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://") {
-      log.Printf("HTTP URL: %s\n", ll.Path)
-    } else {
-      log.Printf("URL: %s\n", ll.Path)
-    }
-
     audioMap, notes, _ := MPDtags(nil, ll.Path, ll.Action) // pass nil client if MPDtags handles it internally
 
     audio := AudioV1{}
@@ -2886,9 +2884,6 @@ func verbProcessorJSON(js map[string]interface{}, req Request, conn *websocket.C
 
         err := mpdDo(func(c *mpd.Client) error {
           for _, ll := range lines {
-if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://") {
-    fmt.Printf("case: \"json-log\"\nHTTP URL: %s\n", ll.Path)
-}
             tags, notes, err := MPDtags(c, ll.Path, ll.Action)
             if err != nil {
               return err
@@ -2951,9 +2946,6 @@ if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://
 
           for _, ll := range lines {
             if ll.Path == "" { continue }
-if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://") {
-    fmt.Printf("case: \"json-log-stream\"\nHTTP URL: %s\n", ll.Path)
-}
 
             tags, notes, err := MPDtags(c, ll.Path, ll.Action)
             if err != nil {
@@ -6856,9 +6848,6 @@ func verbProcessor(csv string) []string {
 
       err := mpdDo(func(c *mpd.Client) error {
         for _, ll := range lines {
-if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://") {
-    fmt.Printf("[vP] case: \"json-log\"\nHTTP URL: %s\n", ll.Path)
-}
           tags, notes, err := MPDtags(c, ll.Path, ll.Action)
           if err != nil {
             return err
