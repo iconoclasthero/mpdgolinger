@@ -1057,7 +1057,7 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
 
   if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
     m := make(map[string]string)
-      m["Title"] = "target"
+      m["Title"] = target
 //      m.Artist = audioMap["artist"]
 //      m.Album = audioMap["album"]
 //      m.Year = audioMap["year"]
