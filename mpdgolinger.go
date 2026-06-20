@@ -1523,6 +1523,8 @@ func JSONLog(numEntries int) ([]LogEntryV1, error) {
   for _, ll := range lines {
     if strings.HasPrefix(ll.Path, "http://") || strings.HasPrefix(ll.Path, "https://") {
         log.Printf("URL: %s\n", ll.Path)
+    } else {
+      log.Printf("URL: %s\n", ll.Path)
     }
     audioMap, notes, _ := MPDtags(nil, ll.Path, ll.Action) // pass nil client if MPDtags handles it internally
 
