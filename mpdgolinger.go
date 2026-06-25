@@ -367,6 +367,7 @@ type      Request     struct {
 type     IdleEvent    struct {
      Subsystem        string
      SongID           int
+     PrevSongID       int
      SongURI          string
      Status           map[string]string
      PlaylistRev      int
@@ -6522,6 +6523,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         }
 
         songID, _      := strconv.Atoi(status["songid"])
+        prevSongID     := state.lastSongID
         songZI, _      := strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
         plRev, _       := strconv.Atoi(status["playlist"])
         songURI        := current["file"]
@@ -6557,6 +6559,7 @@ func runIdleLoop(w *mpd.Watcher) error {
 ev := IdleEvent{
     Subsystem:   subsystem,
     SongID:      songID,
+    PrevSongID:  prevSongID,
     SongURI:     songURI,
     Status:      status,
     PlaylistRev: plRev,
@@ -6614,7 +6617,7 @@ idleEvents <- ev
             state.prevSongURI = state.lastSongURI
 
             state.lastSongID   = songID
-            log.Printf("[rIL-6615] ==== setting state.lastSongID = songID: %d", state.lastSongID)
+            log.Printf("[rIL-6617] ==== setting state.lastSongID = songID: %d", state.lastSongID)
             state.lastSongURI  = songURI
             state.lastAlbumKey = albumKey
             state.count++ // keep counting while paused (matches bash behavior)
@@ -6653,7 +6656,7 @@ idleEvents <- ev
           state.prevAlbumKey = state.lastAlbumKey
         }
         state.lastSongID     = songID
-        log.Printf("[rIL-6654] ==== setting state.lastSongID = songID: %d", state.lastSongID)
+        log.Printf("[rIL-6656] ==== setting state.lastSongID = songID: %d", state.lastSongID)
         state.lastSongURI    = songURI
         state.lastAlbumKey   = albumKey
 
