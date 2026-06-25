@@ -2214,7 +2214,7 @@ func eventProcessor(){
         if state.lastSongID == 0 || songID != state.lastSongID || ev.PrevSongID != songID || ev.PrevSongID != ev.SongID || lastSongID != songID {
           songChanged = true
 //          state.lastSongID = songID
-          log.Printf("[eP] === songID ? evState.lastPlayerEV: %d ? $d", songID, evState.lastPlayerEV.SongID)
+          log.Printf("[eP] === songID ? evState.lastPlayerEV: %d ? %d", songID, evState.lastPlayerEV.SongID)
 
           log.Printf("[eP] ==== 1 setting songChanged: %t", songChanged)
           log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
