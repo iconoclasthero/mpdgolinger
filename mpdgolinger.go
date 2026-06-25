@@ -1877,6 +1877,7 @@ func eventProcessor(){
       art             *AlbumArtResult
       lastEVtime      float64
       epDebug         bool
+      ePdebug         bool
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
@@ -1885,7 +1886,8 @@ func eventProcessor(){
     )
 
   // set the local function debug to true if global debug is true:
-  if debug { epDebug = true}
+  // need to standardize on ePdebug later...
+  if debug { epDebug = true; ePdebug = true }
 
   checkDuration := func(s1, s2 string, ε float64) (bool, float64, error) {
   	// 1. Parse strings to float64
@@ -2112,14 +2114,15 @@ func eventProcessor(){
           lastEVtime = float64(time.Now().UnixNano()) / 1e9
           continue
         } else {
-          log.Printf("[eP] Idle player event!---------------------------------")
-          log.Printf(
-            "[eP] dedupePlayerEV ev: songID=%d bitrate=%v time=%v elapsed=%v",
-            ev.SongID,
-            ev.Status["bitrate"],
-            ev.Status["time"],
-            ev.Status["elapsed"],
-          )
+          if ePdebug {
+            log.Printf("[eP] Idle player event!---------------------------------")
+            log.Printf(
+              "[eP] dedupePlayerEV ev: songID=%d bitrate=%v time=%v elapsed=%v",
+              ev.SongID,
+              ev.Status["bitrate"],
+              ev.Status["time"],
+              ev.Status["elapsed"],
+            )
 //          b, _ := json.MarshalIndent(ev, "", "  ")
 //          log.Printf("[eP] ev:------------------------------------------------\n%s", string(b))
             log.Printf(
@@ -2129,6 +2132,7 @@ func eventProcessor(){
               evState.lastPlayerEV.Status["time"],
               evState.lastPlayerEV.Status["elapsed"],
             )
+          }
           _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
           if ev.SongID == evState.lastPlayerEV.SongID {
             log.Printf("[ep] elapsed Δ: %.3f ε: %.3f ", delta, ε)
