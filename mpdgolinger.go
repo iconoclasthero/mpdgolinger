@@ -1253,14 +1253,17 @@ func MPDtags(c *mpd.Client, target string, action string) (map[string]string, []
 
 func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 	var (
-		imgAA  []byte
-		imgRP  []byte
-		cfgAA  image.Config
-		cfgRP  image.Config
-		errAA  error
-		errRP  error
-		result AlbumArtResult
+		imgAA     []byte
+		imgRP     []byte
+		cfgAA     image.Config
+		cfgRP     image.Config
+		errAA     error
+		errRP     error
+		result    AlbumArtResult
+    gBAAdebug bool
 	)
+
+  if debug { gBAAdebug = true }
 
 	// --- ReadPicture ---
   result.HasEmbed = false
@@ -1308,8 +1311,10 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 			log.Printf("[gBAA] AlbumArt decode failed for %q: %v",
 				uri, errAA)
 		} else {
-			log.Printf("[gBAA] AlbumArt succeeded for %q (%dx%d, %d bytes)",
-				uri, cfgAA.Width, cfgAA.Height, len(imgAA))
+      if gBAAdebug {
+  			log.Printf("[gBAA] AlbumArt succeeded for %q (%dx%d, %d bytes)",
+	  			uri, cfgAA.Width, cfgAA.Height, len(imgAA))
+      }
 
 			result.HasAlbumArt = true
 
@@ -6389,6 +6394,8 @@ func daemonSupervisor() {
 
 // runIdleLoop [rIL()] runs the MPD idle loop, updating state on song changes
 func runIdleLoop(w *mpd.Watcher) error {
+  var rILdebug  bool
+
   log.Println("[rIL] MPD connection established, entering idle loop")
 
   // mpd.Watcher exposes an Error channel that reports lower-level
@@ -6471,7 +6478,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         return fmt.Errorf("watcher closed")
       }
 
-      log.Printf("[rIL] Idle event subsystem=%s", subsystem)
+      if rILdebug { log.Printf("[rIL] Idle event subsystem=%s", subsystem) }
 
       // For *every* idle event we:
       //   • Open a fresh short-lived MPD connection
@@ -6490,7 +6497,7 @@ func runIdleLoop(w *mpd.Watcher) error {
         //   • what MPD *thought* was playing when idle fired
         //   • whether seek/pause events keep the same file
         //
-        logCurrentSong(c, "[rIL] idle event (pre-status)")
+        if rILdebug { logCurrentSong(c, "[rIL] idle event (pre-status)") }
 
         // Fetch current player status.
         //
@@ -6745,7 +6752,7 @@ idleEvents <- ev
         // Log the song again *after* state changes and random toggles.
         // This lets us confirm whether MPD advanced tracks as expected.
         //
-        logCurrentSong(c, "[rIL] idle event (post-state-change)")
+        if rILdebug { logCurrentSong(c, "[rIL] idle event (post-state-change)") }
 
         _ = prevCount
         _ = prevTransition
