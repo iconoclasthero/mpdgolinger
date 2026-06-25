@@ -2201,8 +2201,8 @@ func eventProcessor(){
         songChanged := false
         log.Printf("==== 1 songChanged: %t ====", songChanged)
 
+        log.Printf("==== state.lastSongID: %d; songID: %d ====", state.lastSongID, songID)
         if state.lastSongID == 0 || songID != state.lastSongID {
-          log.Printf("==== state.lastSongID: %d; songID: %d ====", state.lastSongID, songID)
           songChanged = true
           state.lastSongID = songID
         }
