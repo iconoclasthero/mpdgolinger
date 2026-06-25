@@ -2137,7 +2137,7 @@ func eventProcessor(){
           if ev.SongID == evState.lastPlayerEV.SongID {
             log.Printf("[ep] elapsed Δ: %.3f ε: %.3f ", delta, ε)
           }
-          log.Printf("[eP] Idle player event!---------------------------------")
+          if ePdebug { log.Printf("[eP] Idle player event!---------------------------------") }
         }
 
         evState.lastPlayerEV = ev
@@ -2208,15 +2208,17 @@ func eventProcessor(){
 
         state.mu.Lock()
         songChanged := false
-        log.Printf("==== 1 songChanged: %t ====", songChanged)
+        log.Printf("[eP] ==== 1 songChanged: %t ====", songChanged)
 
-        log.Printf("==== state.lastSongID: %d; songID: %d ====", state.lastSongID, songID)
+        log.Printf("[eP] ==== state.lastSongID: %d; songID: %d ====", state.lastSongID, songID)
         if state.lastSongID == 0 || songID != state.lastSongID {
           songChanged = true
           state.lastSongID = songID
+          log.Printf("[eP] ==== setting state.lastSongID = songID: %d", state.lastSongID)
+
         }
 
-        log.Printf("==== 2 songChanged: %t ====", songChanged)
+        log.Printf("[eP] ==== 2 songChanged: %t ====", songChanged)
 
         state.mu.Unlock()
 
@@ -2224,9 +2226,9 @@ func eventProcessor(){
         // -----------------------
         // LOG FRAME (SEPARATE)
         // -----------------------
-          log.Printf("==== 3 songChanged: %t ====", songChanged)
+          log.Printf("[eP] ==== 3 songChanged: %t ====", songChanged)
         if songChanged || ev.Subscribe {
-          log.Printf("==== Entering Log Frame ====")
+          log.Printf("[eP] ==== Entering Log Frame ====")
           resp := verbProcessor("json-log")
 
           var logs []any
@@ -6612,6 +6614,7 @@ idleEvents <- ev
             state.prevSongURI = state.lastSongURI
 
             state.lastSongID   = songID
+            log.Printf("[rIL-6615] ==== setting state.lastSongID = songID: %d", state.lastSongID)
             state.lastSongURI  = songURI
             state.lastAlbumKey = albumKey
             state.count++ // keep counting while paused (matches bash behavior)
@@ -6650,6 +6653,7 @@ idleEvents <- ev
           state.prevAlbumKey = state.lastAlbumKey
         }
         state.lastSongID     = songID
+        log.Printf("[rIL-6654] ==== setting state.lastSongID = songID: %d", state.lastSongID)
         state.lastSongURI    = songURI
         state.lastAlbumKey   = albumKey
 
@@ -7696,14 +7700,14 @@ func verbProcessor(csv string) []string {
 
 
   state.mu.Lock()
-  songID  := state.lastSongID
-  songZI  := state.lastSongZI
-  songURI := state.lastSongURI
-  limit   := state.baseLimit
-  if state.blockOn && state.blockLimit > 0 {
-    limit = state.blockLimit
-  }
-  deriveStateLocked(songZI, songID, songURI, limit)
+    songID  := state.lastSongID
+    songZI  := state.lastSongZI
+    songURI := state.lastSongURI
+    limit   := state.baseLimit
+    if state.blockOn && state.blockLimit > 0 {
+      limit = state.blockLimit
+    }
+    deriveStateLocked(songZI, songID, songURI, limit)
   state.mu.Unlock()
 
   if debug {
@@ -8549,6 +8553,7 @@ func main() {
       state.lastSongURI = ""
     } else {
       state.lastSongID, _ = strconv.Atoi(status["songid"])
+      log.Printf("[main] ==== setting state.lastSongID = strconf.Atoi(status[\"songid\"]): %d", state.lastSongID)
       state.lastSongZI, _ = strconv.Atoi(status["song"])  // Zero-Indezed song playlist position
       state.lastSongURI, _ = current["file"]
       switch status["state"] {                            // This doesn't look right: why is count being asigned this way?
