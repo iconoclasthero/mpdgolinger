@@ -2210,25 +2210,22 @@ func eventProcessor(){
 
         state.mu.Lock()
         songChanged := false
-        log.Printf("[eP] ==== 1 songChanged: %t ====", songChanged)
-
-        log.Printf("[eP] ==== state.lastSongID: %d; songID: %d ====", state.lastSongID, songID)
-        log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
-        log.Printf("[eP] ==== ev.PrevSongID: %d; ev.SongID: %d ====", ev.PrevSongID, ev.SongID)
-        log.Printf("[eP] ==== lastSongID: %d; SongID: %d ====", lastSongID, songID)
 
         if state.lastSongID == 0 || songID != state.lastSongID || ev.PrevSongID != songID || ev.PrevSongID != ev.SongID || lastSongID != songID {
           songChanged = true
 //          state.lastSongID = songID
-          lastSongID = songID
-          log.Printf("[eP] ==== setting songChanged: %t", songChanged)
+          log.Printf("[eP] ==== 1 setting songChanged: %t", songChanged)
+          log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
+          log.Printf("[eP] ==== ev.PrevSongID: %d; ev.SongID: %d ====", ev.PrevSongID, ev.SongID)
+          log.Printf("[eP] ==== lastSongID: %d; SongID: %d ====", lastSongID, songID)
+
+
           log.Printf("[eP] ==== setting lastSongID = songID: %d", lastSongID)
+
+          lastSongID = songID
 //          log.Printf("[eP] ==== setting state.lastSongID = songID: %d", state.lastSongID)
 
         }
-
-
-
 
         log.Printf("[eP] ==== 2 songChanged: %t ====", songChanged)
 
