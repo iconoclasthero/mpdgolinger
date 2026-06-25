@@ -1879,6 +1879,7 @@ func eventProcessor(){
       lastEVtime      float64
       epDebug         bool
       ePdebug         bool
+      lastSongID      int
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
@@ -2214,13 +2215,20 @@ func eventProcessor(){
         log.Printf("[eP] ==== state.lastSongID: %d; songID: %d ====", state.lastSongID, songID)
         log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
         log.Printf("[eP] ==== ev.PrevSongID: %d; ev.SongID: %d ====", ev.PrevSongID, ev.SongID)
+        log.Printf("[eP] ==== lastSongID: %d; SongID: %d ====", lastSongID, songID)
 
-        if state.lastSongID == 0 || songID != state.lastSongID || ev.PrevSongID != songID || ev.PrevSongID != ev.SongID {
+        if state.lastSongID == 0 || songID != state.lastSongID || ev.PrevSongID != songID || ev.PrevSongID != ev.SongID || lastSongID != songID {
           songChanged = true
 //          state.lastSongID = songID
-          log.Printf("[eP] ==== setting state.lastSongID = songID: %d", state.lastSongID)
+          lastSongID = songID
+          log.Printf("[eP] ==== setting songChanged: %t", songChanged)
+          log.Printf("[eP] ==== setting lastSongID = songID: %d", lastSongID)
+//          log.Printf("[eP] ==== setting state.lastSongID = songID: %d", state.lastSongID)
 
         }
+
+
+
 
         log.Printf("[eP] ==== 2 songChanged: %t ====", songChanged)
 
