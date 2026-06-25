@@ -2199,15 +2199,15 @@ func eventProcessor(){
 
         state.mu.Lock()
         songChanged := false
-        log.Printf("==== 1 songChanged: %q ====", songChanged)
+        log.Printf("==== 1 songChanged: %t ====", songChanged)
 
         if state.lastSongID == 0 || songID != state.lastSongID {
-          log.Printf("state.lastSongID: %d; songID: %d", state.lastSongID, songID)
+          log.Printf("==== state.lastSongID: %d; songID: %d ====", state.lastSongID, songID)
           songChanged = true
           state.lastSongID = songID
         }
 
-        log.Printf("==== 2 songChanged: %q ====", songChanged)
+        log.Printf("==== 2 songChanged: %t ====", songChanged)
 
         state.mu.Unlock()
 
@@ -2215,7 +2215,7 @@ func eventProcessor(){
         // -----------------------
         // LOG FRAME (SEPARATE)
         // -----------------------
-          log.Printf("==== 3 songChanged: %q ====", songChanged)
+          log.Printf("==== 3 songChanged: %t ====", songChanged)
         if songChanged || ev.Subscribe {
           log.Printf("==== Entering Log Frame ====")
           resp := verbProcessor("json-log")
@@ -2268,8 +2268,10 @@ func eventProcessor(){
           if art != nil {
             img = art.Img
             if evState.lastArtHash == 0 {
-              log.Printf("[eP] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
+              if epDebug {
+                log.Printf("[eP] !!!!!!!!!!!!!!!!!!!!!!!!--> lastArtHash=%d <--!!!!!!!!!!!!!!!!!!!!!!!!",
                 evState.lastArtHash)
+              }
             }
             hashMatch := art.Hash ==  evState.lastArtHash
             log.Printf(
@@ -2291,7 +2293,10 @@ func eventProcessor(){
             if art.Size > 0 && (art.Hash != evState.lastArtHash || ev.Subscribe) {
               pushArt = true
               if art.Hash != evState.lastArtHash {
-                log.Printf("[eP] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d", art.Hash, evState.lastArtHash)
+                if epDebug {
+                  log.Printf("[eP] AAAAAAAAAAAALLLLLLLLLLLLERRRRRRRRRRRRRRRRRT! artHash=%d / lastArtHash=%d",
+                  art.Hash, evState.lastArtHash)
+                }
                 evState.lastArtHash = art.Hash
               }
               jsArt = map[string]any{
