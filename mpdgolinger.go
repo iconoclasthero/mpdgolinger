@@ -1871,12 +1871,16 @@ func eventProcessor(){
       uri             string
       art             *AlbumArtResult
       lastEVtime      float64
+      epDebug         bool
 //    allLogEntries   [][]byte
 //    songChanged     bool
 //    status          map[string]string
 //    playlistChanged bool
 //    playlistRev     int
     )
+
+  // set the local function debug to true if global debug is true:
+  if debug { epDebug = true}
 
   checkDuration := func(s1, s2 string, ε float64) (bool, float64, error) {
   	// 1. Parse strings to float64
@@ -1905,7 +1909,7 @@ func eventProcessor(){
 
   dedupePlayerEV := func(current, last IdleEvent) bool { // func dedupePlayerEV
 
-    log.Printf("[eP/dPEV] Started dedupePlayerEV")
+    if epDebug { log.Printf("[eP/dPEV] Started dedupePlayerEV") }
     // Handle nil pointer protection for Status if it is a pointer
     if (current.Status == nil) != (last.Status == nil) {
       return false
@@ -1958,30 +1962,38 @@ func eventProcessor(){
         e0, _ := strconv.ParseFloat(lastVal, 64)
         e1, _ := strconv.ParseFloat(currentVal, 64)
         Δt := float64(time.Now().UnixNano()) / 1e9 - lastEVtime
-        log.Printf("e0: %.3f; e1: %.3f; Δtime: %.3f; ε: %.3f", e0, e1, Δt, ε)
+        if epDebug { log.Printf("e0: %.3f; e1: %.3f; Δtime: %.3f; ε: %.3f", e0, e1, Δt, ε) }
         if Δt > ε && e0 == 0 && e1 == 0 {
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f > %.3f s apart: return false", e0, e1, Δt, ε)
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          if epDebug {
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+            log.Printf("[ep/dPEV] %.3f=%.3f=0 but player events %.3f > %.3f s apart: return false", e0, e1, Δt, ε)
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          }
           return false
         } else if Δt > ε || ( e0 == 0 && e1 == 0 ) {
-          log.Printf("[eP/dPEV] either/or case")
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events    Δt > ε     s apart || (lastElapsed:   e0 = elapsed: e1 = 0)")
-          log.Printf("[eP/dPEV] true? player events %.3f > %.3f s apart || (lastElapsed: %.3f ? elapsed: %.3f ? 0)", Δt, ε, e0, e1)
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          if epDebug {
+            log.Printf("[eP/dPEV] either/or case")
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+            log.Printf("[eP/dPEV] true? player events    Δt > ε     s apart || (lastElapsed:   e0 = elapsed: e1 = 0)")
+            log.Printf("[eP/dPEV] true? player events %.3f > %.3f s apart || (lastElapsed: %.3f ? elapsed: %.3f ? 0)", Δt, ε, e0, e1)
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          }
         } else if Δt <= ε && ( e0 != 0 && e1 != 0 ) {
-          log.Printf("[eP/dPEV] neither/nor case")
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart || (lastElapsed:    e0 != elapsed: e1 != 0)")
-          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || (lastElapsed: %.3f && elapsed: %.3f)", Δt, ε, e0, e1)
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          if epDebug {
+            log.Printf("[eP/dPEV] neither/nor case")
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+            log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart || (lastElapsed:    e0 != elapsed: e1 != 0)")
+            log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart || (lastElapsed: %.3f && elapsed: %.3f)", Δt, ε, e0, e1)
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          }
         } else if Δt <= ε && e0 == 0 && e1 == 0 {
-          log.Printf("[eP/dPEV] both true case: return true")
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
-          log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart && (lastElapsed:    e0 == elapsed: e1 != 0)")
-          log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart && (lastElapsed: %.3f == elapsed: %.3f)", Δt, ε, e0, e1)
-          log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          if epDebug {
+            log.Printf("[eP/dPEV] both true case: return true")
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+            log.Printf("[eP/dPEV] true? player events    Δt <= ε     s apart && (lastElapsed:    e0 == elapsed: e1 != 0)")
+            log.Printf("[eP/dPEV] true? player events %.3f <= %.3f s apart && (lastElapsed: %.3f == elapsed: %.3f)", Δt, ε, e0, e1)
+            log.Printf("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+          }
         }
 
 //        if float64(time.Now().UnixNano()) / 1e9 - lastEVtime > ε {
@@ -2068,29 +2080,29 @@ func eventProcessor(){
       case "player", "linger":
         if ! ( ev.Subscribe || ev.Subsystem == "linger" ) && dedupePlayerEV(ev, evState.lastPlayerEV) {
 //          log.Printf("[eP] Skipping duplicate idle event!---------------------")
-          log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------")
+          if epDebug { log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------") }
     	    if true {
-            log.Printf(
-              "[eP] dedupePlayerEV ev: songID=%d bitrate=%v time=%v elapsed=%v",
-              ev.SongID,
-              ev.Status["bitrate"],
-              ev.Status["time"],
-              ev.Status["elapsed"],
-            )
-//            b, _ := json.MarshalIndent(ev, "", "  ")
-//        	  log.Printf("[eP] skipped ev:--------------------------------------\n%s", string(b))
-            log.Printf(
-              "[eP] dedupePlayerEV last.ev: songID=%d bitrate=%v time=%v elapsed=%v",
-              evState.lastPlayerEV.SongID,
-              evState.lastPlayerEV.Status["bitrate"],
-              evState.lastPlayerEV.Status["time"],
-              evState.lastPlayerEV.Status["elapsed"],
-            )
-          _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
-          log.Printf("[ep] elapsed Δ: %.3f ε: %.3f ", delta, ε)
-
-          log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------")
-//          log.Printf("[eP] Skipping duplicate idle event!---------------------")
+            if epDebug {
+              log.Printf(
+                "[eP] dedupePlayerEV ev: songID=%d bitrate=%v time=%v elapsed=%v",
+                ev.SongID,
+                ev.Status["bitrate"],
+                ev.Status["time"],
+                ev.Status["elapsed"],
+              )
+  //            b, _ := json.MarshalIndent(ev, "", "  ")
+  //        	  log.Printf("[eP] skipped ev:--------------------------------------\n%s", string(b))
+              log.Printf(
+                "[eP] dedupePlayerEV last.ev: songID=%d bitrate=%v time=%v elapsed=%v",
+                evState.lastPlayerEV.SongID,
+                evState.lastPlayerEV.Status["bitrate"],
+                evState.lastPlayerEV.Status["time"],
+                evState.lastPlayerEV.Status["elapsed"],
+              )
+            }
+            _, delta, _ := checkDuration(ev.Status["elapsed"], evState.lastPlayerEV.Status["elapsed"], 0)
+            log.Printf("[ep] elapsed Δ: %.3f ε: %.3f ", delta, ε)
+            log.Printf("[eP] Skipping duplicate idle event!---------------------")
           }
           lastEVtime = float64(time.Now().UnixNano()) / 1e9
           continue
@@ -2187,11 +2199,15 @@ func eventProcessor(){
 
         state.mu.Lock()
         songChanged := false
+        log.Printf("==== 1 songChanged: %q ====", songChanged)
 
         if state.lastSongID == 0 || songID != state.lastSongID {
+          log.Printf("state.lastSongID: %d; songID: %d", state.lastSongID, songID)
           songChanged = true
           state.lastSongID = songID
         }
+
+        log.Printf("==== 2 songChanged: %q ====", songChanged)
 
         state.mu.Unlock()
 
@@ -2199,7 +2215,9 @@ func eventProcessor(){
         // -----------------------
         // LOG FRAME (SEPARATE)
         // -----------------------
+          log.Printf("==== 3 songChanged: %q ====", songChanged)
         if songChanged || ev.Subscribe {
+          log.Printf("==== Entering Log Frame ====")
           resp := verbProcessor("json-log")
 
           var logs []any
