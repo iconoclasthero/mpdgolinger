@@ -5188,10 +5188,9 @@ log.Printf("abs: %s", abs)
         log.Printf("STATE CHANGE: [IPC] block limit set=%d (effective=%d), count=%d, transition=%v",
           state.blockLimit, limit, state.count, state.transition)
 
-        out, _ := json.Marshal([]string{
-          fmt.Sprintf("Block limit set to %d", n),
-        })
+        js["response"] = fmt.Sprintf("Block limit set to %d", n)
 
+        out, _ := json.Marshal(js)
         return []string{string(out)}
 
       case "version":
