@@ -5631,7 +5631,7 @@ log.Printf("abs: %s", abs)
     switch cmd {
     case "on":
       log.Printf("------------------------------in scrobbler on-----------------")
-      err := exec.Command("sudo", "/usr/local/bin/mpd-scrobblerctl", "on").Run()
+      err := exec.Command("sudo", "/usr/bin/systemctl", "start", "mpd-scrobber").Run()
 
       if err != nil {
         js["response"] = "error"
@@ -5665,9 +5665,9 @@ cmd := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler")
 
 out1, err := cmd.CombinedOutput()
 
-log.Printf("[eP] systemctl out: %s", string(out1))
+log.Printf("[vPJ] systemctl out: %s", string(out1))
 if err != nil {
-  log.Printf("[eP] systemctl error: %v", err)
+  log.Printf("[vPJ] systemctl error: %v", err)
   out, _ := json.Marshal(js)
   return []string{string(out)}
 }
