@@ -2296,6 +2296,11 @@ log.Printf("---------------------ARE GREAT!!!----------------------------")
       st.Scrobbler.ExitCode = 1
     }
   }
+state.mu.Lock()
+state.scrobbler.Running = st.Scrobbler.Running
+state.scrobbler.LastErr = st.Scrobbler.LastErr
+state.scrobbler.ExitCode = st.Scrobbler.ExitCode
+state.mu.Unlock()
 }
 log.Printf("eventProcessor st=%p", &st)
 log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
