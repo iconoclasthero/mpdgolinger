@@ -2265,7 +2265,7 @@ log.Printf("---------------------ARE GREAT!!!----------------------------")
   if err != nil {
     log.Printf("[eP] scrobbler status error: %v", err)
     st.Scrobbler.Running = false
-    st.Scrobbler.Enabled = false
+    st.Scrobbler.Enabled = state.scrobblerOn
     st.Scrobbler.LastErr = err.Error()
     st.Scrobbler.ExitCode = 1
   } else {
@@ -2278,19 +2278,19 @@ log.Printf("---------------------ARE GREAT!!!----------------------------")
     switch s {
     case "active":
       st.Scrobbler.Running = true
-      st.Scrobbler.Enabled = true
+      st.Scrobbler.Enabled = state.scrobblerOn
       st.Scrobbler.LastErr = ""
       st.Scrobbler.ExitCode = 0
 
     case "inactive":
       st.Scrobbler.Running = false
-      st.Scrobbler.Enabled = false
+      st.Scrobbler.Enabled = state.scrobblerOn
       st.Scrobbler.LastErr = ""
       st.Scrobbler.ExitCode = 0
 
     default:
       st.Scrobbler.Running = false
-      st.Scrobbler.Enabled = false
+      st.Scrobbler.Enabled = state.scrobblerOn
       st.Scrobbler.LastErr = raw
       st.Scrobbler.ExitCode = 1
     }
@@ -5647,6 +5647,7 @@ log.Printf("abs: %s", abs)
 
       state.mu.Lock()
       state.scrobblerOn = true
+      log.Printf("state.scrobblerOn: %t", state.scrobblerOn)
       state.mu.Unlock()
 
       idleEvents <- IdleEvent{Subsystem: "scrobbler"}
