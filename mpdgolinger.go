@@ -2273,6 +2273,7 @@ log.Printf("---------------------ARE GREAT!!!----------------------------")
     log.Printf("[eP] scrobbler: %s", raw)
 
     s := strings.Fields(raw)[0]
+    log.Printf("[eP] scrobbler: %s", s)
 
     switch s {
     case "active":
