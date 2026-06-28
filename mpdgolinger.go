@@ -2261,7 +2261,7 @@ func eventProcessor(){
 log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
 if songChanged || ev.Subsystem == "scrobbler" {
 log.Printf("---------------------ARE GREAT!!!----------------------------")
-  out, err := exec.Command("sudo", "/usr/bin/systemctl", "status", "mpd-scrobbler").Output()
+  out, err := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler").Output()
 
   if err != nil {
     log.Printf("[eP] scrobbler status error: %v", err)
