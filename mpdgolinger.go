@@ -5661,7 +5661,7 @@ log.Printf("abs: %s", abs)
       log.Printf("------------------------------in scrobbler off-----------------")
 //      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "off").Run()
  //     err := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler").Run()
-cmd := exec.Command("/usr/bin/systemctl", "stop", "mpd-scrobbler")
+cmd := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler")
 
 out1, err := cmd.CombinedOutput()
 
