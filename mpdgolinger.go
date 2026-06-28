@@ -5631,7 +5631,7 @@ log.Printf("abs: %s", abs)
     switch cmd {
     case "on":
       log.Printf("------------------------------in scrobbler on-----------------")
-      err := exec.Command("/usr/local/bin/mpd-scrobbler", "on").Run()
+      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "on").Run()
 
       if err != nil {
         js["response"] = "error"
@@ -5658,7 +5658,7 @@ log.Printf("abs: %s", abs)
 
 
     case "off":
-      err := exec.Command("/usr/local/bin/mpd-scrobbler", "off").Run()
+      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "off").Run()
 
       if err != nil {
         js["response"] = "error"
@@ -5685,7 +5685,7 @@ log.Printf("abs: %s", abs)
 
 
     case "restart":
-      err := exec.Command("/usr/local/bin/mpd-scrobbler", "restart").Run()
+      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "restart").Run()
 
       if err != nil {
         js["response"] = "error"
@@ -5707,7 +5707,7 @@ log.Printf("abs: %s", abs)
       return []string{string(out)}
 
     case "status":
-      err := exec.Command("/usr/local/bin/mpd-scrobbler", "status").Run()
+      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Run()
 
       if err != nil {
         js["response"] = "error"
