@@ -2259,7 +2259,7 @@ func eventProcessor(){
 //        }
 
 if songChanged || ev.Subsystem == "scrobbler" {
-
+log.Printf("---------------------ARE GREAT!!!----------------------------")
   out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
 
   if err != nil {
