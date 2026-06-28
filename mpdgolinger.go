@@ -5660,17 +5660,26 @@ log.Printf("abs: %s", abs)
     case "off":
       log.Printf("------------------------------in scrobbler off-----------------")
 //      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "off").Run()
-      err := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler", "2>&1").Run()
+ //     err := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler").Run()
+cmd := exec.Command("/usr/bin/systemctl", "stop", "mpd-scrobbler")
 
-      if err != nil {
-        js["response"] = "error"
-        js["system"] = "scrobbler"
-        js["cmd"] = cmd
-        js["error"] = err.Error()
+out1, err := cmd.CombinedOutput()
 
-        out, _ := json.Marshal(js)
-        return []string{string(out)}
-      }
+log.Printf("[eP] systemctl out: %s", string(out1))
+if err != nil {
+  log.Printf("[eP] systemctl error: %v", err)
+  out, _ := json.Marshal(js)
+  return []string{string(out)}
+}
+//      if err != nil {
+//        js["response"] = "error"
+//        js["system"] = "scrobbler"
+//        js["cmd"] = cmd
+//        js["error"] = err.Error()
+//
+//        out, _ := json.Marshal(js)
+//        return []string{string(out)}
+//      }
 
       state.mu.Lock()
       state.scrobblerOn = false
