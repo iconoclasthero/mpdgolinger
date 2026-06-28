@@ -626,6 +626,10 @@ func convert2json(raw map[string]string, out interface{}, extra ...interface{}) 
       EndTime:   state.pauseTimer.EndTime,
       Remaining: int(math.Max(0, time.Until(state.pauseTimer.EndTime).Seconds())),
     }
+
+    // --- scrobbler ---
+    dst.Scrobbler  = state.scrobbler
+
     state.mu.Unlock()
     pulseMu.RLock()
     dst.PulseData = PulseData
@@ -6866,12 +6870,10 @@ func verbProcessor(csv string) []string {
         break
       }
 
-// inject scrobbler runtime state
-js.Scrobbler.Enabled = state.scrobbler.Enabled
-js.Scrobbler.Running = state.scrobbler.Running
-js.Scrobbler.LastErr = state.scrobbler.LastErr
-js.Scrobbler.ExitCode = state.scrobbler.ExitCode
-
+      // inject scrobbler runtime state
+//      state.mu.Lock()
+//      js.Scrobbler = state.Scrobbler
+//      state.mu.Unlock()
 
       // --- marshal JSON struct to string ---
       jsonBytes, err := json.Marshal(js)
