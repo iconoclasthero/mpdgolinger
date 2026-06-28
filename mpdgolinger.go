@@ -63,6 +63,7 @@ type       State      struct {
      consume          bool
      lastAlbumKey     string
      pauseTimer       TimerV1
+     scrobblerOn      bool
 } // type State struct
 
 type   derivedState   struct {
@@ -2220,42 +2221,41 @@ func eventProcessor(){
         // ----------------------
         // SCROBBLER CHECK
         // ----------------------
-{
-        out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
 
-        if err == nil {
-          scrobblerStatus := strings.TrimSpace(string(out))
-          // active, inactive, failed, activating, etc.
-          log.Printf("[eP] SCROBBLER: '%s' - - - - - - - - - - -", scrobblerStatus)
-    s := strings.TrimSpace(string(out))
-    s = strings.Fields(s)[0]
+        if songChanged {
+          out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
 
-    switch s {
-    case "active":
-        st.Scrobbler.Running = true
-        st.Scrobbler.Enabled = true
-        st.Scrobbler.ExitCode = 0
+          if err == nil {
+            raw := strings.TrimSpace(string(out))
+            // active, inactive, failed, activating, etc.
+            log.Printf("[eP] Scrobbler: %s", raw)
+            scrobblerStatus := strings.Fields(raw)[0]
 
-    case "inactive":
-        st.Scrobbler.Running = false
-        st.Scrobbler.Enabled = false
-        st.Scrobbler.ExitCode = 0
+            switch scrobblerStatus {
+              case "active":
+                st.Scrobbler.Running = true
+                st.Scrobbler.Enabled = true
+                st.Scrobbler.ExitCode = 0
 
-    default:
-        st.Scrobbler.Running = false
-        st.Scrobbler.LastErr = s
-        st.Scrobbler.ExitCode = 1
-    }
+              case "inactive":
+                st.Scrobbler.Running = false
+                st.Scrobbler.Enabled = false
+                st.Scrobbler.ExitCode = 0
 
-        } else {
-          log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", err)
-          st.Scrobbler.Running = false
-          st.Scrobbler.LastErr = err.Error()
-          st.Scrobbler.ExitCode = 1
-          return
+              default:
+                st.Scrobbler.Running = false
+                st.Scrobbler.LastErr = raw
+                st.Scrobbler.ExitCode = 1
+            }
+
+          } else {
+            log.Printf("[eP] Scrobbler Error: %s", err)
+            st.Scrobbler.Running = false
+            st.Scrobbler.LastErr = err.Error()
+            st.Scrobbler.ExitCode = 1
+            return
+          }
         }
-
-}
 
         // -----------------------
         // STATUS FRAME
@@ -5589,104 +5589,116 @@ log.Printf("abs: %s", abs)
       return []string{string(out)}
     } // websocket switch cmd
 
-//  case "scrobbler":
-//    switch cmd {
-//      case "on":
-//        err := exec.Command("sudo", "/usr/local/bin/mpd-scrobbler", "on").Run()
-//
-//        if err != nil {
-//          status.Scrobbler.Running = false
-//          status.Scrobbler.LastErr = err.Error()
-//          status.Scrobbler.ExitCode = 1
-//
-//          js["response"] = "error"
-//          js["system"] = "scrobbler"
-//          js["cmd"] = cmd
-//          js["error"] = err.Error()
-//
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
-//
-//        status.Scrobbler.Enabled = true
-//        status.Scrobbler.Running = true
-//        status.Scrobbler.LastErr = ""
-//        status.Scrobbler.ExitCode = 0
-//
-//        js["response"] = "ok"
-//        js["system"] = "scrobbler"
-//        js["cmd"] = cmd
-//
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-//
-//      case "off":
-//        err := exec.Command("sudo", "/usr/local/bin/mpd-scrobbler", "off").Run()
-//
-//        if err != nil {
-//          status.Scrobbler.Running = false
-//          status.Scrobbler.LastErr = err.Error()
-//          status.Scrobbler.ExitCode = 1
-//
-//          js["response"] = "error"
-//          js["system"] = "scrobbler"
-//          js["cmd"] = cmd
-//          js["error"] = err.Error()
-//
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
-//
-//        status.Scrobbler.Enabled = false
-//        status.Scrobbler.Running = false
-//        status.Scrobbler.LastErr = ""
-//        status.Scrobbler.ExitCode = 0
-//
-//        js["response"] = "ok"
-//        js["system"] = "scrobbler"
-//        js["cmd"] = cmd
-//
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-//
-//      case "restart":
-//        err := exec.Command("sudo", "/usr/local/bin/mpd-scrobbler", "restart").Run()
-//
-//        if err != nil {
-//          status.Scrobbler.Running = false
-//          status.Scrobbler.LastErr = err.Error()
-//          status.Scrobbler.ExitCode = 1
-//
-//          js["response"] = "error"
-//          js["system"] = "scrobbler"
-//          js["cmd"] = cmd
-//          js["error"] = err.Error()
-//
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
-//
-//        status.Scrobbler.Enabled = true
-//        status.Scrobbler.Running = true
-//        status.Scrobbler.LastErr = ""
-//        status.Scrobbler.ExitCode = 0
-//
-//        js["response"] = "ok"
-//        js["system"] = "scrobbler"
-//        js["cmd"] = cmd
-//
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-//
-//      default:
-//        js["response"] = "error"
-//        js["system"] = "scrobbler"
-//        js["cmd"] = cmd
-//        js["error"] = "unknown scrobbler cmd"
-//
-//        out, _ := json.Marshal(js)
-//        return []string{string(out)}
-//      } // scrobbler switch cmd
+  case "scrobbler":
+    switch cmd {
+    case "on":
+      err := exec.Command("/usr/local/bin/mpd-scrobbler", "on").Run()
+
+      if err != nil {
+        js["response"] = "error"
+        js["system"] = "scrobbler"
+        js["cmd"] = cmd
+        js["error"] = err.Error()
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
+      state.mu.Lock()
+      state.scrobblerOn = true
+      state.mu.Unlock()
+
+      idleEvents <- IdleEvent{Subsystem: "scrobbler"}
+
+      js["response"] = "ok"
+      js["system"] = "scrobbler"
+      js["cmd"] = cmd
+
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+
+
+    case "off":
+      err := exec.Command("/usr/local/bin/mpd-scrobbler", "off").Run()
+
+      if err != nil {
+        js["response"] = "error"
+        js["system"] = "scrobbler"
+        js["cmd"] = cmd
+        js["error"] = err.Error()
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
+      state.mu.Lock()
+      state.scrobblerOn = false
+      state.mu.Unlock()
+
+      idleEvents <- IdleEvent{Subsystem: "scrobbler"}
+
+      js["response"] = "ok"
+      js["system"] = "scrobbler"
+      js["cmd"] = cmd
+
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+
+
+    case "restart":
+      err := exec.Command("/usr/local/bin/mpd-scrobbler", "restart").Run()
+
+      if err != nil {
+        js["response"] = "error"
+        js["system"] = "scrobbler"
+        js["cmd"] = cmd
+        js["error"] = err.Error()
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
+      idleEvents <- IdleEvent{Subsystem: "scrobbler"}
+
+      js["response"] = "ok"
+      js["system"] = "scrobbler"
+      js["cmd"] = cmd
+
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+
+    case "status":
+      err := exec.Command("/usr/local/bin/mpd-scrobbler", "status").Run()
+
+      if err != nil {
+        js["response"] = "error"
+        js["system"] = "scrobbler"
+        js["cmd"] = cmd
+        js["error"] = err.Error()
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
+      idleEvents <- IdleEvent{Subsystem: "scrobbler"}
+
+      js["response"] = "ok"
+      js["system"] = "scrobbler"
+      js["cmd"] = cmd
+
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+
+
+    default:
+      js["response"] = "error"
+      js["system"] = "scrobbler"
+      js["cmd"] = cmd
+      js["error"] = "unknown scrobbler cmd"
+
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+  } // scrobbler switch cmd
 
 
   default: // of switch system
