@@ -5658,7 +5658,7 @@ log.Printf("abs: %s", abs)
 
 
     case "off":
-      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "off").Run()
+      err := exec.Command("sudo", "/usr/local/bin/mpd-scrobblerctl", "off").Run()
 
       if err != nil {
         js["response"] = "error"
