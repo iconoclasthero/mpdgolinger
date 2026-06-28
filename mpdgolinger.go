@@ -6866,6 +6866,13 @@ func verbProcessor(csv string) []string {
         break
       }
 
+// inject scrobbler runtime state
+js.Scrobbler.Enabled = state.scrobbler.Enabled
+js.Scrobbler.Running = state.scrobbler.Running
+js.Scrobbler.LastErr = state.scrobbler.LastErr
+js.Scrobbler.ExitCode = state.scrobbler.ExitCode
+
+
       // --- marshal JSON struct to string ---
       jsonBytes, err := json.Marshal(js)
       if err != nil {
