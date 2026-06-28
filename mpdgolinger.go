@@ -2297,6 +2297,7 @@ log.Printf("---------------------ARE GREAT!!!----------------------------")
     }
   }
 }
+log.Printf("eventProcessor st=%p", &st)
 log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
         // -----------------------
         // STATUS FRAME
@@ -2308,7 +2309,7 @@ log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
           "response": st,
   //           "debug": time.Now().UnixNano(),
         }
-
+log.Printf("eventProcessor st=%p", &st)
         data, _ := json.Marshal(env)
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
 
