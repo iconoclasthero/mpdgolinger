@@ -5630,6 +5630,7 @@ log.Printf("abs: %s", abs)
   case "scrobbler":
     switch cmd {
     case "on":
+      log.Printf("------------------------------in scrobbler on-----------------")
       err := exec.Command("/usr/local/bin/mpd-scrobbler", "on").Run()
 
       if err != nil {
