@@ -5659,27 +5659,26 @@ log.Printf("abs: %s", abs)
 
     case "off":
       log.Printf("------------------------------in scrobbler off-----------------")
-//      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "off").Run()
- //     err := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler").Run()
-cmd := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler")
-
-out1, err := cmd.CombinedOutput()
-
-log.Printf("[vPJ] systemctl out: %s", string(out1))
-if err != nil {
-  log.Printf("[vPJ] systemctl error: %v", err)
-  out, _ := json.Marshal(js)
-  return []string{string(out)}
-}
-//      if err != nil {
-//        js["response"] = "error"
-//        js["system"] = "scrobbler"
-//        js["cmd"] = cmd
-//        js["error"] = err.Error()
+      err := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler").Run()
+//      cmd := exec.Command("sudo", "/usr/bin/systemctl", "stop", "mpd-scrobbler")
 //
+//      out1, err := cmd.CombinedOutput()
+//
+//      log.Printf("[vPJ] systemctl out: %s", string(out1))
+//      if err != nil {
+//        log.Printf("[vPJ] systemctl error: %v", err)
 //        out, _ := json.Marshal(js)
 //        return []string{string(out)}
 //      }
+      if err != nil {
+        js["response"] = "error"
+        js["system"] = "scrobbler"
+        js["cmd"] = cmd
+        js["error"] = err.Error()
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
 
       state.mu.Lock()
       state.scrobblerOn = false
@@ -5693,7 +5692,6 @@ if err != nil {
 
       out, _ := json.Marshal(js)
       return []string{string(out)}
-
 
     case "restart":
       err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "restart").Run()
