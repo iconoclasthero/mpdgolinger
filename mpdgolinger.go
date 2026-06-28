@@ -2096,6 +2096,7 @@ func eventProcessor(){
         }
 
       case "player", "linger", "scrobbler":
+        if ev.Subsystem == "scrobbler" { log.Printf("----------------------------BOOOOOOOOOBS---------------") }
         if ! ( ev.Subscribe || ev.Subsystem == "linger" ) && dedupePlayerEV(ev, evState.lastPlayerEV) {
 //          log.Printf("[eP] Skipping duplicate idle event!---------------------")
           if epDebug { log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------") }
