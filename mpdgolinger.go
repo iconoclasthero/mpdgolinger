@@ -2227,87 +2227,48 @@ func eventProcessor(){
         // SCROBBLER CHECK
         // ----------------------
 
-//        if songChanged || ev.Subsystem == "scrobbler" {
-//          out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
-//
-//          if err == nil {
-//            raw := strings.TrimSpace(string(out))
-//            // active, inactive, failed, activating, etc.
-//            log.Printf("[eP] Scrobbler: %s", raw)
-//            scrobblerStatus := strings.Fields(raw)[0]
-//
-//            switch scrobblerStatus {
-//              case "active":
-//                st.Scrobbler.Running = true
-//                st.Scrobbler.Enabled = true
-//                st.Scrobbler.ExitCode = 0
-//
-//              case "inactive":
-//                st.Scrobbler.Running = false
-//                st.Scrobbler.Enabled = false
-//                st.Scrobbler.ExitCode = 0
-//
-//              default:
-//                st.Scrobbler.Running = false
-//                st.Scrobbler.LastErr = raw
-//                st.Scrobbler.ExitCode = 1
-//            }
-//
-//          } else {
-//            log.Printf("[eP] Scrobbler Error: %s", err)
-//            st.Scrobbler.Running = false
-//            st.Scrobbler.LastErr = err.Error()
-//            st.Scrobbler.ExitCode = 1
-//            return
-//          }
-//        }
+        if songChanged || ev.Subsystem == "scrobbler" {
+          out, err := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler").Output()
 
-log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
-if songChanged || ev.Subsystem == "scrobbler" {
-log.Printf("---------------------ARE GREAT!!!----------------------------")
-  out, err := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler").Output()
+          if err != nil {
+            log.Printf("[eP] scrobbler status error: %v", err)
+            st.Scrobbler.Running = false
+            st.Scrobbler.Enabled = state.scrobbler.Enabled
+            st.Scrobbler.LastErr = err.Error()
+            st.Scrobbler.ExitCode = 1
+          } else {
+            raw := strings.TrimSpace(string(out))
 
-  if err != nil {
-    log.Printf("[eP] scrobbler status error: %v", err)
-    st.Scrobbler.Running = false
-    st.Scrobbler.Enabled = state.scrobbler.Enabled
-    st.Scrobbler.LastErr = err.Error()
-    st.Scrobbler.ExitCode = 1
-  } else {
-    raw := strings.TrimSpace(string(out))
-    log.Printf("[eP] scrobbler: %s", raw)
+            s := strings.Fields(raw)[0]
+            log.Printf("[eP] scrobbler: %s", s)
 
-    s := strings.Fields(raw)[0]
-    log.Printf("[eP] scrobbler: %s", s)
+            switch s {
+            case "active":
+              st.Scrobbler.Running = true
+              st.Scrobbler.Enabled = state.scrobbler.Enabled
+              st.Scrobbler.LastErr = ""
+              st.Scrobbler.ExitCode = 0
 
-    switch s {
-    case "active":
-      st.Scrobbler.Running = true
-      st.Scrobbler.Enabled = state.scrobbler.Enabled
-      st.Scrobbler.LastErr = ""
-      st.Scrobbler.ExitCode = 0
+            case "inactive":
+              st.Scrobbler.Running = false
+              st.Scrobbler.Enabled = state.scrobbler.Enabled
+              st.Scrobbler.LastErr = ""
+              st.Scrobbler.ExitCode = 0
 
-    case "inactive":
-      st.Scrobbler.Running = false
-      st.Scrobbler.Enabled = state.scrobbler.Enabled
-      st.Scrobbler.LastErr = ""
-      st.Scrobbler.ExitCode = 0
+            default:
+              st.Scrobbler.Running = false
+              st.Scrobbler.Enabled = state.scrobbler.Enabled
+              st.Scrobbler.LastErr = raw
+              st.Scrobbler.ExitCode = 1
+            }
+          }
+        state.mu.Lock()
+        state.scrobbler.Running = st.Scrobbler.Running
+        state.scrobbler.LastErr = st.Scrobbler.LastErr
+        state.scrobbler.ExitCode = st.Scrobbler.ExitCode
+        state.mu.Unlock()
+        }
 
-    default:
-      st.Scrobbler.Running = false
-      st.Scrobbler.Enabled = state.scrobbler.Enabled
-      st.Scrobbler.LastErr = raw
-      st.Scrobbler.ExitCode = 1
-    }
-  }
-state.mu.Lock()
-state.scrobbler.Running = st.Scrobbler.Running
-state.scrobbler.LastErr = st.Scrobbler.LastErr
-state.scrobbler.ExitCode = st.Scrobbler.ExitCode
-state.mu.Unlock()
-}
-log.Printf("eventProcessor st=%p", &st)
-log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
         // -----------------------
         // STATUS FRAME
         // -----------------------
@@ -2318,9 +2279,8 @@ log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
           "response": st,
   //           "debug": time.Now().UnixNano(),
         }
-log.Printf("eventProcessor st=%p", &st)
         data, _ := json.Marshal(env)
-log.Printf("OUTGOING JSON: %s", data)
+        if debug { log.Printf("OUTGOING JSON: %s", data) }
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
 
 
@@ -6869,11 +6829,6 @@ func verbProcessor(csv string) []string {
         responses = append(responses, fmt.Sprintf("ERR JSON conversion: %v", err))
         break
       }
-
-      // inject scrobbler runtime state
-//      state.mu.Lock()
-//      js.Scrobbler = state.Scrobbler
-//      state.mu.Unlock()
 
       // --- marshal JSON struct to string ---
       jsonBytes, err := json.Marshal(js)
