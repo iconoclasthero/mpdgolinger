@@ -2296,7 +2296,7 @@ log.Printf("---------------------ARE GREAT!!!----------------------------")
     }
   }
 }
-
+log.Printf("st.Scrobbler.Enabled: %t", st.Scrobbler.Enabled)
         // -----------------------
         // STATUS FRAME
         // -----------------------
