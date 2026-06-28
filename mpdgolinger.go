@@ -5659,7 +5659,8 @@ log.Printf("abs: %s", abs)
 
     case "off":
       log.Printf("------------------------------in scrobbler off-----------------")
-      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "off").Run()
+//      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "off").Run()
+      err := exec.Command("/usr/bin/systemd", "stop", "mpd-scrobbler").Run()
 
       if err != nil {
         js["response"] = "error"
