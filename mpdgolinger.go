@@ -2222,40 +2222,78 @@ func eventProcessor(){
         // SCROBBLER CHECK
         // ----------------------
 
-        if songChanged || ev.Subsystem == "scrobbler" {
-          out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
+//        if songChanged || ev.Subsystem == "scrobbler" {
+//          out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
+//
+//          if err == nil {
+//            raw := strings.TrimSpace(string(out))
+//            // active, inactive, failed, activating, etc.
+//            log.Printf("[eP] Scrobbler: %s", raw)
+//            scrobblerStatus := strings.Fields(raw)[0]
+//
+//            switch scrobblerStatus {
+//              case "active":
+//                st.Scrobbler.Running = true
+//                st.Scrobbler.Enabled = true
+//                st.Scrobbler.ExitCode = 0
+//
+//              case "inactive":
+//                st.Scrobbler.Running = false
+//                st.Scrobbler.Enabled = false
+//                st.Scrobbler.ExitCode = 0
+//
+//              default:
+//                st.Scrobbler.Running = false
+//                st.Scrobbler.LastErr = raw
+//                st.Scrobbler.ExitCode = 1
+//            }
+//
+//          } else {
+//            log.Printf("[eP] Scrobbler Error: %s", err)
+//            st.Scrobbler.Running = false
+//            st.Scrobbler.LastErr = err.Error()
+//            st.Scrobbler.ExitCode = 1
+//            return
+//          }
+//        }
 
-          if err == nil {
-            raw := strings.TrimSpace(string(out))
-            // active, inactive, failed, activating, etc.
-            log.Printf("[eP] Scrobbler: %s", raw)
-            scrobblerStatus := strings.Fields(raw)[0]
+if songChanged || ev.Subsystem == "scrobbler" {
 
-            switch scrobblerStatus {
-              case "active":
-                st.Scrobbler.Running = true
-                st.Scrobbler.Enabled = true
-                st.Scrobbler.ExitCode = 0
+  out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
 
-              case "inactive":
-                st.Scrobbler.Running = false
-                st.Scrobbler.Enabled = false
-                st.Scrobbler.ExitCode = 0
+  if err != nil {
+    log.Printf("[eP] scrobbler status error: %v", err)
+    st.Scrobbler.Running = false
+    st.Scrobbler.Enabled = false
+    st.Scrobbler.LastErr = err.Error()
+    st.Scrobbler.ExitCode = 1
+  } else {
+    raw := strings.TrimSpace(string(out))
+    log.Printf("[eP] scrobbler: %s", raw)
 
-              default:
-                st.Scrobbler.Running = false
-                st.Scrobbler.LastErr = raw
-                st.Scrobbler.ExitCode = 1
-            }
+    s := strings.Fields(raw)[0]
 
-          } else {
-            log.Printf("[eP] Scrobbler Error: %s", err)
-            st.Scrobbler.Running = false
-            st.Scrobbler.LastErr = err.Error()
-            st.Scrobbler.ExitCode = 1
-            return
-          }
-        }
+    switch s {
+    case "active":
+      st.Scrobbler.Running = true
+      st.Scrobbler.Enabled = true
+      st.Scrobbler.LastErr = ""
+      st.Scrobbler.ExitCode = 0
+
+    case "inactive":
+      st.Scrobbler.Running = false
+      st.Scrobbler.Enabled = false
+      st.Scrobbler.LastErr = ""
+      st.Scrobbler.ExitCode = 0
+
+    default:
+      st.Scrobbler.Running = false
+      st.Scrobbler.Enabled = false
+      st.Scrobbler.LastErr = raw
+      st.Scrobbler.ExitCode = 1
+    }
+  }
+}
 
         // -----------------------
         // STATUS FRAME
