@@ -2095,7 +2095,7 @@ func eventProcessor(){
           msgs = append(msgs, wsMsg{websocket.MessageBinary, []byte(note)})
         }
 
-      case "player", "linger":
+      case "player", "linger", "scrobbler":
         if ! ( ev.Subscribe || ev.Subsystem == "linger" ) && dedupePlayerEV(ev, evState.lastPlayerEV) {
 //          log.Printf("[eP] Skipping duplicate idle event!---------------------")
           if epDebug { log.Printf("[eP] SKIPPING DUPLICATE IDLE EVENT!---------------------") }
@@ -2222,7 +2222,7 @@ func eventProcessor(){
         // SCROBBLER CHECK
         // ----------------------
 
-        if songChanged {
+        if songChanged || ev.Subsystem == "scrobbler" {
           out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
 
           if err == nil {
