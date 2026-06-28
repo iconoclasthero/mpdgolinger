@@ -2311,6 +2311,7 @@ log.Printf("st.Scrobbler.Running: %t", st.Scrobbler.Running)
         }
 log.Printf("eventProcessor st=%p", &st)
         data, _ := json.Marshal(env)
+log.Printf("OUTGOING JSON: %s", data)
         msgs = append(msgs, wsMsg{websocket.MessageText, data})
 
 
