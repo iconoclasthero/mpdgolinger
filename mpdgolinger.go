@@ -2221,7 +2221,7 @@ func eventProcessor(){
         // SCROBBLER CHECK
         // ----------------------
 {
-        out, err := exec.Command("sudo", "/usr/local/bin/mpd-scrobblerctl", "status").Output()
+        out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
 
         if err == nil {
             scrobblerStatus := strings.TrimSpace(string(out))
