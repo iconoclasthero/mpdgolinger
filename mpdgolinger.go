@@ -2230,6 +2230,32 @@ func eventProcessor(){
         } else {
           log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", err)
         }
+    if err != nil {
+        st.Scrobbler.Running = false
+        st.Scrobbler.LastErr = err.Error()
+        st.Scrobbler.ExitCode = 1
+        return
+    }
+
+    s := strings.TrimSpace(string(out))
+    s = strings.Fields(s)[0]
+
+    switch s {
+    case "active":
+        st.Scrobbler.Running = true
+        st.Scrobbler.Enabled = true
+        st.Scrobbler.ExitCode = 0
+
+    case "inactive":
+        st.Scrobbler.Running = false
+        st.Scrobbler.Enabled = false
+        st.Scrobbler.ExitCode = 0
+
+    default:
+        st.Scrobbler.Running = false
+        st.Scrobbler.LastErr = s
+        st.Scrobbler.ExitCode = 1
+    }
 }
 
         // -----------------------
