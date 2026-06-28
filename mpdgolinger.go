@@ -2226,7 +2226,7 @@ func eventProcessor(){
         if err == nil {
           scrobblerStatus := strings.TrimSpace(string(out))
           // active, inactive, failed, activating, etc.
-          log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", scrobblerStatus)
+          log.Printf("[eP] SCROBBLER: '%s' - - - - - - - - - - -", scrobblerStatus)
         } else {
           log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", err)
         }
