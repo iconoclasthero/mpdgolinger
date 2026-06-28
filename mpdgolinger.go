@@ -2224,9 +2224,11 @@ func eventProcessor(){
         out, err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "status").Output()
 
         if err == nil {
-            scrobblerStatus := strings.TrimSpace(string(out))
-            // active, inactive, failed, activating, etc.
-            log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", scrobblerStatus)
+          scrobblerStatus := strings.TrimSpace(string(out))
+          // active, inactive, failed, activating, etc.
+          log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", scrobblerStatus)
+        } else {
+          log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", err)
         }
 }
 
