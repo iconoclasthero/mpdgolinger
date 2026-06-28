@@ -5631,7 +5631,7 @@ log.Printf("abs: %s", abs)
     switch cmd {
     case "on":
       log.Printf("------------------------------in scrobbler on-----------------")
-      err := exec.Command("/usr/local/bin/mpd-scrobblerctl", "on").Run()
+      err := exec.Command("sudo", "/usr/local/bin/mpd-scrobblerctl", "on").Run()
 
       if err != nil {
         js["response"] = "error"
