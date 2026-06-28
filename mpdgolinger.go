@@ -2227,16 +2227,6 @@ func eventProcessor(){
           scrobblerStatus := strings.TrimSpace(string(out))
           // active, inactive, failed, activating, etc.
           log.Printf("[eP] SCROBBLER: '%s' - - - - - - - - - - -", scrobblerStatus)
-        } else {
-          log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", err)
-        }
-    if err != nil {
-        st.Scrobbler.Running = false
-        st.Scrobbler.LastErr = err.Error()
-        st.Scrobbler.ExitCode = 1
-        return
-    }
-
     s := strings.TrimSpace(string(out))
     s = strings.Fields(s)[0]
 
@@ -2256,6 +2246,15 @@ func eventProcessor(){
         st.Scrobbler.LastErr = s
         st.Scrobbler.ExitCode = 1
     }
+
+        } else {
+          log.Printf("[eP] SCROBBLER: %s - - - - - - - - - - -", err)
+          st.Scrobbler.Running = false
+          st.Scrobbler.LastErr = err.Error()
+          st.Scrobbler.ExitCode = 1
+          return
+        }
+
 }
 
         // -----------------------
