@@ -2254,6 +2254,12 @@ func eventProcessor(){
                 st.Scrobbler.LastErr = raw
             }
           }
+          state.mu.Lock()
+          state.scrobbler.Running = st.Scrobbler.Running
+          state.scrobbler.LastErr = st.Scrobbler.LastErr
+          state.scrobbler.ExitCode = st.Scrobbler.ExitCode
+          state.mu.Unlock()
+        }
 
 //          out, err := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler").Output()
 //
@@ -2289,12 +2295,6 @@ func eventProcessor(){
 //              st.Scrobbler.ExitCode = 1
 //            }
 //          }
-        state.mu.Lock()
-        state.scrobbler.Running = st.Scrobbler.Running
-        state.scrobbler.LastErr = st.Scrobbler.LastErr
-        state.scrobbler.ExitCode = st.Scrobbler.ExitCode
-        state.mu.Unlock()
-        }
 
         log.Printf("[eP] ==== 2 songChanged: %t ====", songChanged)
 
