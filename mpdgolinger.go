@@ -5603,6 +5603,44 @@ log.Printf("abs: %s", abs)
 
   case "scrobbler":
     switch cmd {
+    case "toggle":
+      var toggleState bool
+      var toggleCmd string
+      log.Printf("------------------------------in scrobbler toggle-----------------")
+      toggleState = !state.scrobbler.Enabled
+      if toggleState {
+        toggleCmd = "start"
+      } else {
+        toggleCmd = "stop"
+      }
+
+      err := exec.Command("sudo", "/usr/bin/systemctl", toggleCmd, "mpd-scrobbler").Run()
+
+      if err != nil {
+        js["response"] = "error"
+        js["system"] = "scrobbler"
+        js["cmd"] = cmd
+        js["error"] = err.Error()
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+      }
+
+      state.mu.Lock()
+      state.scrobbler.Enabled = toggleState
+      log.Printf("state.scrobblerOn: %t", state.scrobbler.Enabled)
+      state.mu.Unlock()
+
+      idleEvents <- IdleEvent{Subsystem: "scrobbler"}
+
+      js["response"] = "ok"
+      js["system"] = "scrobbler"
+      js["cmd"] = cmd
+
+      out, _ := json.Marshal(js)
+      return []string{string(out)}
+
+
     case "on":
       log.Printf("------------------------------in scrobbler on-----------------")
       err := exec.Command("sudo", "/usr/bin/systemctl", "start", "mpd-scrobbler").Run()
