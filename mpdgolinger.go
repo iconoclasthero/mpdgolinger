@@ -2217,6 +2217,7 @@ func eventProcessor(){
         }
 
         if songChanged || ev.Subsystem == "scrobbler" {
+          log.Printf("log 1-----------------------")
           cmd := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler")
           out, err := cmd.CombinedOutput()
           code := cmd.ProcessState.ExitCode()
