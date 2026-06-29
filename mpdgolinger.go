@@ -5606,7 +5606,6 @@ log.Printf("abs: %s", abs)
     case "toggle":
       var toggleState bool
       var toggleCmd string
-      log.Printf("------------------------------in scrobbler toggle-----------------")
       toggleState = !state.scrobbler.Enabled
       if toggleState {
         toggleCmd = "start"
