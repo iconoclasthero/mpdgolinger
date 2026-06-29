@@ -2259,6 +2259,7 @@ func eventProcessor(){
             }
                 log.Printf("log 7-----------------------")
           }
+                log.Printf("log 7.5-----------------------")
           state.mu.Lock()
                 log.Printf("log 8-----------------------")
 
