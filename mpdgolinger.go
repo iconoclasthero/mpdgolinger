@@ -2206,46 +2206,42 @@ func eventProcessor(){
 
         if state.lastSongID == 0 || songID != state.lastSongID || ev.PrevSongID != songID || ev.PrevSongID != ev.SongID || lastSongID != songID {
           songChanged = true
-          if debug {
-            log.Printf("[eP] ==== 1 setting songChanged: %t", songChanged)
-            log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
-            log.Printf("[eP] ==== ev.PrevSongID: %d; ev.SongID: %d ====", ev.PrevSongID, ev.SongID)
-            log.Printf("[eP] ==== lastSongID: %d; SongID: %d ====", lastSongID, songID)
-            log.Printf("[eP] ==== setting lastSongID = songID: %d ⟶ %d", lastSongID, songID)
-          }
-          lastSongID = songID
-        }
 
+          log.Printf("[eP] ==== 1 setting songChanged: %t", songChanged)
+          log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
+          log.Printf("[eP] ==== ev.PrevSongID: %d; ev.SongID: %d ====", ev.PrevSongID, ev.SongID)
+          log.Printf("[eP] ==== lastSongID: %d; SongID: %d ====", lastSongID, songID)
+
+
+          log.Printf("[eP] ==== setting lastSongID = songID: %d ⟶ %d", lastSongID, songID)
+
+          lastSongID = songID
+
+        }
         if songChanged || ev.Subsystem == "scrobbler" {
-          log.Printf("log 1-----------------------")
           cmd := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler")
-          out, errIA := cmd.CombinedOutput()
+          out, err := cmd.CombinedOutput()
           code := cmd.ProcessState.ExitCode()
-          log.Printf("log 2-----------------------")
 
           raw := strings.TrimSpace(string(out))
           s := strings.Fields(raw)[0]
-          log.Printf("log 3-----------------------")
 
           log.Printf("[eP] scrobbler: %s (code=%d)", s, code)
-          if errIA != nil && code != 3 {
-            log.Printf("[eP] scrobbler status error: %v", errIA)
+          if err != nil && code != 3 {
+            log.Printf("[eP] scrobbler status error: %v", err)
             st.Scrobbler.Running = false
             st.Scrobbler.Enabled = state.scrobbler.Enabled
-            st.Scrobbler.LastErr = errIA.Error()
+            st.Scrobbler.LastErr = err.Error()
             st.Scrobbler.ExitCode = code
           } else {
-          log.Printf("log 4-----------------------")
             switch s {
               case "active":
-                log.Printf("log 5-----------------------")
                 st.Scrobbler.Enabled = state.scrobbler.Enabled
                 st.Scrobbler.Running = true
                 st.Scrobbler.ExitCode = 0
                 st.Scrobbler.LastErr = ""
 
               case "inactive":
-                log.Printf("log 6-----------------------")
                 st.Scrobbler.Enabled = state.scrobbler.Enabled
                 st.Scrobbler.Running = false
                 st.Scrobbler.ExitCode = 0   // IMPORTANT: not an error state
@@ -2257,18 +2253,7 @@ func eventProcessor(){
                 st.Scrobbler.ExitCode = code
                 st.Scrobbler.LastErr = raw
             }
-                log.Printf("log 7-----------------------")
           }
-                log.Printf("log 7.5-----------------------")
-          state.mu.Lock()
-                log.Printf("log 8-----------------------")
-
-          state.scrobbler.Running = st.Scrobbler.Running
-          state.scrobbler.LastErr = st.Scrobbler.LastErr
-          state.scrobbler.ExitCode = st.Scrobbler.ExitCode
-          state.mu.Unlock()
-        }
-                log.Printf("log 9-----------------------")
 
 //          out, err := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler").Output()
 //
@@ -2304,6 +2289,12 @@ func eventProcessor(){
 //              st.Scrobbler.ExitCode = 1
 //            }
 //          }
+        state.mu.Lock()
+        state.scrobbler.Running = st.Scrobbler.Running
+        state.scrobbler.LastErr = st.Scrobbler.LastErr
+        state.scrobbler.ExitCode = st.Scrobbler.ExitCode
+        state.mu.Unlock()
+        }
 
         log.Printf("[eP] ==== 2 songChanged: %t ====", songChanged)
 
