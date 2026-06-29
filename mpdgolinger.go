@@ -2219,20 +2219,23 @@ func eventProcessor(){
         if songChanged || ev.Subsystem == "scrobbler" {
           log.Printf("log 1-----------------------")
           cmd := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler")
-          out, err := cmd.CombinedOutput()
+          out, errIA := cmd.CombinedOutput()
           code := cmd.ProcessState.ExitCode()
+          log.Printf("log 2-----------------------")
 
           raw := strings.TrimSpace(string(out))
           s := strings.Fields(raw)[0]
+          log.Printf("log 3-----------------------")
 
           log.Printf("[eP] scrobbler: %s (code=%d)", s, code)
-          if err != nil && code != 3 {
-            log.Printf("[eP] scrobbler status error: %v", err)
+          if errIA != nil && code != 3 {
+            log.Printf("[eP] scrobbler status error: %v", errIA)
             st.Scrobbler.Running = false
             st.Scrobbler.Enabled = state.scrobbler.Enabled
-            st.Scrobbler.LastErr = err.Error()
+            st.Scrobbler.LastErr = errIA.Error()
             st.Scrobbler.ExitCode = code
           } else {
+          log.Printf("log 4-----------------------")
             switch s {
               case "active":
                 st.Scrobbler.Enabled = state.scrobbler.Enabled
