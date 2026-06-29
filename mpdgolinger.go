@@ -2206,18 +2206,93 @@ func eventProcessor(){
 
         if state.lastSongID == 0 || songID != state.lastSongID || ev.PrevSongID != songID || ev.PrevSongID != ev.SongID || lastSongID != songID {
           songChanged = true
-
-          log.Printf("[eP] ==== 1 setting songChanged: %t", songChanged)
-          log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
-          log.Printf("[eP] ==== ev.PrevSongID: %d; ev.SongID: %d ====", ev.PrevSongID, ev.SongID)
-          log.Printf("[eP] ==== lastSongID: %d; SongID: %d ====", lastSongID, songID)
-
-
-          log.Printf("[eP] ==== setting lastSongID = songID: %d ⟶ %d", lastSongID, songID)
-
+          if debug {
+            log.Printf("[eP] ==== 1 setting songChanged: %t", songChanged)
+            log.Printf("[eP] ==== ev.PrevSongID: %d; songID: %d ====", ev.PrevSongID, songID)
+            log.Printf("[eP] ==== ev.PrevSongID: %d; ev.SongID: %d ====", ev.PrevSongID, ev.SongID)
+            log.Printf("[eP] ==== lastSongID: %d; SongID: %d ====", lastSongID, songID)
+            log.Printf("[eP] ==== setting lastSongID = songID: %d ⟶ %d", lastSongID, songID)
+          }
           lastSongID = songID
-
         }
+
+        if songChanged || ev.Subsystem == "scrobbler" {
+          cmd := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler")
+          out, err := cmd.CombinedOutput()
+          code := cmd.ProcessState.ExitCode()
+
+          raw := strings.TrimSpace(string(out))
+          s := strings.Fields(raw)[0]
+
+          log.Printf("[eP] scrobbler: %s (code=%d)", s, code)
+          if err != nil && code != 3 {
+            log.Printf("[eP] scrobbler status error: %v", err)
+            st.Scrobbler.Running = false
+            st.Scrobbler.Enabled = state.scrobbler.Enabled
+            st.Scrobbler.LastErr = err.Error()
+            st.Scrobbler.ExitCode = code
+          } else {
+            switch s {
+              case "active":
+                st.Scrobbler.Enabled = state.scrobbler.Enabled
+                st.Scrobbler.Running = true
+                st.Scrobbler.ExitCode = 0
+                st.Scrobbler.LastErr = ""
+
+              case "inactive":
+                st.Scrobbler.Enabled = state.scrobbler.Enabled
+                st.Scrobbler.Running = false
+                st.Scrobbler.ExitCode = 0   // IMPORTANT: not an error state
+                st.Scrobbler.LastErr = ""
+
+              default:
+                st.Scrobbler.Enabled = state.scrobbler.Enabled
+                st.Scrobbler.Running = false
+                st.Scrobbler.ExitCode = code
+                st.Scrobbler.LastErr = raw
+            }
+          }
+          state.mu.Lock()
+          state.scrobbler.Running = st.Scrobbler.Running
+          state.scrobbler.LastErr = st.Scrobbler.LastErr
+          state.scrobbler.ExitCode = st.Scrobbler.ExitCode
+          state.mu.Unlock()
+        }
+
+//          out, err := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler").Output()
+//
+//          if err != nil {
+//            log.Printf("[eP] scrobbler status error: %v", err)
+//            st.Scrobbler.Running = false
+//            st.Scrobbler.Enabled = state.scrobbler.Enabled
+//            st.Scrobbler.LastErr = err.Error()
+//            st.Scrobbler.ExitCode = 1
+//          } else {
+//            raw := strings.TrimSpace(string(out))
+//
+//            s := strings.Fields(raw)[0]
+//            log.Printf("[eP] scrobbler: %s", s)
+//
+//            switch s {
+//            case "active":
+//              st.Scrobbler.Running = true
+//              st.Scrobbler.Enabled = state.scrobbler.Enabled
+//              st.Scrobbler.LastErr = ""
+//              st.Scrobbler.ExitCode = 0
+//
+//            case "inactive":
+//              st.Scrobbler.Running = false
+//              st.Scrobbler.Enabled = state.scrobbler.Enabled
+//              st.Scrobbler.LastErr = ""
+//              st.Scrobbler.ExitCode = 0
+//
+//            default:
+//              st.Scrobbler.Running = false
+//              st.Scrobbler.Enabled = state.scrobbler.Enabled
+//              st.Scrobbler.LastErr = raw
+//              st.Scrobbler.ExitCode = 1
+//            }
+//          }
 
         log.Printf("[eP] ==== 2 songChanged: %t ====", songChanged)
 
@@ -5606,7 +5681,6 @@ log.Printf("abs: %s", abs)
     case "toggle":
       var toggleState bool
       var toggleCmd string
-      log.Printf("------------------------------in scrobbler toggle-----------------")
       toggleState = !state.scrobbler.Enabled
       if toggleState {
         toggleCmd = "start"
