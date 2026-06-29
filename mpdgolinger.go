@@ -2238,12 +2238,14 @@ func eventProcessor(){
           log.Printf("log 4-----------------------")
             switch s {
               case "active":
+                log.Printf("log 5-----------------------")
                 st.Scrobbler.Enabled = state.scrobbler.Enabled
                 st.Scrobbler.Running = true
                 st.Scrobbler.ExitCode = 0
                 st.Scrobbler.LastErr = ""
 
               case "inactive":
+                log.Printf("log 6-----------------------")
                 st.Scrobbler.Enabled = state.scrobbler.Enabled
                 st.Scrobbler.Running = false
                 st.Scrobbler.ExitCode = 0   // IMPORTANT: not an error state
@@ -2255,13 +2257,17 @@ func eventProcessor(){
                 st.Scrobbler.ExitCode = code
                 st.Scrobbler.LastErr = raw
             }
+                log.Printf("log 7-----------------------")
           }
           state.mu.Lock()
+                log.Printf("log 8-----------------------")
+
           state.scrobbler.Running = st.Scrobbler.Running
           state.scrobbler.LastErr = st.Scrobbler.LastErr
           state.scrobbler.ExitCode = st.Scrobbler.ExitCode
           state.mu.Unlock()
         }
+                log.Printf("log 9-----------------------")
 
 //          out, err := exec.Command("sudo", "/usr/bin/systemctl", "is-active", "mpd-scrobbler").Output()
 //
