@@ -320,7 +320,7 @@ var (
   daemonMode bool
 
   configFlag string
-  verbose    bool = true
+  verbose    bool
   allowed = map[string]bool{
     "status": true, "toggle": true, "pause": true, "resume": true,
     "limit": true, "block": true, "blocklimit": true, "version": true,
