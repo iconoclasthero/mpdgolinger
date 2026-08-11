@@ -1,0 +1,31 @@
+#!/bin/bash
+set -e
+#ver="${1:-$(date +%s|cut -c 5-)}"
+ver=$(git rev-parse --short HEAD 2>/dev/null || date +%s)
+printf 'main.version=%s\n' "$ver"
+go build -ldflags "-X main.version=$ver" mpdgolinger.go
+#go build -ldflags "-X main.version=$ver" -o mpdgolinger \
+#main.go \
+#api_ws.go \
+#artwork.go \
+#config.go \
+#events.go \
+#ipc_cli.go \
+#logging.go \
+#mpd.go \
+#pulse.go \
+#types.go \
+#util.go \
+#websocket.go
+
+(( verbose )) && printf 'strip mpdgolinger\n'
+strip mpdgolinger
+(( verbose )) && printf 'git commit -a -m "auto commit: %s" || true\n' "$ver"
+git commit -a -m "auto commit: $ver" || true
+(( verbose )) && printf 'sudo systemctl stop mpdgolinger.service\n'
+sudo systemctl stop mpdgolinger.service
+sudo cp mpdgolinger /usr/local/bin/
+sudo systemctl start mpdgolinger.service
+sleep 1
+sudo systemctl status mpdgolinger.service
+cp mpdgolinger /cache
