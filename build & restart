@@ -3,7 +3,8 @@ set -e
 #ver="${1:-$(date +%s|cut -c 5-)}"
 ver=$(git rev-parse --short HEAD 2>/dev/null || date +%s)
 printf 'main.version=%s\n' "$ver"
-go build -ldflags "-X main.version=$ver" mpdgolinger.go
+#go build -ldflags "-X main.version=$ver" mpdgolinger.go
+go build -ldflags "-X main.version=$ver" -o mpdgolinger .
 #go build -ldflags "-X main.version=$ver" -o mpdgolinger \
 #main.go \
 #api_ws.go \

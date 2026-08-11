@@ -1,219 +1,187 @@
 package main
 
 import (
-  "encoding/json"
-  "fmt"
-  "hash/fnv"
-  "image"
-  _ "image/gif"
-  _ "image/jpeg"
-  _ "image/png"
-  "io"
-  "os"
-  "path/filepath"
-  "strings"
-
-  "github.com/dhowden/tag"
-  _ "golang.org/x/image/webp"
-  "log"
+	"github.com/fhs/gompd/v2/mpd"
+	"bytes"
+	"image"
+	"log"
+	"os/exec"
+	"path"
+	"path/filepath"
+	_ "image/jpeg"
+	_ "image/png"
+	_ "golang.org/x/image/webp"
 )
+func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
+	var (
+		imgAA     []byte
+		imgRP     []byte
+		cfgAA     image.Config
+		cfgRP     image.Config
+		errAA     error
+		errRP     error
+		result    AlbumArtResult
+    gBAAdebug bool
+	)
 
-var musicDirPrefix = "/library/music"
+  if debug { gBAAdebug = true }
 
-type FSCandidate struct {
-  Path       string `json:"path"`
-  MimeType   string `json:"mimeType"`
-  Width      int    `json:"width"`
-  Height     int    `json:"height"`
-  Size       int64  `json:"size"`
-  Hash       uint64 `json:"hash,string"`
-  IsAA       bool   `json:"isAA"`
-  IsAnimated bool   `json:"isAnimated"`
-  Source     string `json:"source"`
-}
+	// --- ReadPicture ---
+  result.HasEmbed = false
+	imgRP, errRP = c.ReadPicture(uri)
+	if errRP != nil || len(imgRP) == 0 {
+		dbg("[gBAA] ReadPicture failed for %q", uri)
 
-type RPCandidate struct {
-  Path     string   `json:"path"`
-  MimeType string   `json:"mimeType"`
-  Width    int      `json:"width"`
-  Height   int      `json:"height"`
-  Size     int64    `json:"size"`
-  Hash     uint64   `json:"hash,string"`
-  Tracks   []string `json:"tracks"`
-  Source   string   `json:"source"`
-}
+		if err := c.PlaylistAdd(noEmbedList, uri); err != nil {
+			log.Printf("[gBAA] failed adding %q to %s: %v",
+				uri, noEmbedList, err)
+		}
+	} else {
+		cfgRP, _, errRP = image.DecodeConfig(bytes.NewReader(imgRP))
+		if errRP != nil {
+			dbg("[gBAA] ReadPicture decode failed for %q: %v",
+				uri, errRP)
+		} else {
+			dbg("[gBAA] ReadPicture succeeded for %q (%dx%d, %d bytes)",
+				uri, cfgRP.Width, cfgRP.Height, len(imgRP))
 
-type ArtworkResponse struct {
-  AlbumPath string        `json:"albumPath"`
-  FS        []FSCandidate `json:"fs"`
-  RP        []RPCandidate `json:"rp"`
-}
+			result.HasEmbed = true
 
-//func fnvHash(b []byte) string {
-//  h := fnv.New64a()
-//  h.Write(b)
-//  return fmt.Sprintf("%x", h.Sum(nil))
-//}
+			if cfgRP.Width <= 500 || cfgRP.Height <= 500 {
+				if err := c.PlaylistAdd(smallRPlist, uri); err != nil {
+					log.Printf("[gBAA] failed adding %q to %s: %v",
+						uri, smallRPlist, err)
+				}
+			}
+		}
+	}
 
-func fnv1a(data []byte) uint64 {
-  h := fnv.New64a()
-  _, _ = h.Write(data)
-  return h.Sum64()
-}
+	// --- AlbumArt ---
+  result.HasAlbumArt = false
+	imgAA, errAA = c.AlbumArt(uri)
+	if errAA != nil || len(imgAA) == 0 {
+		dbg("[gBAA] AlbumArt failed for %q", uri)
 
-func imageMeta(path string) (string, int, int, int64, uint64, error) {
-  f, err := os.Open(path)
-  if err != nil {
-    return "", 0, 0, 0, 0, err
-  }
-  defer f.Close()
+		if err := c.PlaylistAdd(noAAlist, uri); err != nil {
+			log.Printf("[gBAA] failed adding %q to %s: %v",
+				uri, noAAlist, err)
+		}
+	} else {
+		cfgAA, _, errAA = image.DecodeConfig(bytes.NewReader(imgAA))
+		if errAA != nil {
+			log.Printf("[gBAA] AlbumArt decode failed for %q: %v",
+				uri, errAA)
+		} else {
+      if gBAAdebug {
+  			log.Printf("[gBAA] AlbumArt succeeded for %q (%dx%d, %d bytes)",
+	  			uri, cfgAA.Width, cfgAA.Height, len(imgAA))
+      }
 
-  cfg, format, err := image.DecodeConfig(f)
-  if err != nil {
-    return "", 0, 0, 0, 0, err
-  }
+			result.HasAlbumArt = true
 
-  _, err = f.Seek(0, 0)
-  if err != nil {
-    return "", 0, 0, 0, 0, err
-  }
+			if cfgAA.Width <= 500 || cfgAA.Height <= 500 {
+				if err := c.PlaylistAdd(smallAAlist, uri); err != nil {
+					log.Printf("[gBAA] failed adding %q to %s: %v",
+						uri, smallAAlist, err)
+				}
+			}
+		}
+	}
 
-  data, err := io.ReadAll(f)
-  if err != nil {
-    return "", 0, 0, 0, 0, err
-  }
+	// --- total failure ---
+	if errAA != nil && errRP != nil {
+		log.Printf("[gBAA] no album art available for %q", uri)
 
-  info, _ := os.Stat(path)
+		if err := c.PlaylistAdd(noCoverList, uri); err != nil {
+			log.Printf("[gBAA] failed adding %q to %s: %v",
+				uri, noCoverList, err)
+		}
 
-  return "image/" + format,
-    cfg.Width,
-    cfg.Height,
-    info.Size(),
-    fnv1a(data),
-    nil
-}
-
-func main() {
-//  albumDir := os.Args[1]
-  type Req struct {
-    Path string `json:"path"`
-  }
-
-  var req Req
-  if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
-    log.Fatal(err)
-  }
-
-  if !filepath.IsAbs(req.Path) {
-    req.Path = filepath.Join(musicDirPrefix, req.Path)
-  }
-
-  albumDir := req.Path
-
-
-
-  var fsEntries []FSCandidate
-  rpMap := map[uint64]*RPCandidate{}
-
-  aaPriority := []string{
-    "cover.png",
-    "cover.jpg",
-    "cover.jxl",
-    "cover.webp",
-  }
-
-  aaFile := ""
-
-  for _, name := range aaPriority {
-    p := filepath.Join(albumDir, name)
-    if _, err := os.Stat(p); err == nil {
-      aaFile = p
-      break
+		// mediainfo dump
+    absURI := ""
+    if ! filepath.IsAbs(uri) {
+      absURI = filepath.Join(musicLibPrefix, uri)
+    } else {
+      absURI = uri
     }
-  }
+		cmd := exec.Command("mediainfo", absURI)
+		out, _ := cmd.CombinedOutput()
+		dbg("[gBAA] mediainfo output:\n%s", out)
 
-  filepath.Walk(albumDir, func(path string, info os.FileInfo, err error) error {
-    if err != nil || info.IsDir() {
-      return nil
+		// directory listing
+    absDir := ""
+		dir := path.Dir(uri)
+    if ! filepath.IsAbs(dir) {
+      absDir = filepath.Join(musicLibPrefix, dir)
+    } else {
+      absDir = dir
     }
+		cmd = exec.Command("ls", "-l", absDir)
+		out, _ = cmd.CombinedOutput()
+		dbg("[gBAA] dir listing:\n%s", out)
 
-    ext := strings.ToLower(filepath.Ext(path))
+		return nil, nil
+	}
 
-    switch ext {
+	// --- choose best image ---
+	rpScore := cfgRP.Width + cfgRP.Height
+	aaScore := cfgAA.Width + cfgAA.Height
 
-    case ".jpg", ".jpeg", ".png", ".gif", ".webp":
-      mime, w, h, size, hash, err := imageMeta(path)
-      if err != nil {
-        return nil
-      }
+	if errAA == nil && aaScore > rpScore {
+		result.Img = imgAA
+		result.Width = cfgAA.Width
+		result.Height = cfgAA.Height
+		result.Source = "AlbumArt"
+	} else if errRP == nil {
+		result.Img = imgRP
+		result.Width = cfgRP.Width
+		result.Height = cfgRP.Height
+		result.Source = "ReadPicture"
+	} else if errAA == nil {
+		result.Img = imgAA
+		result.Width = cfgAA.Width
+		result.Height = cfgAA.Height
+		result.Source = "AlbumArt"
+	}
 
-      fsEntries = append(fsEntries, FSCandidate{
-        Path:       path,
-        MimeType:   mime,
-        Width:      w,
-        Height:     h,
-        Size:       size,
-        Hash:       hash,
-        IsAA:       path == aaFile,
-        IsAnimated: ext == ".gif" || ext == ".webp",
-        Source:     "fs",
-      })
+	// --- mime detection ---
+	result.MimeType = "image/jpeg"
 
-    case ".flac", ".mp3", ".m4a":
-      f, err := os.Open(path)
-      if err != nil {
-        return nil
-      }
-      defer f.Close()
+	if len(result.Img) > 3 {
+    // PNG
+		if result.Img[0] == 0x89 &&
+			result.Img[1] == 0x50 &&
+			result.Img[2] == 0x4E &&
+			result.Img[3] == 0x47 {
 
-      meta, err := tag.ReadFrom(f)
-      if err != nil {
-        return nil
-      }
+			result.MimeType = "image/png"
+		}
+    // WEBP (RIFF....WEBP)
+    if string(result.Img[0:4]) == "RIFF" &&
+      string(result.Img[8:12]) == "WEBP" {
 
-      pic := meta.Picture()
-      if pic == nil {
-        return nil
-      }
-
-      cfg, _, err := image.DecodeConfig(strings.NewReader(string(pic.Data)))
-      if err != nil {
-        return nil
-      }
-
-      hash := fnv1a(pic.Data)
-
-      if existing, ok := rpMap[hash]; ok {
-        existing.Tracks = append(existing.Tracks, path)
-        return nil
-      }
-
-      rpMap[hash] = &RPCandidate{
-        Path:     path,
-        MimeType: pic.MIMEType,
-        Width:    cfg.Width,
-        Height:   cfg.Height,
-        Size:     int64(len(pic.Data)),
-        Hash:     hash,
-        Tracks:   []string{path},
-        Source:   "rp",
-      }
+      result.MimeType = "image/webp"
     }
+	}
 
-    return nil
-  })
+  result.Size = len(result.Img)
+  result.Hash = fnv1a(result.Img)
 
-  var rpEntries []RPCandidate
-  for _, v := range rpMap {
-    rpEntries = append(rpEntries, *v)
-  }
+	dbg("[gBAA] selected %s for %q (result.hash=%d; W×H=%dx%d; %d bytes)",
+		result.Source,
+		uri,
+    result.Hash,
+		result.Width,
+		result.Height,
+		len(result.Img),
+	)
 
-  resp := ArtworkResponse{
-    AlbumPath: albumDir,
-    FS:        fsEntries,
-    RP:        rpEntries,
-  }
+	return &result, nil
+} // func getBestAlbumArt()
 
-  out, _ := json.MarshalIndent(resp, "", "  ")
-  fmt.Println(string(out))
+func getAlbumArtCached(c *mpd.Client, file string) ([]byte, error) {
+  // Pull album art directly from MPD
+  return c.AlbumArt(file)
 }
+
+
