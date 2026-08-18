@@ -2430,6 +2430,12 @@ log.Printf("abs: %s", abs)
         log.Printf("STATE CHANGE: paused=%v expired=%v count=%d limit=%d transition=%v",
           state.paused, expired, state.count, limit, state.transition)
 
+        if state.paused && state.transition {
+          _ = mpdDo(func(c *mpd.Client) error {
+            return c.Random(false)
+          }, "IPC-random-off")
+        }
+
         respArr := []string{
           map[bool]string{true: "Paused", false: "Resumed"}[paused],
         }
