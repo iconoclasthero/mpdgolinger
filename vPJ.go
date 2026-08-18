@@ -2434,6 +2434,8 @@ log.Printf("abs: %s", abs)
           _ = mpdDo(func(c *mpd.Client) error {
             return c.Random(false)
           }, "IPC-random-off")
+          log.Printf("random(false) sent to mpdDo because paused=%v transition=%v",
+            state.paused, state.transition)
         }
 
         respArr := []string{
