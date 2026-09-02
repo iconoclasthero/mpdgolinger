@@ -4,9 +4,10 @@ import (
 	"github.com/fhs/gompd/v2/mpd"
 	"bufio"
 	"bytes"
-	"errors"
+// Wed Sep  2 10:01:02 AM EDT 2026 commented out errors and io
+//	"errors"
 	"fmt"
-	"io"
+//	"io"
 	"log"
 	"math"
 	"math/rand"
@@ -1010,20 +1011,35 @@ func runIdleLoop(w *mpd.Watcher) error {
 
   ticker := time.NewTicker(1 * time.Second)
   defer ticker.Stop()
+// Wed Sep  2 09:52:13 AM EDT 2026 added:
+watcherErr := make(chan error, 1)
+// Wed Sep  2 09:52:48 AM EDT 2026 commented out:
+//  go func() {
+//    for err := range w.Error {
+//      log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+//      // keep this very explicit so we can trace EOF vs broken pipe
+//      log.Printf("[rIL] Watcher error: %v", err)
+//      log.SetFlags(log.LstdFlags)
+//      if errors.Is(err, io.EOF) {
+//        log.Printf("[rIL] Watcher got EOF, exiting watcher")
+//        return
+//      }
+//      time.Sleep(5 * time.Second)
+//    }
+//  }()
 
-  go func() {
+// Wed Sep  2 09:53:14 AM EDT 2026 replaced with:
+go func() {
     for err := range w.Error {
-      log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-      // keep this very explicit so we can trace EOF vs broken pipe
-      log.Printf("[rIL] Watcher error: %v", err)
-      log.SetFlags(log.LstdFlags)
-      if errors.Is(err, io.EOF) {
-        log.Printf("[rIL] Watcher got EOF, exiting watcher")
+        log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+        log.Printf("[rIL] Watcher error: %v", err)
+        log.SetFlags(log.LstdFlags)
+
+        watcherErr <- err
         return
-      }
-      time.Sleep(5 * time.Second)
     }
-  }()
+}()
+
 
   // Main idle loop:
   // For each idle event, open a short-lived command connection and run
@@ -1036,6 +1052,10 @@ func runIdleLoop(w *mpd.Watcher) error {
   //
   for {
     select {
+// Wed Sep  2 09:54:08 AM EDT 2026 added
+case err := <-watcherErr:
+  return fmt.Errorf("watcher error: %w", err)
+
     case <-shutdown:
       log.Println("[rIL] received shutdown")
       return nil
