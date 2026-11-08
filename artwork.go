@@ -13,6 +13,7 @@ import (
 	_ "image/png"
 	_ "golang.org/x/image/webp"
 )
+
 func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 	var (
 		imgAA     []byte
@@ -98,33 +99,33 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
 				uri, noCoverList, err)
 		}
 
-		// mediainfo dump
-    absURI := ""
-    if ! filepath.IsAbs(uri) {
-      absURI = filepath.Join(musicLibPrefix, uri)
-    } else {
-      absURI = uri
-    }
+    if debug {
+  		// mediainfo dump
+      absURI := ""
+      if ! filepath.IsAbs(uri) {
+        absURI = filepath.Join(musicLibPrefix, uri)
+      } else {
+        absURI = uri
+      }
 
-    if info, err := os.Stat(absURI); err == nil && info.Mode().IsRegular() {
-      cmd := exec.Command("mediainfo", absURI)
-      out, _ := cmd.CombinedOutput()
-      dbg("[gBAA] mediainfo output:\n%s", out)
-    } else {
-      log.Printf("[gBAA] mediainfo skipped: %s (err: %v)", absURI, err)
-    }
+      if info, err := os.Stat(absURI); err == nil && info.Mode().IsRegular() {
+        cmd := exec.Command("mediainfo", absURI)
+        out, _ := cmd.CombinedOutput()
+        dbg("[gBAA] mediainfo output:\n%s", out)
+      }
 
-		// directory listing
-    absDir := ""
-		dir := path.Dir(uri)
-    if ! filepath.IsAbs(dir) {
-      absDir = filepath.Join(musicLibPrefix, dir)
-    } else {
-      absDir = dir
+  		// directory listing
+      absDir := ""
+  		dir := path.Dir(uri)
+      if ! filepath.IsAbs(dir) {
+        absDir = filepath.Join(musicLibPrefix, dir)
+      } else {
+        absDir = dir
+      }
+  		cmd := exec.Command("ls", "-l", absDir)
+  		out, _ := cmd.CombinedOutput()
+  		dbg("[gBAA] dir listing:\n%s", out)
     }
-		cmd := exec.Command("ls", "-l", absDir)
-		out, _ := cmd.CombinedOutput()
-		dbg("[gBAA] dir listing:\n%s", out)
 
 		return nil, nil
 	}
