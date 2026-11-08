@@ -404,6 +404,9 @@ func eventProcessor(){
         state.mu.Lock()
         songChanged := false
 
+log.Printf("[eP] current song file = %q; songChanged=%t; subscribe=%t",
+    uri, songChanged, ev.Subscribe)
+
         if state.lastSongID == 0 || songID != state.lastSongID || ev.PrevSongID != songID || ev.PrevSongID != ev.SongID || lastSongID != songID {
           songChanged = true
 
