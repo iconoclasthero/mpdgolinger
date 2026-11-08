@@ -787,7 +787,8 @@ func mpdDo(fn func(*mpd.Client) error, ctx string) error {
 
     // apply password if specified
     if mpdPass != "" {
-      if err := c.Command("password " + mpdPass).OK(); err != nil {
+//      if err := c.Command("password " + mpdPass).OK(); err != nil {
+      if err := c.Command("password %s", mpdPass).OK(); err != nil {
         c.Close()
         return nil, fmt.Errorf("mpdDo: password auth failed: %v", err)
       }

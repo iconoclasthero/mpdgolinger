@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"image"
 	"log"
+  "os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -104,9 +105,14 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
     } else {
       absURI = uri
     }
-		cmd := exec.Command("mediainfo", absURI)
-		out, _ := cmd.CombinedOutput()
-		dbg("[gBAA] mediainfo output:\n%s", out)
+
+    if info, err := os.Stat(absURI); err == nil && info.Mode().IsRegular() {
+      cmd := exec.Command("mediainfo", absURI)
+      out, _ := cmd.CombinedOutput()
+      dbg("[gBAA] mediainfo output:\n%s", out)
+    } else {
+      log.Printf("[gBAA] mediainfo skipped: %s (err: %v)", absURI, err)
+    }
 
 		// directory listing
     absDir := ""
@@ -116,8 +122,8 @@ func getBestAlbumArt(c *mpd.Client, uri string) (*AlbumArtResult, error) {
     } else {
       absDir = dir
     }
-		cmd = exec.Command("ls", "-l", absDir)
-		out, _ = cmd.CombinedOutput()
+		cmd := exec.Command("ls", "-l", absDir)
+		out, _ := cmd.CombinedOutput()
 		dbg("[gBAA] dir listing:\n%s", out)
 
 		return nil, nil
