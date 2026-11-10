@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+  "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,6 +116,114 @@ func verbProcessorJSON(js map[string]interface{}, req Request, conn *websocket.C
   case "artwork":
 
     switch cmd {
+
+      case "replace":
+        // EXPECTS:
+        // {"system":"artwork","cmd":"replace","args":{"url":"https://example.com/cover.jpg"}}
+
+        const newcoverScript = "/usr/local/bin/newcover-worker"
+
+        var replaceArgs struct {
+          URL      string  `json:"url"`
+          AlbumDir string  `json:"albumDir"`
+        }
+
+        if err := json.Unmarshal(req.Args, &replaceArgs); err != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("invalid replace arguments: %v", err)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        // --- validate URL ---
+        parsedURL, err := url.ParseRequestURI(replaceArgs.URL)
+        if err != nil || parsedURL.Host == "" ||
+          (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+          js["response"] = "error"
+          js["error"] = "url must be a valid HTTP or HTTPS URL"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        // --- resolve current song's album directory ---
+        if URI == "" {
+          js["response"] = "error"
+          js["error"] = "MPD has no current song URI"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        musicRoot, err := filepath.Abs(musicLibPrefix)
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("cannot resolve music library path: %v", err)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        songPath := URI
+        if !filepath.IsAbs(songPath) {
+          songPath = filepath.Join(musicRoot, songPath)
+        }
+
+        songPath, err = filepath.Abs(songPath)
+        if err != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("cannot resolve song path: %v", err)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        relSong, err := filepath.Rel(musicRoot, songPath)
+        if err != nil || relSong == ".." ||
+          strings.HasPrefix(relSong, ".."+string(os.PathSeparator)) {
+          js["response"] = "error"
+          js["error"] = "current song is outside the configured music library"
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        albumDir := filepath.Dir(songPath)
+
+        info, err := os.Stat(albumDir)
+        if err != nil || !info.IsDir() {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("album directory unavailable: %s", albumDir)
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        } else {
+          replaceArgs.AlbumDir = albumDir
+        }
+
+        // --- run artwork replacement worker ---
+        cmd := exec.Command(newcoverScript, replaceArgs.URL, replaceArgs.AlbumDir)
+        // redundant but harmless
+        cmd.Dir = albumDir
+
+        var stdout, stderr bytes.Buffer
+        cmd.Stdout = &stdout
+        cmd.Stderr = &stderr
+
+        if err := cmd.Run(); err != nil {
+          js["response"] = "error"
+          js["error"] = fmt.Sprintf("artwork replacement failed: %v", err)
+          js["uri"] = URI
+          js["album_dir"] = albumDir
+          js["stdout"] = stdout.String()
+          js["stderr"] = stderr.String()
+          out, _ := json.Marshal(js)
+          return []string{string(out)}
+        }
+
+        js["response"] = "ok"
+        js["uri"] = URI
+        js["album_dir"] = albumDir
+        js["stdout"] = stdout.String()
+        js["stderr"] = stderr.String()
+
+        out, _ := json.Marshal(js)
+        return []string{string(out)}
+        // case "replace"
 
       case "resolve":
       // EXPECTS:
