@@ -1,13 +1,22 @@
 #!/bin/bash
+# shellcheck disable=SC2016
+
 shopt -s extglob
 
 uri="$1"
 dir="$2"
 
+
 [[ ! -d "$dir" || ! -w "$dir" ]] &&
   { printf '[ERROR] Destination dir `%s` does not exist or is not writable; investigate! (exit 1)\n' "$dir" >&2; exit 1; }
 
 cd "$dir" || { printf '[ERROR] Unable to `cd %s`; investigate! (exit 1)\n' "$dir" >&2; exit 1; }
+
+[[ -w "${PWD}" ]] || { printf '[ERROR] Unable to write to PWD; investigate! (exit 1)\n        PWD:%s\n' "$dir" >&2; exit 1; }
+
+## for permissions later:
+umask 022
+newfiles=( 'cover.jpg' 'cover-1500.jpg' 'cover-500.jpg' )
 
 tmpcvr="$(mktemp -up . -t cover.jpg-XXXXXXX)"
 
@@ -16,6 +25,7 @@ tmpcvr="$(mktemp -up . -t cover.jpg-XXXXXXX)"
 : "${minpx:=1000000}"
 : "${minbpp:=1}"
 : "${model:=/opt/repicturer/models-realesrgan-x4plus}"
+: "${mediagrp:=media}"
 
 for cmd in axel repicturer-cli; do
   command -v "$cmd"  >/dev/null ||
@@ -36,7 +46,7 @@ done
 
 if [[ "$uri" = http@(|s)://* ]]; then
   axel "$uri" -o "$tmpcvr" || {
-     printf 'Download of cover from failed; URI:\n  %s\n(exit 1)\n' >&2
+     printf 'Download of cover from failed; URI:\n  %s\n(exit 1)\n' "$uri" >&2
      exit 1
   }
 
@@ -57,12 +67,17 @@ elif [[ -f "$uri" ]]; then
   elif [[ "$uri" != "$PWD/cover.jpg" && -f 'cover.jpg' ]]; then
     mv cover.jpg cover.jpg~
   fi
-  mv "$uri" cover.jpg
+  ## this copies the existing file so it's not destroyed.  can change back to mv:
+  # mv "$uri" cover.jpg
+  cp "$uri" cover.jpg
 
 else
   printf 'Invalid cover URL or file: URI (file not found or unsupported URI format): %s (exit 1)\n' "$uri" >&2
   exit 1
 fi
+
+[[ -w cover.jpg ]] ||
+  { printf '[ERROR] `cover.jpg` is not writable; investigate! (exit 1)\n' >&2; exit 1; }
 
 read -r w h < <(identify -ping -format '%w %h\n' cover.jpg) || exit 1
 b=$(stat -c %s -- cover.jpg) || exit 1
@@ -121,5 +136,10 @@ magick cover.jpg -resize "${small}x${small}^" \
     { printf '[ERROR] magick failed to create the 500² .jpg; investigate. (exit 1)\n.' >&2; exit 1; }
 
 ln -f cover-1500.jpg cover.jpg
+
+chgrp "$mediagrp" "${newfiles[@]}" || { printf '[ERROR] Failed to change group to %s. (exit 1)\n' "$mediagrp" >&2; ec=1; }
+chmod g+rw "${newfiles[@]}" || { printf '[ERROR] Failed to change group permissions to g+rw. (exit 1)\n' >&2; ec=1; }
+
+exit "${ec:=0}"
 
 
