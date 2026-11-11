@@ -1,0 +1,125 @@
+#!/bin/bash
+shopt -s extglob
+
+uri="$1"
+dir="$2"
+
+[[ ! -d "$dir" || ! -w "$dir" ]] &&
+  { printf '[ERROR] Destination dir `%s` does not exist or is not writable; investigate! (exit 1)\n' "$dir" >&2; exit 1; }
+
+cd "$dir" || { printf '[ERROR] Unable to `cd %s`; investigate! (exit 1)\n' "$dir" >&2; exit 1; }
+
+tmpcvr="$(mktemp -up . -t cover.jpg-XXXXXXX)"
+
+: "${target:=1500}"
+: "${small:=500}"
+: "${minpx:=1000000}"
+: "${minbpp:=1}"
+: "${model:=/opt/repicturer/models-realesrgan-x4plus}"
+
+for cmd in axel repicturer-cli; do
+  command -v "$cmd"  >/dev/null ||
+     { printf '[ERROR] Handler `%s` not found; install. (exit 1)\n' "$cmd"; exit 1; }
+done
+
+[[ -d "$model" ]] || { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model"; exit 1; }
+
+## unwrap the `file:` URIs:
+[[ "$uri" =~ ^file:(//)?(.+) ]] && uri="${BASH_REMATCH[2]}"
+
+## redundant shit:
+#[[ "$uri" = 'cover.jpg' ]] && uri="./cover.jpg"
+#
+#if [[ "$uri" != cover.jpg && -f "$uri" ]]; then
+#  uri="$(realpath -- "$uri")"
+#fi
+
+if [[ "$uri" = http@(|s)://* ]]; then
+  axel "$uri" -o "$tmpcvr" || {
+     printf 'Download of cover from failed; URI:\n  %s\n(exit 1)\n' >&2
+     exit 1
+  }
+
+  if [[ -f 'cover.jpg' && -f 'cover.jpg~' ]]; then
+    printf -v TS '%(%Y%m%d-%H%M%S)T'
+    mv cover.jpg "cover.jpg-$TS"
+  elif [[ -f 'cover.jpg' ]]; then
+    mv cover.jpg cover.jpg~
+  fi
+
+  mv "$tmpcvr" cover.jpg
+
+elif [[ -f "$uri" ]]; then
+  [[ -f "$uri" ]] && uri="$(realpath -- "$uri")"
+  if [[ "$uri" != "$PWD/cover.jpg"  && -f 'cover.jpg' && -f 'cover.jpg~' ]]; then
+    printf -v TS '%(%Y%m%d-%H%M%S)T'
+    mv cover.jpg "cover.jpg-$TS"
+  elif [[ "$uri" != "$PWD/cover.jpg" && -f 'cover.jpg' ]]; then
+    mv cover.jpg cover.jpg~
+  fi
+  mv "$uri" cover.jpg
+
+else
+  printf 'Invalid cover URL or file: URI (file not found or unsupported URI format): %s (exit 1)\n' "$uri" >&2
+  exit 1
+fi
+
+read -r w h < <(identify -ping -format '%w %h\n' cover.jpg) || exit 1
+b=$(stat -c %s -- cover.jpg) || exit 1
+
+p=$((w * h))
+d=$((w > h ? w : h))
+
+if (( d >= target )); then
+  printf 'No upscale: %sx%s, %s bytes\n' "$w" "$h" "$b"
+#  magick cover.jpg -resize "${target}x${target}" -quality 80 cover-1500.jpg || exit 1
+#echo "$target target"
+#echo "$PWD PWD"
+  magick cover.jpg -resize "${target}x${target}^" -quality 80 cover-1500.jpg ||
+    { printf 'magic -resize to %sx%s^ failed. (exit 1)\n' "$target" "$target" >&2; exit 1; }
+#  printf 'Finished creating 1500² cover\n'
+#  magick cover.jpg -resize "${target}" -quality 80 cover-1500.jpg || exit 1
+
+elif (( p >= minpx && b >= p * minbpp )); then
+  printf 'Lanczos: %sx%s, %s bytes\n' "$w" "$h" "$b"
+
+  if (( w >= h )); then
+    ow="$target"
+    oh=$((h * target / w))
+  else
+    oh="$target"
+    ow=$((w * target / h))
+  fi
+
+  magick cover.jpg -filter Lanczos -resize "${ow}x${oh}!" \
+    -quality 80 cover-1500.jpg || exit 1
+
+else
+  printf 'AI upscale: %sx%s, %s bytes\n' "$w" "$h" "$b"
+
+  if (( w >= h )); then
+    ow="$target"
+    oh=$((h * target / w))
+  else
+    oh="$target"
+    ow=$((w * target / h))
+  fi
+
+  repicturer-cli -i cover.jpg -o cover-1500-ai.png \
+    -M scale -m "$model" -W "$ow" -H "$oh" -v || exit 1
+
+  magick cover-1500-ai.png -quality 80 cover-1500.jpg ||
+    { printf '[ERROR] magick failed to create the 1500² .jpg; investigate. (exit 1)\n.' >&2; exit 1; }
+  rm cover-1500-ai.png
+fi
+
+printf 'Starting creation of 500² cover\n$small=%s\n\n\n' "$small"
+
+#magick cover.jpg -resize "${small}x${small}" \
+magick cover.jpg -resize "${small}x${small}^" \
+  -quality 80 cover-500.jpg ||
+    { printf '[ERROR] magick failed to create the 500² .jpg; investigate. (exit 1)\n.' >&2; exit 1; }
+
+ln -f cover-1500.jpg cover.jpg
+
+

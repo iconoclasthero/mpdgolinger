@@ -135,12 +135,27 @@ func verbProcessorJSON(js map[string]interface{}, req Request, conn *websocket.C
           return []string{string(out)}
         }
 
+//        // --- validate URL ---
+//        parsedURL, err := url.ParseRequestURI(replaceArgs.URL)
+//        if err != nil || parsedURL.Host == "" ||
+//          (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+//          js["response"] = "error"
+//          js["error"] = "url must be a valid HTTP or HTTPS URL"
+//          out, _ := json.Marshal(js)
+//          return []string{string(out)}
+//        }
         // --- validate URL ---
         parsedURL, err := url.ParseRequestURI(replaceArgs.URL)
-        if err != nil || parsedURL.Host == "" ||
-          (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+        validURL := err == nil && (
+          ((parsedURL.Scheme == "http" || parsedURL.Scheme == "https") &&
+            parsedURL.Host != "") ||
+          (parsedURL.Scheme == "file" &&
+            parsedURL.Host == "" &&
+            (parsedURL.Path != "" || parsedURL.Opaque != "")))
+
+        if !validURL {
           js["response"] = "error"
-          js["error"] = "url must be a valid HTTP or HTTPS URL"
+          js["error"] = "url must be a valid HTTP(S) URL or file URI"
           out, _ := json.Marshal(js)
           return []string{string(out)}
         }
