@@ -41,25 +41,11 @@ done
 
 tmpcvr="$(mktemp -up . -t "cover.$ext-XXXXXXX")"
 
-## redundant shit:
-#[[ "$uri" = 'cover.jpg' ]] && uri="./cover.jpg"
-#
-#if [[ "$uri" != cover.jpg && -f "$uri" ]]; then
-#  uri="$(realpath -- "$uri")"
-#fi
-
 if [[ "$uri" = http@(|s)://* ]]; then
   axel "$uri" -o "$tmpcvr" || {
      printf 'Download of cover from failed; URI:\n  %s\n(exit 1)\n' "$uri" >&2
      exit 1
   }
-
-#  if [[ -f 'cover.jpg' && -f 'cover.jpg~' ]]; then
-#    printf -v TS '%(%Y%m%d-%H%M%S)T'
-#    mv cover.jpg "cover.jpg-$TS"
-#  elif [[ -f 'cover.jpg' ]]; then
-#    mv cover.jpg cover.jpg~
-#  fi
 
   if [[ -f 'cover.jpg' ]]; then
     printf -v TS '%(%Y%m%d-%H%M%S)T'
@@ -74,11 +60,19 @@ elif [[ -f "$uri" ]]; then
   printf -v TS '%(%Y%m%d-%H%M%S)T'
   if [[ "$uri" != "$PWD/cover.jpg"  && -f 'cover.jpg'  ]]; then
     mv cover.jpg "cover.jpg-$TS"
-    ## this copies the existing file so it's not destroyed.  can change back to mv:
-    # mv "$uri" cover.jpg
-    cp "$uri" "cover.$ext"
+
+    if (( mp4 )); then
+      mv "$uri" "cover.$ext"
+    else
+      ## this copies the existing file so it's not destroyed.  can change back to mv:
+      # mv "$uri" "cover.$ext"
+      cp "$uri" "cover.$ext"
+    fi
+
   elif [[ "$uri" = "$PWD/cover.jpg"  && -f 'cover.jpg'  ]]; then
     cp -a cover.jpg "cover.jpg-$TS"
+  elif (( mp4 )); then
+    mv "$uri" "cover.$ext"
   fi
 
 else
@@ -91,11 +85,13 @@ mp42webp(){
   local newfiles=( cover.webp )
   if ffmpeg -nostdin -i cover.mp4 -vf "colorspace=all=bt601-6-625:ispace=bt709:iprimaries=bt709:itrc=bt709,fps=15" \
       -colorspace 6 -color_primaries 6 -color_trc 6 -quality 85 -loop 0 cover.webp 2>&1; then
-    rm cover.mp4
   else
     ec="$?"
     printf '[ERROR] Converstion of cover.mp4 to cover.webp exited with an error. (exit %s)\n' "$ec"
   fi
+
+  ## cleanup regardless of success, can always redownload the .mp4:
+  rm cover.mp4 "$tmpcvr"
 
   chgrp "$mediagrp" "${newfiles[@]}" || { printf '[ERROR] Failed to change group to %s. (exit 1)\n' "$mediagrp" >&2; ec=1; }
   chmod g+rw "${newfiles[@]}" || { printf '[ERROR] Failed to change group permissions to g+rw. (exit 1)\n' >&2; ec=1; }
