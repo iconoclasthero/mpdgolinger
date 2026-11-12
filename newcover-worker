@@ -18,14 +18,13 @@ cd "$dir" || { printf '[ERROR] Unable to `cd %s`; investigate! (exit 1)\n' "$dir
 umask 022
 newfiles=( 'cover.jpg' 'cover-1500.jpg' 'cover-500.jpg' )
 
-tmpcvr="$(mktemp -up . -t cover.jpg-XXXXXXX)"
-
 : "${target:=1500}"
 : "${small:=500}"
 : "${minpx:=1000000}"
 : "${minbpp:=1}"
 : "${model:=/opt/repicturer/models-realesrgan-x4plus}"
 : "${mediagrp:=media}"
+: "${ext:=jpg}"
 
 for cmd in axel repicturer-cli; do
   command -v "$cmd"  >/dev/null ||
@@ -36,6 +35,11 @@ done
 
 ## unwrap the `file:` URIs:
 [[ "$uri" =~ ^file:(//)?(.+) ]] && uri="${BASH_REMATCH[2]}"
+
+## check uri for the specail case of an .mp4
+[[ "$uri" = *.mp4 ]] && mp4='1' ext='mp4'
+
+tmpcvr="$(mktemp -up . -t "cover.$ext-XXXXXXX")"
 
 ## redundant shit:
 #[[ "$uri" = 'cover.jpg' ]] && uri="./cover.jpg"
@@ -50,37 +54,70 @@ if [[ "$uri" = http@(|s)://* ]]; then
      exit 1
   }
 
-  if [[ -f 'cover.jpg' && -f 'cover.jpg~' ]]; then
+#  if [[ -f 'cover.jpg' && -f 'cover.jpg~' ]]; then
+#    printf -v TS '%(%Y%m%d-%H%M%S)T'
+#    mv cover.jpg "cover.jpg-$TS"
+#  elif [[ -f 'cover.jpg' ]]; then
+#    mv cover.jpg cover.jpg~
+#  fi
+
+  if [[ -f 'cover.jpg' ]]; then
     printf -v TS '%(%Y%m%d-%H%M%S)T'
-    mv cover.jpg "cover.jpg-$TS"
-  elif [[ -f 'cover.jpg' ]]; then
-    mv cover.jpg cover.jpg~
+    mv cover.jpg "cover-mgl-$TS.jpg" ||
+      { printf 'Failed to back up existing cover.jpg; investigate. (exit 1)\n' >&2; exit 1; }
   fi
 
-  mv "$tmpcvr" cover.jpg
+  mv "$tmpcvr" "cover.$ext"
 
 elif [[ -f "$uri" ]]; then
-  [[ -f "$uri" ]] && uri="$(realpath -- "$uri")"
-  if [[ "$uri" != "$PWD/cover.jpg"  && -f 'cover.jpg' && -f 'cover.jpg~' ]]; then
-    printf -v TS '%(%Y%m%d-%H%M%S)T'
+  uri="$(realpath -- "$uri")"
+  printf -v TS '%(%Y%m%d-%H%M%S)T'
+  if [[ "$uri" != "$PWD/cover.jpg"  && -f 'cover.jpg'  ]]; then
     mv cover.jpg "cover.jpg-$TS"
-  elif [[ "$uri" != "$PWD/cover.jpg" && -f 'cover.jpg' ]]; then
-    mv cover.jpg cover.jpg~
+    ## this copies the existing file so it's not destroyed.  can change back to mv:
+    # mv "$uri" cover.jpg
+    cp "$uri" "cover.$ext"
+  elif [[ "$uri" = "$PWD/cover.jpg"  && -f 'cover.jpg'  ]]; then
+    cp -a cover.jpg "cover.jpg-$TS"
   fi
-  ## this copies the existing file so it's not destroyed.  can change back to mv:
-  # mv "$uri" cover.jpg
-  cp "$uri" cover.jpg
 
 else
   printf 'Invalid cover URL or file: URI (file not found or unsupported URI format): %s (exit 1)\n' "$uri" >&2
   exit 1
 fi
 
+mp42webp(){
+  local ec
+  local newfiles=( cover.webp )
+  if ffmpeg -nostdin -i cover.mp4 -vf "colorspace=all=bt601-6-625:ispace=bt709:iprimaries=bt709:itrc=bt709,fps=15" \
+      -colorspace 6 -color_primaries 6 -color_trc 6 -quality 85 -loop 0 cover.webp 2>&1; then
+    rm cover.mp4
+  else
+    ec="$?"
+    printf '[ERROR] Converstion of cover.mp4 to cover.webp exited with an error. (exit %s)\n' "$ec"
+  fi
+
+  chgrp "$mediagrp" "${newfiles[@]}" || { printf '[ERROR] Failed to change group to %s. (exit 1)\n' "$mediagrp" >&2; ec=1; }
+  chmod g+rw "${newfiles[@]}" || { printf '[ERROR] Failed to change group permissions to g+rw. (exit 1)\n' >&2; ec=1; }
+  [[ -f cover.jpg || -f cover.png ]] &&
+    printf '[WARN] The newly-generated cover.webp will not be displayed because there is an existing cover.png/jpg.\n' >&2
+
+  return "$ec"
+}
+
+
+if (( mp4 )); then
+  mp42webp
+  exit "$?"
+fi
+
 [[ -w cover.jpg ]] ||
   { printf '[ERROR] `cover.jpg` is not writable; investigate! (exit 1)\n' >&2; exit 1; }
 
-read -r w h < <(identify -ping -format '%w %h\n' cover.jpg) || exit 1
-b=$(stat -c %s -- cover.jpg) || exit 1
+read -r w h < <(identify -ping -format '%w %h\n' cover.jpg) ||
+  { printf '[ERROR] Failed to `identify cover.jpg`; investigate. (exit 1)\n' >&2; exit 1; }
+b=$(stat -c %s -- cover.jpg) ||
+    { printf '[ERROR] Failed to `stat cover.jpg`; investigate. (exit 1)\n' >&2; exit 1; }
 
 p=$((w * h))
 d=$((w > h ? w : h))
@@ -98,21 +135,29 @@ if (( d >= target )); then
 elif (( p >= minpx && b >= p * minbpp )); then
   printf 'Lanczos: %sx%s, %s bytes\n' "$w" "$h" "$b"
 
-  if (( w >= h )); then
-    ow="$target"
-    oh=$((h * target / w))
-  else
-    oh="$target"
-    ow=$((w * target / h))
-  fi
+## we want no side < 1500!
+## why are we even calculating this?! let magick handle it.
+#  if (( w >= h )); then
+#    ow="$target"
+#    oh=$((h * target / w))
+#  else
+#    oh="$target"
+#    ow=$((w * target / h))
+#  fi
+#
+#  magick cover.jpg -filter Lanczos -resize "${ow}x${oh}!" \
+#    -quality 80 cover-1500.jpg || exit 1
 
-  magick cover.jpg -filter Lanczos -resize "${ow}x${oh}!" \
-    -quality 80 cover-1500.jpg || exit 1
+  magick cover.jpg -filter Lanczos -resize "${target}x${target}^" \
+      -quality 80 cover-1500.jpg ||
+    { printf '[ERROR] Inexplicably, magick failed to convert the image; investigate. (exit 1)\n' >&2; exit 1; }
 
 else
   printf 'AI upscale: %sx%s, %s bytes\n' "$w" "$h" "$b"
 
-  if (( w >= h )); then
+## we want no side < 1500!
+#  if (( w >= h )); then
+  if (( w <= h )); then
     ow="$target"
     oh=$((h * target / w))
   else
@@ -120,8 +165,11 @@ else
     ow=$((w * target / h))
   fi
 
+  ## this is dumping it's processing output to stderr. this is a problem because it's not relevant
+  ## to the error that I need to propigate to the front end.
   repicturer-cli -i cover.jpg -o cover-1500-ai.png \
-    -M scale -m "$model" -W "$ow" -H "$oh" -v || exit 1
+      -M scale -m "$model" -W "$ow" -H "$oh" -v 2>&1 ||
+    { ec="$?"; printf '[ERROR] repicture-cli failed with exit code %s; investigate. (exit %s)' "$ec" "$ec" >&2; exit "$ec"; }
 
   magick cover-1500-ai.png -quality 80 cover-1500.jpg ||
     { printf '[ERROR] magick failed to create the 1500² .jpg; investigate. (exit 1)\n.' >&2; exit 1; }
@@ -139,6 +187,8 @@ ln -f cover-1500.jpg cover.jpg
 
 chgrp "$mediagrp" "${newfiles[@]}" || { printf '[ERROR] Failed to change group to %s. (exit 1)\n' "$mediagrp" >&2; ec=1; }
 chmod g+rw "${newfiles[@]}" || { printf '[ERROR] Failed to change group permissions to g+rw. (exit 1)\n' >&2; ec=1; }
+
+[[ -f cover.png ]] && printf '[WARN] The newly-generated cover.jpg will not be displayed because there is an existing cover.png.\n' >&2
 
 exit "${ec:=0}"
 
