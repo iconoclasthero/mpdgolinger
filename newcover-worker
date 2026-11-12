@@ -26,7 +26,7 @@ newfiles=( 'cover.jpg' 'cover-1500.jpg' 'cover-500.jpg' )
 : "${mediagrp:=media}"
 : "${ext:=jpg}"
 
-for cmd in axel repicturer-cli; do
+for cmd in axel repicturer-cli ffmpeg; do
   command -v "$cmd"  >/dev/null ||
      { printf '[ERROR] Handler `%s` not found; install. (exit 1)\n' "$cmd"; exit 1; }
 done
@@ -44,6 +44,7 @@ tmpcvr="$(mktemp -up . -t "cover.$ext-XXXXXXX")"
 if [[ "$uri" = http@(|s)://* ]]; then
   axel "$uri" -o "$tmpcvr" || {
      printf 'Download of cover from failed; URI:\n  %s\n(exit 1)\n' "$uri" >&2
+     rm "$tmpcvr"
      exit 1
   }
 
@@ -83,8 +84,9 @@ fi
 mp42webp(){
   local ec
   local newfiles=( cover.webp )
-  if ffmpeg -nostdin -i cover.mp4 -vf "colorspace=all=bt601-6-625:ispace=bt709:iprimaries=bt709:itrc=bt709,fps=15" \
-      -colorspace 6 -color_primaries 6 -color_trc 6 -quality 85 -loop 0 cover.webp 2>&1; then
+  if ffmpeg -nostdin -y -i cover.mp4 -vf "colorspace=all=bt601-6-625:ispace=bt709:iprimaries=bt709:itrc=bt709,fps=15" \
+       -colorspace 6 -color_primaries 6 -color_trc 6 -quality 85 -loop 0 cover.webp 2>&1; then
+    ec='0'
   else
     ec="$?"
     printf '[ERROR] Converstion of cover.mp4 to cover.webp exited with an error. (exit %s)\n' "$ec"
@@ -120,13 +122,8 @@ d=$((w > h ? w : h))
 
 if (( d >= target )); then
   printf 'No upscale: %sx%s, %s bytes\n' "$w" "$h" "$b"
-#  magick cover.jpg -resize "${target}x${target}" -quality 80 cover-1500.jpg || exit 1
-#echo "$target target"
-#echo "$PWD PWD"
   magick cover.jpg -resize "${target}x${target}^" -quality 80 cover-1500.jpg ||
     { printf 'magic -resize to %sx%s^ failed. (exit 1)\n' "$target" "$target" >&2; exit 1; }
-#  printf 'Finished creating 1500² cover\n'
-#  magick cover.jpg -resize "${target}" -quality 80 cover-1500.jpg || exit 1
 
 elif (( p >= minpx && b >= p * minbpp )); then
   printf 'Lanczos: %sx%s, %s bytes\n' "$w" "$h" "$b"
