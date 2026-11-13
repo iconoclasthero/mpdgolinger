@@ -1,15 +1,9 @@
 #!/usr/bin/env node
 
 import { access, stat } from 'node:fs/promises';
-import path from 'node:path';
 
 const [input, scale, output] = process.argv.slice(2);
 const browsersPath = '/opt/newcover-worker/browsers';
-
-const fail = message => {
-  console.error(`[ERROR] ${message}`);
-  process.exitCode = 1;
-};
 
 async function main() {
   if (!input || !['2', '4'].includes(scale) || !output) {
@@ -81,4 +75,7 @@ async function main() {
   }
 }
 
-main().catch(fail);
+main().catch(error => {
+  console.error(`[ERROR] ImgUpscaler: ${error.message}`);
+  process.exitCode = 1;
+});

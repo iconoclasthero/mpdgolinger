@@ -22,16 +22,18 @@ newfiles=( 'cover.jpg' 'cover-1500.jpg' 'cover-500.jpg' )
 : "${small:=500}"
 : "${minpx:=1000000}"
 : "${minbpp:=1}"
+: "${upscaler:=web}"
 : "${model:=/opt/repicturer/models-realesrgan-x4plus}"
 : "${mediagrp:=media}"
 : "${ext:=jpg}"
 
-for cmd in axel repicturer-cli ffmpeg; do
-  command -v "$cmd"  >/dev/null ||
-     { printf '[ERROR] Handler `%s` not found; install. (exit 1)\n' "$cmd"; exit 1; }
+for cmd in axel ffmpeg; do
+  command -v "$cmd" >/dev/null ||
+    { printf '[ERROR] Handler `%s` not found; install. (exit 1)\n' "$cmd"; exit 1; }
 done
 
-[[ -d "$model" ]] || { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model"; exit 1; }
+[[ "$upscaler" = web || "$upscaler" = local ]] ||
+  { printf '[ERROR] Unsupported upscaler `%s`; use web or local. (exit 1)\n' "$upscaler" >&2; exit 1; }
 
 ## unwrap the `file:` URIs:
 [[ "$uri" =~ ^file:(//)?(.+) ]] && uri="${BASH_REMATCH[2]}"
@@ -148,25 +150,43 @@ elif (( p >= minpx && b >= p * minbpp )); then
 else
   printf 'AI upscale: %sx%s, %s bytes\n' "$w" "$h" "$b"
 
-## we want no side < 1500!
-#  if (( w >= h )); then
-  if (( w <= h )); then
-    ow="$target"
-    oh=$((h * target / w))
+  if [[ "$upscaler" = web ]]; then
+    command -v node >/dev/null ||
+      { printf '[ERROR] Node.js not found; install it. (exit 1)\n' >&2; exit 1; }
+
+    scale=2
+    (( d * scale < target )) && scale=4
+
+    node /opt/newcover-worker/upscale.mjs cover.jpg "$scale" cover-1500-ai.jpg ||
+      { ec="$?"; printf '[ERROR] ImgUpscaler helper failed with exit code %s. (exit %s)\n' "$ec" "$ec" >&2; exit "$ec"; }
+
+    magick cover-1500-ai.jpg -quality 80 cover-1500.jpg ||
+      { printf '[ERROR] magick failed to create cover-1500.jpg from ImgUpscaler output. (exit 1)\n' >&2; exit 1; }
+    rm cover-1500-ai.jpg
   else
-    oh="$target"
-    ow=$((w * target / h))
+    command -v repicturer-cli >/dev/null ||
+      { printf '[ERROR] Handler `repicturer-cli` not found; install. (exit 1)\n' >&2; exit 1; }
+
+    [[ -d "$model" ]] ||
+      { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model" >&2; exit 1; }
+
+    ## we want no side < 1500!
+    if (( w <= h )); then
+      ow="$target"
+      oh=$((h * target / w))
+    else
+      oh="$target"
+      ow=$((w * target / h))
+    fi
+
+    repicturer-cli -i cover.jpg -o cover-1500-ai.png \
+        -M scale -m "$model" -W "$ow" -H "$oh" -v 2>&1 ||
+      { ec="$?"; printf '[ERROR] repicture-cli failed with exit code %s; investigate. (exit %s)\n' "$ec" "$ec" >&2; exit "$ec"; }
+
+    magick cover-1500-ai.png -quality 80 cover-1500.jpg ||
+      { printf '[ERROR] magick failed to create the 1500² .jpg; investigate. (exit 1)\n' >&2; exit 1; }
+    rm cover-1500-ai.png
   fi
-
-  ## this is dumping it's processing output to stderr. this is a problem because it's not relevant
-  ## to the error that I need to propigate to the front end.
-  repicturer-cli -i cover.jpg -o cover-1500-ai.png \
-      -M scale -m "$model" -W "$ow" -H "$oh" -v 2>&1 ||
-    { ec="$?"; printf '[ERROR] repicture-cli failed with exit code %s; investigate. (exit %s)' "$ec" "$ec" >&2; exit "$ec"; }
-
-  magick cover-1500-ai.png -quality 80 cover-1500.jpg ||
-    { printf '[ERROR] magick failed to create the 1500² .jpg; investigate. (exit 1)\n.' >&2; exit 1; }
-  rm cover-1500-ai.png
 fi
 
 printf 'Starting creation of 500² cover\n$small=%s\n\n\n' "$small"
