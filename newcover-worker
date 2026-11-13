@@ -16,7 +16,6 @@ cd "$dir" || { printf '[ERROR] Unable to `cd %s`; investigate! (exit 1)\n' "$dir
 
 ## for permissions later:
 umask 022
-newfiles=( 'cover.jpg' 'cover-1500.jpg' 'cover-500.jpg' )
 
 : "${target:=1500}"
 : "${small:=500}"
@@ -26,6 +25,8 @@ newfiles=( 'cover.jpg' 'cover-1500.jpg' 'cover-500.jpg' )
 : "${model:=/opt/repicturer/models-realesrgan-x4plus}"
 : "${mediagrp:=media}"
 : "${ext:=jpg}"
+
+newfiles=( 'cover.jpg' "cover-$target.jpg" "cover-$small.jpg" )
 
 for cmd in axel ffmpeg; do
   command -v "$cmd" >/dev/null ||
@@ -124,13 +125,13 @@ d=$((w < h ? w : h))
 
 if (( d >= target )); then
   printf 'No upscale: %sx%s, %s bytes\n' "$w" "$h" "$b"
-  magick cover.jpg -resize "${target}x${target}^" -quality 80 cover-1500.jpg ||
+  magick cover.jpg -resize "${target}x${target}^" -quality 80 cover-"$target".jpg ||
     { printf 'magic -resize to %sx%s^ failed. (exit 1)\n' "$target" "$target" >&2; exit 1; }
 
 elif (( p >= minpx && b >= p * minbpp )); then
   printf 'Lanczos: %sx%s, %s bytes\n' "$w" "$h" "$b"
 
-## we want no side < 1500!
+## we want no side < $target!
 ## why are we even calculating this?! let magick handle it.
 #  if (( w >= h )); then
 #    ow="$target"
@@ -141,10 +142,10 @@ elif (( p >= minpx && b >= p * minbpp )); then
 #  fi
 #
 #  magick cover.jpg -filter Lanczos -resize "${ow}x${oh}!" \
-#    -quality 80 cover-1500.jpg || exit 1
+#    -quality 80 "cover-$target.jpg" || exit 1
 
   magick cover.jpg -filter Lanczos -resize "${target}x${target}^" \
-      -quality 80 cover-1500.jpg ||
+      -quality 80 cover-"$target".jpg ||
     { printf '[ERROR] Inexplicably, magick failed to convert the image; investigate. (exit 1)\n' >&2; exit 1; }
 
 else
@@ -157,7 +158,7 @@ upscaler-local(){
   [[ -d "$model" ]] ||
     { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model" >&2; exit 1; }
 
-  ## we want no side < 1500!
+  ## we want no side < "$target"!
   if (( w <= h )); then
     ow="$target"
     oh=$((h * target / w))
@@ -168,13 +169,13 @@ upscaler-local(){
 
   ## this is dumping it's processing output to stderr. this is a problem because it's not relevant
   ## to the error that I need to propigate to the front end.
-  repicturer-cli -i cover.jpg -o cover-1500-ai.png \
+  repicturer-cli -i cover.jpg -o cover-"$target"-ai.png \
       -M scale -m "$model" -W "$ow" -H "$oh" -v 2>&1 ||
     { ec="$?"; printf '[ERROR] repicture-cli failed with exit code %s; investigate. (exit %s)\n' "$ec" "$ec" >&2; exit "$ec"; }
 
-  magick cover-1500-ai.png -quality 80 cover-1500.jpg ||
-    { printf '[ERROR] magick failed to create the 1500² .jpg; investigate. (exit 1)\n' >&2; exit 1; }
-  rm cover-1500-ai.png
+  magick cover-"$target"-ai.png -quality 80 cover-"$target".jpg ||
+    { printf '[ERROR] magick failed to create the %s² .jpg; investigate. (exit 1)\n' "$target" >&2; exit 1; }
+  rm cover-"$target"-ai.png
 }
 
   if [[ "$upscaler" = web ]]; then
@@ -184,12 +185,12 @@ upscaler-local(){
     (( d * scale < target )) && scale=4
 
     if (( d * scale >= target )); then
-      node /opt/newcover-worker/upscale.mjs cover.jpg "$scale" cover-1500-ai.jpg ||
+      node /opt/newcover-worker/upscale.mjs cover.jpg "$scale" cover-"$target"-ai.jpg ||
         { ec="$?"; printf '[ERROR] ImgUpscaler helper failed with exit code %s. (exit %s)\n' "$ec" "$ec" >&2; exit "$ec"; }
 
-      magick cover-1500-ai.jpg -quality 80 cover-1500.jpg ||
-        { printf '[ERROR] magick failed to create cover-1500.jpg from ImgUpscaler output. (exit 1)\n' >&2; exit 1; }
-      rm cover-1500-ai.jpg
+      magick cover-"$target"-ai.jpg -quality 80 cover-"$target".jpg ||
+        { printf '[ERROR] magick failed to create cover-%a.jpg from ImgUpscaler output. (exit 1)\n' "$target">&2; exit 1; }
+      rm cover-"$target"-ai.jpg
     else
       printf '[WARN] The source image is <%s/4² and cannot meet the %s² target with the %s upscaler; falling back to local model.\n' "$target" "$target"
       upscaler-local
@@ -202,14 +203,14 @@ upscaler-local(){
   fi
 fi
 
-printf 'Starting creation of 500² cover\n$small=%s\n\n\n' "$small"
+printf 'Starting creation of %s² cover\n' "$small"
 
 #magick cover.jpg -resize "${small}x${small}" \
 magick cover.jpg -resize "${small}x${small}^" \
-  -quality 80 cover-500.jpg ||
-    { printf '[ERROR] magick failed to create the 500² .jpg; investigate. (exit 1)\n.' >&2; exit 1; }
+  -quality 80 "cover-$small.jpg" ||
+    { printf '[ERROR] magick failed to create the %s² .jpg; investigate. (exit 1)\n.' "$small" >&2; exit 1; }
 
-ln -f cover-1500.jpg cover.jpg
+ln -f cover-"$target".jpg cover.jpg
 
 chgrp "$mediagrp" "${newfiles[@]}" || { printf '[ERROR] Failed to change group to %s. (exit 1)\n' "$mediagrp" >&2; ec=1; }
 chmod g+rw "${newfiles[@]}" || { printf '[ERROR] Failed to change group permissions to g+rw. (exit 1)\n' >&2; ec=1; }
