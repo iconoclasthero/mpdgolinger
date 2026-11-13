@@ -192,7 +192,7 @@ upscaler-local(){
         { printf '[ERROR] magick failed to create cover-%a.jpg from ImgUpscaler output. (exit 1)\n' "$target">&2; exit 1; }
       rm cover-"$target"-ai.jpg
     else
-      printf '[WARN] The source image is <%s/4² and cannot meet the %s² target with the %s upscaler; falling back to local model.\n' "$target" "$target"
+      printf '[WARN] The source image is <%s/4² and cannot meet the %s² target with the %s upscaler; falling back to local model.\n' "$target" "$target" "$upscaler"
       upscaler-local
     fi
   elif [[ "$upscaler" = local ]]; then
