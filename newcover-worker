@@ -44,7 +44,7 @@ mp42webp(){
   fi
 
   ## cleanup regardless of success, can always redownload the .mp4:
-  rm cover.mp4 "$tmpcvr"
+  rm -f cover.mp4 "$tmpcvr"
 
   chgrp "$mediagrp" "${newfiles[@]}" || { printf '[ERROR] Failed to change group to %s. (exit 1)\n' "$mediagrp" >&2; ec=1; }
   chmod g+rw "${newfiles[@]}" || { printf '[ERROR] Failed to change group permissions to g+rw. (exit 1)\n' >&2; ec=1; }
