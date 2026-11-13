@@ -32,20 +32,6 @@ for cmd in axel ffmpeg; do
     { printf '[ERROR] Handler `%s` not found; install. (exit 1)\n' "$cmd"; exit 1; }
 done
 
-if [[ "$upscaler" = local ]]; then
-  command -v repicturer-cli >/dev/null ||
-    { printf '[ERROR] Handler `repicturer-cli` not found; install. (exit 1)\n' >&2; exit 1; }
-
-  [[ -d "$model" ]] ||
-    { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model" >&2; exit 1; }
-elif [[ "$upscaler" = web ]]; then
-  command -v node >/dev/null ||
-    { printf '[ERROR] Node.js not found; install it. (exit 1)\n' >&2; exit 1; }
-else
-  printf '[ERROR] Unsupported upscaler `%s`; use web or local. (exit 1)\n' "$upscaler" >&2
-  exit 1
-fi
-
 ## unwrap the `file:` URIs:
 [[ "$uri" =~ ^file:(//)?(.+) ]] && uri="${BASH_REMATCH[2]}"
 
@@ -162,6 +148,8 @@ else
   printf 'AI upscale: %sx%s, %s bytes\n' "$w" "$h" "$b"
 
   if [[ "$upscaler" = web ]]; then
+    command -v node >/dev/null ||
+      { printf '[ERROR] Node.js not found; install it. (exit 1)\n' >&2; exit 1; }
     scale=2
     (( d * scale < target )) && scale=4
 
@@ -171,7 +159,13 @@ else
     magick cover-1500-ai.jpg -quality 80 cover-1500.jpg ||
       { printf '[ERROR] magick failed to create cover-1500.jpg from ImgUpscaler output. (exit 1)\n' >&2; exit 1; }
     rm cover-1500-ai.jpg
-  else
+  elif [[ "$upscaler" = local ]]; then
+    command -v repicturer-cli >/dev/null ||
+      { printf '[ERROR] Handler `repicturer-cli` not found; install. (exit 1)\n' >&2; exit 1; }
+
+    [[ -d "$model" ]] ||
+      { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model" >&2; exit 1; }
+
     ## we want no side < 1500!
     if (( w <= h )); then
       ow="$target"
@@ -188,6 +182,9 @@ else
     magick cover-1500-ai.png -quality 80 cover-1500.jpg ||
       { printf '[ERROR] magick failed to create the 1500² .jpg; investigate. (exit 1)\n' >&2; exit 1; }
     rm cover-1500-ai.png
+  else
+    printf '[ERROR] Unsupported upscaler `%s`; use web or local. (exit 1)\n' "$upscaler" >&2
+    exit 1
   fi
 fi
 
