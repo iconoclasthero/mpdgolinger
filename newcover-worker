@@ -167,12 +167,12 @@ upscaler-local(){
 }
 
   if [[ "$upscaler" = web ]]; then
-    command -v node >/dev/null ||
-      { printf '[ERROR] Node.js not found; install it. (exit 1)\n' >&2; exit 1; }
     scale=2
     (( minside * scale < target )) && scale=4
 
     if (( minside * scale >= target )); then
+      command -v node >/dev/null ||
+        { printf '[ERROR] Node.js not found; install it. (exit 1)\n' >&2; exit 1; }
       node /opt/newcover-worker/upscale.mjs cover.jpg "$scale" cover-"$target"-ai.jpg ||
         { ec="$?"; printf '[ERROR] ImgUpscaler helper failed with exit code %s. (exit %s)\n' "$ec" "$ec" >&2; exit "$ec"; }
 
