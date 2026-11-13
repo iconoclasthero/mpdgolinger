@@ -55,6 +55,33 @@ mp42webp(){
   return "$ec"
 }
 
+upscaler-local(){
+  command -v repicturer-cli >/dev/null ||
+    { printf '[ERROR] Handler `repicturer-cli` not found; install. (exit 1)\n' >&2; exit 1; }
+
+  [[ -d "$model" ]] ||
+    { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model" >&2; exit 1; }
+
+  ## we want no side < "$target"!
+  if (( w <= h )); then
+    ow="$target"
+    oh=$((h * target / w))
+  else
+    oh="$target"
+    ow=$((w * target / h))
+  fi
+
+  ## this is dumping it's processing output to stderr. this is a problem because it's not relevant
+  ## to the error that I need to propigate to the front end.
+  repicturer-cli -i cover.jpg -o cover-"$target"-ai.png \
+      -M scale -m "$model" -W "$ow" -H "$oh" -v 2>&1 ||
+    { ec="$?"; printf '[ERROR] repicture-cli failed with exit code %s; investigate. (exit %s)\n' "$ec" "$ec" >&2; exit "$ec"; }
+
+  magick cover-"$target"-ai.png -quality 80 cover-"$target".jpg ||
+    { printf '[ERROR] magick failed to create the %s² .jpg; investigate. (exit 1)\n' "$target" >&2; exit 1; }
+  rm cover-"$target"-ai.png
+}
+
 ## unwrap the `file:` URIs:
 [[ "$uri" =~ ^file:(//)?(.+) ]] && uri="${BASH_REMATCH[2]}"
 
@@ -138,33 +165,6 @@ elif (( sqpx >= minpx && imgbytes >= sqpx * minbpp )); then
 
 else
   printf 'AI upscale: %sx%s, %s bytes\n' "$w" "$h" "$imgbytes"
-
-upscaler-local(){
-  command -v repicturer-cli >/dev/null ||
-    { printf '[ERROR] Handler `repicturer-cli` not found; install. (exit 1)\n' >&2; exit 1; }
-
-  [[ -d "$model" ]] ||
-    { printf '[ERROR] Model directory `%s` not found; investigate. (exit 1)\n' "$model" >&2; exit 1; }
-
-  ## we want no side < "$target"!
-  if (( w <= h )); then
-    ow="$target"
-    oh=$((h * target / w))
-  else
-    oh="$target"
-    ow=$((w * target / h))
-  fi
-
-  ## this is dumping it's processing output to stderr. this is a problem because it's not relevant
-  ## to the error that I need to propigate to the front end.
-  repicturer-cli -i cover.jpg -o cover-"$target"-ai.png \
-      -M scale -m "$model" -W "$ow" -H "$oh" -v 2>&1 ||
-    { ec="$?"; printf '[ERROR] repicture-cli failed with exit code %s; investigate. (exit %s)\n' "$ec" "$ec" >&2; exit "$ec"; }
-
-  magick cover-"$target"-ai.png -quality 80 cover-"$target".jpg ||
-    { printf '[ERROR] magick failed to create the %s² .jpg; investigate. (exit 1)\n' "$target" >&2; exit 1; }
-  rm cover-"$target"-ai.png
-}
 
   if [[ "$upscaler" = web ]]; then
     scale=2

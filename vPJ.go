@@ -119,13 +119,14 @@ func verbProcessorJSON(js map[string]interface{}, req Request, conn *websocket.C
 
       case "replace":
         // EXPECTS:
-        // {"system":"artwork","cmd":"replace","args":{"url":"https://example.com/cover.jpg"}}
+        // {"system":"artwork","cmd":"replace","args":{"url":"https://example.com/cover.jpg","upscaler":"web"}}
 
         const newcoverScript = "/usr/local/bin/newcover-worker"
 
         var replaceArgs struct {
           URL      string  `json:"url"`
           AlbumDir string  `json:"albumDir"`
+          Upscaler string  `json:"upscaler"`
         }
 
         if err := json.Unmarshal(req.Args, &replaceArgs); err != nil {
@@ -135,15 +136,6 @@ func verbProcessorJSON(js map[string]interface{}, req Request, conn *websocket.C
           return []string{string(out)}
         }
 
-//        // --- validate URL ---
-//        parsedURL, err := url.ParseRequestURI(replaceArgs.URL)
-//        if err != nil || parsedURL.Host == "" ||
-//          (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-//          js["response"] = "error"
-//          js["error"] = "url must be a valid HTTP or HTTPS URL"
-//          out, _ := json.Marshal(js)
-//          return []string{string(out)}
-//        }
         // --- validate URL ---
         parsedURL, err := url.ParseRequestURI(replaceArgs.URL)
         validURL := err == nil && (
@@ -214,7 +206,10 @@ func verbProcessorJSON(js map[string]interface{}, req Request, conn *websocket.C
         cmd := exec.Command(newcoverScript, replaceArgs.URL, replaceArgs.AlbumDir)
         // redundant but harmless
         cmd.Dir = albumDir
-
+        // the validation of `upscaler="<value>"` is intentionally left to the worker
+        if replaceArgs.Upscaler != "" {
+          cmd.Env = append(os.Environ(), "upscaler="+replaceArgs.Upscaler)
+        }
         var stdout, stderr bytes.Buffer
         cmd.Stdout = &stdout
         cmd.Stderr = &stderr
