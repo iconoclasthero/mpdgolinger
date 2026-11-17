@@ -123,7 +123,7 @@ if [[ "$uri" = http@(|s)://* ]]; then
   }
 
   if [[ -f 'cover.jpg' ]]; then
-    printf -v TS '%(%Y%m%d-%H%M%S)T'
+    printf -v TS '%(%Y%m%d-%H%M%S)T' "$(stat -c %Y cover.jpg)"
     mv cover.jpg "cover-mgl-$TS.jpg" ||
       { printf 'Failed to back up existing cover.jpg; investigate. (exit 1)\n' >&2; exit 1; }
   fi
@@ -132,7 +132,7 @@ if [[ "$uri" = http@(|s)://* ]]; then
 
 elif [[ -f "$uri" ]]; then
   uri="$(realpath -- "$uri")"
-  printf -v TS '%(%Y%m%d-%H%M%S)T'
+  printf -v TS '%(%Y%m%d-%H%M%S)T' "$(stat -c %Y cover.jpg)"
   if [[ "$uri" != "$PWD/cover.jpg"  && -f 'cover.jpg'  ]]; then
     mv cover.jpg "cover-mgl-$TS.jpg"
 
