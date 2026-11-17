@@ -1,5 +1,5 @@
 #!/bin/bash
-# shellcheck disable=SC2016
+# shellcheck disable=SC2016,SC2329
 
 shopt -s extglob
 
@@ -21,17 +21,42 @@ umask 022
 : "${small:=500}"
 : "${minpx:=1000000}"
 : "${minbpp:=1}"
-: "${upscaler:=web}"
+: "${upscaler:=web-imgupscaler}"
 : "${model:=/opt/repicturer/models-realesrgan-x4plus}"
 : "${mediagrp:=media}"
 : "${ext:=jpg}"
+: "${cloudinaryenv:=/var/lib/mpd/.config/cloudinary.env}"
 
 newfiles=( 'cover.jpg' "cover-$target.jpg" "cover-$small.jpg" )
 
-for cmd in axel ffmpeg; do
+for cmd in axel ffmpeg jq curl; do
   command -v "$cmd" >/dev/null ||
     { printf '[ERROR] Handler `%s` not found; install. (exit 1)\n' "$cmd"; exit 1; }
 done
+
+
+clean-exit(){
+  local ec="$?"
+  trap - EXIT
+  local cloudinaryid="${cloudinaryid:-}"
+  local cloudinarytmp="${cloudinarytmp:-}"
+  # Add any other cleanup operations necessary...
+
+  if [[ "$upscaler" = 'web-cloudinary' ]]; then
+    if [[ "$cloudinaryid" ]]; then
+      curl -fsS -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET" \
+        -X DELETE \
+        "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/resources/image/upload" \
+        -d "public_ids[]=$cloudinaryid" -d 'invalidate=true' >/dev/null ||
+          printf '[WARN] Unable to delete Cloudinary asset %s\n' "$cloudinaryid" >&2
+    fi
+    [[ "$cloudinarytmp" ]] && rm -rf -- "$cloudinarytmp"
+  fi
+
+  return "$ec"
+} ## clean-exit
+
+trap clean-exit EXIT
 
 mp42webp(){
   local ec
@@ -53,7 +78,7 @@ mp42webp(){
     printf '[WARN] The newly-generated cover.webp will not be displayed because there is an existing cover.png/jpg.\n' >&2
 
   return "$ec"
-}
+} ## mp42webp
 
 upscaler-local(){
   command -v repicturer-cli >/dev/null ||
@@ -80,7 +105,7 @@ upscaler-local(){
   magick cover-"$target"-ai.png -quality 80 cover-"$target".jpg ||
     { printf '[ERROR] magick failed to create the %s² .jpg; investigate. (exit 1)\n' "$target" >&2; exit 1; }
   rm cover-"$target"-ai.png
-}
+} ## upscaler-local
 
 ## unwrap the `file:` URIs:
 [[ "$uri" =~ ^file:(//)?(.+) ]] && uri="${BASH_REMATCH[2]}"
@@ -109,7 +134,7 @@ elif [[ -f "$uri" ]]; then
   uri="$(realpath -- "$uri")"
   printf -v TS '%(%Y%m%d-%H%M%S)T'
   if [[ "$uri" != "$PWD/cover.jpg"  && -f 'cover.jpg'  ]]; then
-    mv cover.jpg "cover.jpg-$TS"
+    mv cover.jpg "cover-mgl-$TS.jpg"
 
     if (( mp4 )); then
       mv "$uri" "cover.$ext"
@@ -120,7 +145,7 @@ elif [[ -f "$uri" ]]; then
     fi
 
   elif [[ "$uri" = "$PWD/cover.jpg"  && -f 'cover.jpg'  ]]; then
-    cp -a cover.jpg "cover.jpg-$TS"
+    cp -a cover.jpg "cover-mgl-$TS.jpg"
   elif (( mp4 )); then
     mv "$uri" "cover.$ext"
   else
@@ -166,7 +191,7 @@ elif (( sqpx >= minpx && imgbytes >= sqpx * minbpp )); then
 else
   printf 'AI upscale: %sx%s, %s bytes\n' "$w" "$h" "$imgbytes"
 
-  if [[ "$upscaler" = web ]]; then
+  if [[ "$upscaler" = 'web-imgupscaler' ]]; then
     scale=2
     (( minside * scale < target )) && scale=4
 
@@ -181,6 +206,64 @@ else
       rm cover-"$target"-ai.jpg
     else
       printf '[WARN] The source image is <%s/4² and cannot meet the %s² target with the %s upscaler; falling back to local model.\n' "$target" "$target" "$upscaler"
+      upscaler-local
+    fi
+  elif [[ "$upscaler" = 'web-cloudinary' ]]; then
+    if (( minside * 4 >= target )); then
+      # shellcheck disable=SC1090
+      source "$cloudinaryenv" ||
+        { printf '[ERROR] Unable to load Cloudinary credentials. (exit 1)\n' >&2; exit 1; }
+
+      cloudinarytmp=$(mktemp -d) ||
+        { printf '[ERROR] Unable to create temporary directory. (exit 1)\n' >&2; exit 1; }
+
+      usage=$(curl -fsS -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET" \
+        "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/usage") ||
+          { printf '[WARN] Unable to retrieve Cloudinary usage.\n' >&2; usage=; }
+
+      if [[ "$usage" ]]; then
+        jq -e '
+          .credits.used_percent >= 50 or
+          .storage.usage >= 104857600 or
+          .bandwidth.usage >= 524288000 or
+          .transformations.usage >= 10000
+        ' <<< "$usage" >/dev/null &&
+          printf '[WARN] Cloudinary usage is approaching a limit:\n%s\n' \
+            "$(jq '{credits, storage, bandwidth, transformations}' <<< "$usage")" >&2
+      fi
+
+      response=$(curl -fsS -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET" \
+        -X POST "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/image/upload" \
+        -F 'file=@cover.jpg' \
+        -F 'eager=e_upscale' \
+        -F 'eager_async=true') ||
+          { printf '[ERROR] Cloudinary upload failed. (exit 1)\n' >&2; exit 1; }
+
+      cloudinaryid=$(jq -r '.public_id // empty' <<< "$response")
+      eager_url=$(jq -r '.eager[0].secure_url // empty' <<< "$response")
+
+      [[ "$cloudinaryid" && "$eager_url" ]] ||
+        { printf '[ERROR] Cloudinary response missing public ID or upscale URL. (exit 1)\n' >&2; exit 1; }
+
+      for ((i=0; i<60; i++)); do
+        status=$(curl -sS -o "$cloudinarytmp/upscaled.jpg" -w '%{http_code}' "$eager_url") ||
+          { printf '[ERROR] Cloudinary upscale download failed. (exit 1)\n' >&2; exit 1; }
+
+        [[ "$status" = 200 ]] && break
+        [[ "$status" = 423 ]] ||
+          { printf '[ERROR] Cloudinary upscale returned HTTP %s. (exit 1)\n' "$status" >&2; exit 1; }
+
+        sleep 2
+      done
+
+      [[ "$status" = 200 ]] ||
+        { printf '[ERROR] Cloudinary upscale timed out. (exit 1)\n' >&2; exit 1; }
+
+      magick "$cloudinarytmp/upscaled.jpg" -resize "${target}x${target}^" \
+        -quality 80 "cover-$target.jpg" ||
+          { printf '[ERROR] magick failed to create cover-%s.jpg from Cloudinary output. (exit 1)\n' "$target" >&2; exit 1; }
+    else
+      printf '[WARN] The source image is <1/4 of the %s² target and cannot meet it with Cloudinary; falling back to local model.\n' "$target"
       upscaler-local
     fi
   elif [[ "$upscaler" = local ]]; then
