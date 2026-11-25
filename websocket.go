@@ -9,6 +9,13 @@ import (
 	"net/http"
 	"time"
 )
+// wsWriteTimeout is the deadline for a single websocket write: 2 s base, plus
+// 2 s for every full 10 MiB of payload (integer division), so large album art
+// frames (e.g. a 42 MB animated cover -> 10 s) are not cut off mid-send.
+func wsWriteTimeout(n int) time.Duration {
+  return 2*time.Second + time.Duration(n/(10*1024*1024))*2*time.Second
+}
+
 func cid(c *websocket.Conn) string {
   connIDMu.Lock()
   id := connID[c]
@@ -174,7 +181,7 @@ globalWSHub.mu.Unlock()
 
   // helper write
   write := func(c *websocket.Conn, typ websocket.MessageType, payload []byte) bool {
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(len(payload)))
     defer cancel()
 
     err := c.Write(ctx, typ, payload)
@@ -297,7 +304,7 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
     dbg("[wsBM] primary for push loop: %v", cid(conn))
 
     write := func(typ websocket.MessageType, payload []byte) bool {
-      wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+      wctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(len(payload)))
       defer cancel()
 
       err := conn.Write(wctx, typ, payload)
