@@ -21,7 +21,9 @@ func wsWriteTimeout(base time.Duration, n int) time.Duration {
   if calc <= base {
     return base
   }
-  log.Printf("[wsWT] write timeout increased from %s to %s for %d byte payload", base, calc, n)
+//  log.Printf("[wsWT] write timeout increased from %s to %s for %d byte payload", base, calc, n)
+  log.Printf("[wsWT] write timeout increased from %s to %s for %.1f MiB payload",
+    base, calc.Round(time.Millisecond), float64(n)/(1024*1024))
   return calc
 }
 
