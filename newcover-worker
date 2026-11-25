@@ -180,7 +180,10 @@ if (( minside >= target )); then
   magick cover.jpg -resize "${target}x${target}^" -quality 80 cover-"$target".jpg ||
     { printf 'magic -resize to %sx%s^ failed. (exit 1)\n' "$target" "$target" >&2; exit 1; }
 
-elif (( pixels >= minpx && imgbytes >= pixels * minbpp )); then
+## Wed Nov 25 07:48:22 AM EST 2026
+## reduced the threshold to 0.5 bytes/pixel so more goes through Lanczos:
+#elif (( pixels >= minpx && imgbytes >= pixels * minbpp )); then
+elif (( pixels >= minpx && imgbytes * 2 >= pixels )); then
   printf 'Lanczos upscale—minimum threhold met: %sx%s, %s bytes\n' "$w" "$h" "$imgbytes"
 
   ## we want no side < $target!
