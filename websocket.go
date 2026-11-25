@@ -10,7 +10,7 @@ import (
 	"time"
 )
 // wsWriteStep is the payload size that is given one full base timeout to send.
-const wsWriteStep = 12 * 1024 * 1024
+const wsWriteStep = 11 * 1024 * 1024
 
 // wsWriteTimeout returns the deadline for a single websocket write: continuous
 // in payload size at base per wsWriteStep (12 MiB), never below base. Payloads up
