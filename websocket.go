@@ -9,6 +9,24 @@ import (
 	"net/http"
 	"time"
 )
+// wsWriteStep is the payload size that is given one full base timeout to send.
+const wsWriteStep = 11 * 1024 * 1024
+
+// wsWriteTimeout returns the deadline for a single websocket write: continuous
+// in payload size at base per wsWriteStep (12 MiB), never below base. Payloads up
+// to wsWriteStep get exactly base; a 40 MiB cover with a 2s base gets ~6.7s.
+// Logs only when the result exceeds base.
+func wsWriteTimeout(base time.Duration, n int) time.Duration {
+  calc := time.Duration(float64(n) / float64(wsWriteStep) * float64(base))
+  if calc <= base {
+    return base
+  }
+//  log.Printf("[wsWT] write timeout increased from %s to %s for %d byte payload", base, calc, n)
+  log.Printf("[wsWT] write timeout increased from %s to %s for %.1f MiB payload",
+    base, calc.Round(time.Millisecond), float64(n)/(1024*1024))
+  return calc
+}
+
 func cid(c *websocket.Conn) string {
   connIDMu.Lock()
   id := connID[c]
@@ -174,7 +192,7 @@ globalWSHub.mu.Unlock()
 
   // helper write
   write := func(c *websocket.Conn, typ websocket.MessageType, payload []byte) bool {
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(2*time.Second, len(payload)))
     defer cancel()
 
     err := c.Write(ctx, typ, payload)
@@ -297,7 +315,7 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
     dbg("[wsBM] primary for push loop: %v", cid(conn))
 
     write := func(typ websocket.MessageType, payload []byte) bool {
-      wctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+      wctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(2*time.Second, len(payload)))
       defer cancel()
 
       err := conn.Write(wctx, typ, payload)
