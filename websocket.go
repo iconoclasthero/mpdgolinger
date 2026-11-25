@@ -9,21 +9,19 @@ import (
 	"net/http"
 	"time"
 )
-// wsWriteStep is the payload size that earns one extra wsWriteExtra of write time.
-const (
-  wsWriteStep  = 10 * 1024 * 1024
-  wsWriteExtra = 2 * time.Second
-)
+// wsWriteStep is the payload size that is given one full base timeout to send.
+const wsWriteStep = 12 * 1024 * 1024
 
-// wsWriteTimeout returns the deadline for a single websocket write: base, plus
-// wsWriteExtra for every full wsWriteStep (10 MiB) of payload (integer division),
-// so large album art frames (e.g. 42 MB -> 10s with a 2s base) are not cut off
-// mid-send. Logs only when the result exceeds base.
+// wsWriteTimeout returns the deadline for a single websocket write: continuous
+// in payload size at base per wsWriteStep (12 MiB), never below base. Payloads up
+// to wsWriteStep get exactly base; a 40 MiB cover with a 2s base gets ~6.7s.
+// Logs only when the result exceeds base.
 func wsWriteTimeout(base time.Duration, n int) time.Duration {
-  calc := base + time.Duration(n/wsWriteStep)*wsWriteExtra
-  if calc > base {
-    log.Printf("[wsWT] write timeout increased from %s to %s for %d byte payload", base, calc, n)
+  calc := time.Duration(float64(n) / float64(wsWriteStep) * float64(base))
+  if calc <= base {
+    return base
   }
+  log.Printf("[wsWT] write timeout increased from %s to %s for %d byte payload", base, calc, n)
   return calc
 }
 
