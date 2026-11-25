@@ -9,11 +9,22 @@ import (
 	"net/http"
 	"time"
 )
-// wsWriteTimeout is the deadline for a single websocket write: 2 s base, plus
-// 2 s for every full 10 MiB of payload (integer division), so large album art
-// frames (e.g. a 42 MB animated cover -> 10 s) are not cut off mid-send.
-func wsWriteTimeout(n int) time.Duration {
-  return 2*time.Second + time.Duration(n/(10*1024*1024))*2*time.Second
+// wsWriteStep is the payload size that earns one extra wsWriteExtra of write time.
+const (
+  wsWriteStep  = 10 * 1024 * 1024
+  wsWriteExtra = 2 * time.Second
+)
+
+// wsWriteTimeout returns the deadline for a single websocket write: base, plus
+// wsWriteExtra for every full wsWriteStep (10 MiB) of payload (integer division),
+// so large album art frames (e.g. 42 MB -> 10s with a 2s base) are not cut off
+// mid-send. Logs only when the result exceeds base.
+func wsWriteTimeout(base time.Duration, n int) time.Duration {
+  calc := base + time.Duration(n/wsWriteStep)*wsWriteExtra
+  if calc > base {
+    log.Printf("[wsWT] write timeout increased from %s to %s for %d byte payload", base, calc, n)
+  }
+  return calc
 }
 
 func cid(c *websocket.Conn) string {
@@ -181,7 +192,7 @@ globalWSHub.mu.Unlock()
 
   // helper write
   write := func(c *websocket.Conn, typ websocket.MessageType, payload []byte) bool {
-    ctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(len(payload)))
+    ctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(2*time.Second, len(payload)))
     defer cancel()
 
     err := c.Write(ctx, typ, payload)
@@ -304,7 +315,7 @@ func wsBroadcastMgr(msgs []wsMsg, target *websocket.Conn) {
     dbg("[wsBM] primary for push loop: %v", cid(conn))
 
     write := func(typ websocket.MessageType, payload []byte) bool {
-      wctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(len(payload)))
+      wctx, cancel := context.WithTimeout(context.Background(), wsWriteTimeout(2*time.Second, len(payload)))
       defer cancel()
 
       err := conn.Write(wctx, typ, payload)
