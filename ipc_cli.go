@@ -564,6 +564,13 @@ func verbProcessor(csv string) []string {
       state.paused = true
       deriveStateLocked(state.lastSongZI, state.lastSongID, state.lastSongURI, limit)
       state.mu.Unlock()
+      if state.paused && state.transition {
+        _ = mpdDo(func(c *mpd.Client) error {
+          return c.Random(false)
+        }, "IPC-random-off")
+        log.Printf("random(false) sent to mpdDo because paused=%v transition=%v",
+          state.paused, state.transition)
+      }
       resp = "Paused"
 
     case "resume":
